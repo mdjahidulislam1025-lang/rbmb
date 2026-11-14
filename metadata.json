@@ -1,0 +1,11 @@
+{
+  "name": " রাণীর বাজার মাধ্যমিক বিদ্যালয় - অফিসিয়াল ওয়েবসাইট",
+  "description": "রাণীর বাজার মাধ্যমিক বিদ্যালয়ের একটি আধুনিক ও দায়বদ্ধ ওয়েবসাইট, যেখানে নোটিশ বোর্ড, শিক্ষক পরিচিতি এবং ভর্তি সংক্রান্ত সকল তথ্য পাওয়া যাবে।",
+  "requestFramePermissions": [
+    "camera",
+    "microphone"
+  ],
+  "majorCapabilities": [
+    "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"
+  ]
+}
