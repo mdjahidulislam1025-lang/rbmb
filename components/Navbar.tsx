@@ -7,6 +7,8 @@ import {
 } from 'lucide-react';
 import { SCHOOL_NAME, EIIN, TRANSLATIONS } from '../constants';
 import { useApp } from '../App';
+import { PWAInstallButton } from './PWAInstallButton';
+import { compressImageFile } from '../utils/imageUtils';
 
 const { useState, useRef, useEffect, useMemo } = React;
 const { Link, useLocation, useNavigate } = RouterDom;
@@ -99,14 +101,11 @@ const Navbar: React.FC = () => {
     }
   };
 
-  const handlePhotoUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handlePhotoUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (file) {
-      const reader = new FileReader();
-      reader.onloadend = () => {
-        setSettingsForm(prev => ({ ...prev, photo: reader.result as string }));
-      };
-      reader.readAsDataURL(file);
+      const compressed = await compressImageFile(file, 500, 0.75);
+      setSettingsForm(prev => ({ ...prev, photo: compressed }));
     }
   };
 
@@ -311,7 +310,8 @@ const Navbar: React.FC = () => {
             </div>
           </div>
 
-          <div className="flex items-center space-x-4">
+          <div className="flex items-center space-x-3">
+            <PWAInstallButton variant="compact" />
             <button
               onClick={() => setLang(lang === 'bn' ? 'en' : 'bn')}
               className="flex items-center gap-2 bg-gray-50 hover:bg-green-50 px-3.5 py-1.5 rounded-full text-[10px] font-black tracking-widest transition-all border border-gray-100"
@@ -380,6 +380,7 @@ const Navbar: React.FC = () => {
                 Login Portal
               </Link>
             )}
+            <PWAInstallButton variant="full" />
             {user && (
               <button 
                 onClick={handleLogout}

@@ -20,7 +20,37 @@ import AcademicCalendar from './pages/AcademicCalendar';
 import { X, Send, Bot, Database, Sparkles } from 'lucide-react';
 import { SCHOOL_NAME, EIIN, CONTACT_INFO, E_BOOKS_2026, NOTICES, TEACHERS, GALLERY, HOLIDAYS_2026, EBook } from './constants';
 import { GoogleGenAI } from "@google/genai";
-import { Notice, Teacher, GalleryItem, Holiday, LocalizedString } from './types';
+import { Notice, Teacher, GalleryItem, Holiday, LocalizedString, AdmissionApplication, ContactMessage } from './types';
+import { OfflineIndicator } from './components/OfflineIndicator';
+import {
+  auth,
+  db,
+  googleProvider,
+  OperationType,
+  handleFirestoreError,
+  testFirestoreConnection,
+} from './firebase';
+import {
+  onAuthStateChanged,
+  signInWithPopup,
+  signOut,
+  User as FirebaseUser,
+} from 'firebase/auth';
+import {
+  collection,
+  doc,
+  getDoc,
+  getDocs,
+  onSnapshot,
+  query,
+  setDoc,
+  updateDoc,
+  deleteDoc,
+  where,
+  serverTimestamp,
+  writeBatch,
+} from 'firebase/firestore';
+import { sanitizeFirestoreId } from './utils/imageUtils';
 
 const { useState, createContext, useContext, useEffect, useRef } = React;
 const { HashRouter: Router, Routes, Route, Link } = RouterDom;
@@ -54,6 +84,8 @@ const DEFAULT_ADMIN: AuthUser = {
   email: 'admin@school.com'
 };
 
+const BOOTSTRAPPED_ADMIN_EMAIL = 'mdjahidulislam1025@gmail.com';
+
 interface ChatMessage {
   role: 'user' | 'model';
   text: string;
@@ -63,6 +95,10 @@ interface AppContextType {
   lang: Language;
   setLang: (lang: Language) => void;
   user: AuthUser | null;
+  firebaseUser: FirebaseUser | null;
+  isCloudAdmin: boolean;
+  signInWithGoogle: () => Promise<boolean>;
+  logoutGoogle: () => Promise<void>;
   login: (authUser: AuthUser) => void;
   register: (newUser: AuthUser) => boolean;
   updateUser: (updatedUser: AuthUser) => void;
@@ -90,6 +126,14 @@ interface AppContextType {
   addHoliday: (holiday: Holiday) => void;
   updateHoliday: (holiday: Holiday) => void;
   deleteHoliday: (id: string) => void;
+  admissions: AdmissionApplication[];
+  addAdmission: (app: AdmissionApplication) => Promise<void>;
+  updateAdmissionStatus: (appId: string, status: 'pending' | 'approved' | 'rejected') => Promise<void>;
+  deleteAdmission: (appId: string) => Promise<void>;
+  contactMessages: ContactMessage[];
+  addContactMessage: (msg: ContactMessage) => Promise<void>;
+  markContactMessageRead: (id: string) => Promise<void>;
+  deleteContactMessage: (id: string) => Promise<void>;
   settings: SchoolSettings;
   updateSettings: (newSettings: SchoolSettings) => void;
   exportDatabase: () => void;
@@ -105,9 +149,29 @@ export const useApp = () => {
   return context;
 };
 
+const safeLocalGet = <T,>(key: string, fallback: T): T => {
+  try {
+    const saved = localStorage.getItem(key);
+    if (!saved) return fallback;
+    return JSON.parse(saved) as T;
+  } catch {
+    return fallback;
+  }
+};
+
+const safeLocalSet = (key: string, data: unknown) => {
+  try {
+    localStorage.setItem(key, JSON.stringify(data));
+  } catch (e) {
+    console.warn(`localStorage write skipped for ${key}:`, e);
+  }
+};
+
 const App: React.FC = () => {
   const [lang, setLang] = useState<Language>('bn');
   const [user, setUser] = useState<AuthUser | null>(null);
+  const [firebaseUser, setFirebaseUser] = useState<FirebaseUser | null>(null);
+  const [isCloudAdmin, setIsCloudAdmin] = useState(false);
   const [showChat, setShowChat] = useState(false);
   const [chatInput, setChatInput] = useState('');
   const [chatMessages, setChatMessages] = useState<ChatMessage[]>([]);
@@ -115,56 +179,395 @@ const App: React.FC = () => {
   const [dbStatus, setDbStatus] = useState<'synced' | 'syncing' | 'error'>('synced');
   const chatEndRef = useRef<HTMLDivElement>(null);
 
-  const [notices, setNotices] = useState<Notice[]>([]);
-  const [teachers, setTeachers] = useState<Teacher[]>([]);
-  const [ebooks, setEbooks] = useState<EBook[]>([]);
-  const [gallery, setGallery] = useState<GalleryItem[]>([]);
-  const [holidays, setHolidays] = useState<Holiday[]>([]);
-  const [registeredUsers, setRegisteredUsers] = useState<AuthUser[]>([]);
-  const [settings, setSettings] = useState<SchoolSettings>({
-    name: SCHOOL_NAME,
-    eiin: EIIN,
-    phone: CONTACT_INFO.mobile,
-    email: CONTACT_INFO.email,
-    location: CONTACT_INFO.location,
-    schoolPhoto: 'https://images.unsplash.com/photo-1523050853064-8504f2f40fd5?auto=format&fit=crop&q=80&w=1200'
+  const [notices, setNotices] = useState<Notice[]>(() => safeLocalGet('db_notices', NOTICES));
+  const [teachers, setTeachers] = useState<Teacher[]>(() => safeLocalGet('db_teachers', TEACHERS));
+  const [ebooks, setEbooks] = useState<EBook[]>(() => safeLocalGet('db_ebooks', E_BOOKS_2026));
+  const [gallery, setGallery] = useState<GalleryItem[]>(() => safeLocalGet('db_gallery', GALLERY));
+  const [holidays, setHolidays] = useState<Holiday[]>(() => safeLocalGet('db_holidays', HOLIDAYS_2026));
+  const [admissions, setAdmissions] = useState<AdmissionApplication[]>(() => safeLocalGet('admission_applications', []));
+  const [contactMessages, setContactMessages] = useState<ContactMessage[]>(() => safeLocalGet('contact_messages', []));
+  const [registeredUsers, setRegisteredUsers] = useState<AuthUser[]>(() => {
+    const users = safeLocalGet<AuthUser[]>('registered_users', [DEFAULT_ADMIN]);
+    if (!users.some((u) => u.userId === DEFAULT_ADMIN.userId)) {
+      users.push(DEFAULT_ADMIN);
+    }
+    return users;
   });
+  const [settings, setSettings] = useState<SchoolSettings>(() =>
+    safeLocalGet('school_settings', {
+      name: SCHOOL_NAME,
+      eiin: EIIN,
+      phone: CONTACT_INFO.mobile,
+      email: CONTACT_INFO.email,
+      location: CONTACT_INFO.location,
+      schoolPhoto: 'https://images.unsplash.com/photo-1523050853064-8504f2f40fd5?auto=format&fit=crop&q=80&w=1200'
+    })
+  );
+
+  // Refs holding latest state for initial cloud seeding when admin connects
+  const latestStateRef = useRef({ notices, teachers, ebooks, gallery, holidays, settings });
+  useEffect(() => {
+    latestStateRef.current = { notices, teachers, ebooks, gallery, holidays, settings };
+  }, [notices, teachers, ebooks, gallery, holidays, settings]);
 
   useEffect(() => {
-    try {
-      const savedUser = localStorage.getItem('school_user');
-      if (savedUser) setUser(JSON.parse(savedUser));
-
-      const loadData = (key: string, initial: any[]) => {
-        const saved = localStorage.getItem(key);
-        if (!saved) return initial;
-        try {
-          return JSON.parse(saved);
-        } catch (e) {
-          console.error(`Error parsing ${key}:`, e);
-          return initial;
-        }
-      };
-
-      setNotices(loadData('db_notices', NOTICES));
-      setTeachers(loadData('db_teachers', TEACHERS));
-      setEbooks(loadData('db_ebooks', E_BOOKS_2026));
-      setGallery(loadData('db_gallery', GALLERY));
-      setHolidays(loadData('db_holidays', HOLIDAYS_2026));
-      
-      const savedSettings = localStorage.getItem('school_settings');
-      if (savedSettings) setSettings(JSON.parse(savedSettings));
-
-      const users = loadData('registered_users', [DEFAULT_ADMIN]);
-      if (!users.some((u: AuthUser) => u.userId === DEFAULT_ADMIN.userId)) {
-        users.push(DEFAULT_ADMIN);
-      }
-      setRegisteredUsers(users);
-    } catch (e) {
-      console.error('Initial load failed:', e);
-      setDbStatus('error');
-    }
+    const savedUser = safeLocalGet<AuthUser | null>('school_user', null);
+    if (savedUser) setUser(savedUser);
+    testFirestoreConnection();
   }, []);
+
+  // Firebase Authentication & Admin Role Detection
+  useEffect(() => {
+    const unsubAuth = onAuthStateChanged(auth, async (fbUser) => {
+      setFirebaseUser(fbUser);
+      if (!fbUser) {
+        setIsCloudAdmin(false);
+        return;
+      }
+
+      const isVerified = fbUser.emailVerified === true;
+      const isBootstrap = isVerified && fbUser.email?.toLowerCase() === BOOTSTRAPPED_ADMIN_EMAIL.toLowerCase();
+      let adminStatus = isBootstrap;
+
+      if (!adminStatus && isVerified) {
+        try {
+          const adminSnap = await getDoc(doc(db, 'admins', fbUser.uid));
+          adminStatus = adminSnap.exists();
+        } catch {
+          adminStatus = false;
+        }
+      }
+
+      setIsCloudAdmin(adminStatus);
+
+      // Sync or create user profile document in Firestore
+      try {
+        const userRef = doc(db, 'users', fbUser.uid);
+        const userSnap = await getDoc(userRef);
+        const role: UserRole = adminStatus ? 'admin' : 'student';
+
+        if (!userSnap.exists()) {
+          await setDoc(userRef, {
+            uid: sanitizeFirestoreId(fbUser.uid),
+            name: (fbUser.displayName || fbUser.email || 'User').slice(0, 150),
+            email: (fbUser.email || 'user@rbhs.edu').slice(0, 150),
+            role,
+            ...(fbUser.photoURL ? { photo: fbUser.photoURL.slice(0, 600000) } : {}),
+            createdAt: serverTimestamp(),
+            updatedAt: serverTimestamp(),
+          });
+        }
+
+        const syncedAuthUser: AuthUser = {
+          role: userSnap.exists() ? (userSnap.data().role as UserRole) : role,
+          name: fbUser.displayName || fbUser.email || 'Google User',
+          userId: fbUser.uid,
+          email: fbUser.email || '',
+          photo: fbUser.photoURL || '',
+        };
+        setUser(syncedAuthUser);
+        safeLocalSet('school_user', syncedAuthUser);
+      } catch (err) {
+        console.warn('User profile sync skipped:', err);
+      }
+    });
+
+    return () => unsubAuth();
+  }, []);
+
+  // Seed Firestore once if Cloud Admin signs in and cloud collections are still empty
+  useEffect(() => {
+    if (!isCloudAdmin) return;
+    let cancelled = false;
+
+    const seedCloudIfEmpty = async () => {
+      try {
+        const settingsRef = doc(db, 'settings', 'main');
+        const settingsSnap = await getDoc(settingsRef);
+        if (cancelled || settingsSnap.exists()) return;
+
+        setDbStatus('syncing');
+        const current = latestStateRef.current;
+        const batch = writeBatch(db);
+
+        batch.set(settingsRef, {
+          name: { bn: current.settings.name.bn.slice(0, 200), en: current.settings.name.en.slice(0, 200) },
+          eiin: current.settings.eiin.slice(0, 32),
+          phone: current.settings.phone.slice(0, 40),
+          email: current.settings.email.slice(0, 150),
+          location: { bn: current.settings.location.bn.slice(0, 300), en: current.settings.location.en.slice(0, 300) },
+          ...(current.settings.schoolPhoto ? { schoolPhoto: current.settings.schoolPhoto.slice(0, 600000) } : {}),
+          updatedAt: serverTimestamp(),
+        });
+
+        current.notices.forEach((n) => {
+          const id = sanitizeFirestoreId(n.id);
+          batch.set(doc(db, 'notices', id), {
+            id,
+            title: { bn: n.title.bn.slice(0, 300), en: n.title.en.slice(0, 300) },
+            date: n.date.slice(0, 32),
+            category: n.category,
+            description: { bn: n.description.bn.slice(0, 5000), en: n.description.en.slice(0, 5000) },
+            ...(n.pdfUrl ? { pdfUrl: n.pdfUrl.slice(0, 2000) } : {}),
+            isPublic: true,
+            createdAt: serverTimestamp(),
+            updatedAt: serverTimestamp(),
+          });
+        });
+
+        current.teachers.forEach((teach) => {
+          const id = sanitizeFirestoreId(teach.id);
+          batch.set(doc(db, 'teachers', id), {
+            id,
+            name: { bn: teach.name.bn.slice(0, 200), en: teach.name.en.slice(0, 200) },
+            designation: { bn: teach.designation.bn.slice(0, 200), en: teach.designation.en.slice(0, 200) },
+            subject: { bn: teach.subject.bn.slice(0, 200), en: teach.subject.en.slice(0, 200) },
+            qualification: { bn: teach.qualification.bn.slice(0, 300), en: teach.qualification.en.slice(0, 300) },
+            photo: (teach.photo || '').slice(0, 600000),
+            isPublic: true,
+            createdAt: serverTimestamp(),
+            updatedAt: serverTimestamp(),
+          });
+        });
+
+        current.ebooks.forEach((eb) => {
+          const id = sanitizeFirestoreId(eb.id);
+          batch.set(doc(db, 'ebooks', id), {
+            id,
+            title: { bn: eb.title.bn.slice(0, 300), en: eb.title.en.slice(0, 300) },
+            classId: eb.classId.slice(0, 16),
+            className: { bn: eb.className.bn.slice(0, 100), en: eb.className.en.slice(0, 100) },
+            subject: eb.subject.slice(0, 120),
+            coverUrl: (eb.coverUrl || '').slice(0, 600000),
+            downloadUrl: (eb.downloadUrl || '#').slice(0, 2000),
+            isPublic: true,
+            createdAt: serverTimestamp(),
+            updatedAt: serverTimestamp(),
+          });
+        });
+
+        current.gallery.forEach((g) => {
+          const id = sanitizeFirestoreId(g.id);
+          batch.set(doc(db, 'gallery', id), {
+            id,
+            url: (g.url || '').slice(0, 600000),
+            caption: { bn: g.caption.bn.slice(0, 400), en: g.caption.en.slice(0, 400) },
+            isPublic: true,
+            createdAt: serverTimestamp(),
+            updatedAt: serverTimestamp(),
+          });
+        });
+
+        current.holidays.forEach((h) => {
+          const id = sanitizeFirestoreId(h.id);
+          batch.set(doc(db, 'holidays', id), {
+            id,
+            title: { bn: h.title.bn.slice(0, 300), en: h.title.en.slice(0, 300) },
+            date: h.date.slice(0, 32),
+            duration: { bn: h.duration.bn.slice(0, 100), en: h.duration.en.slice(0, 100) },
+            type: h.type,
+            isPublic: true,
+            createdAt: serverTimestamp(),
+            updatedAt: serverTimestamp(),
+          });
+        });
+
+        await batch.commit();
+        setDbStatus('synced');
+      } catch (err) {
+        setDbStatus('error');
+        handleFirestoreError(err, OperationType.WRITE, 'initial-seed');
+      }
+    };
+
+    seedCloudIfEmpty();
+    return () => {
+      cancelled = true;
+    };
+  }, [isCloudAdmin]);
+
+  // Real-time Firestore Listeners for Public School Data
+  useEffect(() => {
+    const unsubSettings = onSnapshot(
+      doc(db, 'settings', 'main'),
+      (snap) => {
+        if (snap.exists()) {
+          const d = snap.data();
+          const nextSettings: SchoolSettings = {
+            name: d.name,
+            eiin: d.eiin,
+            phone: d.phone,
+            email: d.email,
+            location: d.location,
+            schoolPhoto: d.schoolPhoto || '',
+          };
+          setSettings(nextSettings);
+          safeLocalSet('school_settings', nextSettings);
+        }
+      },
+      (err) => {
+        console.warn('Settings listener warning:', err);
+      }
+    );
+
+    const unsubNotices = onSnapshot(
+      query(collection(db, 'notices'), where('isPublic', '==', true)),
+      (snap) => {
+        if (!snap.empty) {
+          const items = snap.docs.map((d) => {
+            const data = d.data();
+            return {
+              id: data.id,
+              title: data.title,
+              date: data.date,
+              category: data.category,
+              description: data.description,
+              ...(data.pdfUrl ? { pdfUrl: data.pdfUrl } : {}),
+            } as Notice;
+          });
+          items.sort((a, b) => (b.date || '').localeCompare(a.date || ''));
+          setNotices(items);
+          safeLocalSet('db_notices', items);
+        }
+      },
+      (err) => handleFirestoreError(err, OperationType.LIST, 'notices')
+    );
+
+    const unsubTeachers = onSnapshot(
+      query(collection(db, 'teachers'), where('isPublic', '==', true)),
+      (snap) => {
+        if (!snap.empty) {
+          const items = snap.docs.map((d) => {
+            const data = d.data();
+            return {
+              id: data.id,
+              name: data.name,
+              designation: data.designation,
+              subject: data.subject,
+              qualification: data.qualification,
+              photo: data.photo,
+            } as Teacher;
+          });
+          setTeachers(items);
+          safeLocalSet('db_teachers', items);
+        }
+      },
+      (err) => handleFirestoreError(err, OperationType.LIST, 'teachers')
+    );
+
+    const unsubEbooks = onSnapshot(
+      query(collection(db, 'ebooks'), where('isPublic', '==', true)),
+      (snap) => {
+        if (!snap.empty) {
+          const items = snap.docs.map((d) => {
+            const data = d.data();
+            return {
+              id: data.id,
+              title: data.title,
+              classId: data.classId,
+              className: data.className,
+              subject: data.subject,
+              coverUrl: data.coverUrl,
+              downloadUrl: data.downloadUrl,
+            } as EBook;
+          });
+          setEbooks(items);
+          safeLocalSet('db_ebooks', items);
+        }
+      },
+      (err) => handleFirestoreError(err, OperationType.LIST, 'ebooks')
+    );
+
+    const unsubGallery = onSnapshot(
+      query(collection(db, 'gallery'), where('isPublic', '==', true)),
+      (snap) => {
+        if (!snap.empty) {
+          const items = snap.docs.map((d) => {
+            const data = d.data();
+            return {
+              id: data.id,
+              url: data.url,
+              caption: data.caption,
+            } as GalleryItem;
+          });
+          setGallery(items);
+          safeLocalSet('db_gallery', items);
+        }
+      },
+      (err) => handleFirestoreError(err, OperationType.LIST, 'gallery')
+    );
+
+    const unsubHolidays = onSnapshot(
+      query(collection(db, 'holidays'), where('isPublic', '==', true)),
+      (snap) => {
+        if (!snap.empty) {
+          const items = snap.docs.map((d) => {
+            const data = d.data();
+            return {
+              id: data.id,
+              title: data.title,
+              date: data.date,
+              duration: data.duration,
+              type: data.type,
+            } as Holiday;
+          });
+          items.sort((a, b) => (a.date || '').localeCompare(b.date || ''));
+          setHolidays(items);
+          safeLocalSet('db_holidays', items);
+        }
+      },
+      (err) => handleFirestoreError(err, OperationType.LIST, 'holidays')
+    );
+
+    return () => {
+      unsubSettings();
+      unsubNotices();
+      unsubTeachers();
+      unsubEbooks();
+      unsubGallery();
+      unsubHolidays();
+    };
+  }, []);
+
+  // Real-time Admin-only listeners for Admissions & Contact Messages
+  useEffect(() => {
+    if (!isCloudAdmin) return;
+
+    const unsubAdmissions = onSnapshot(
+      collection(db, 'admissions'),
+      (snap) => {
+        const items = snap.docs.map((d) => d.data() as AdmissionApplication);
+        setAdmissions(items);
+        safeLocalSet('admission_applications', items);
+      },
+      (err) => handleFirestoreError(err, OperationType.LIST, 'admissions')
+    );
+
+    const unsubMessages = onSnapshot(
+      collection(db, 'contactMessages'),
+      (snap) => {
+        const items = snap.docs.map((d) => {
+          const data = d.data();
+          return {
+            id: data.id,
+            name: data.name,
+            mobile: data.mobile,
+            email: data.email || '',
+            message: data.message,
+            status: data.status,
+          } as ContactMessage;
+        });
+        setContactMessages(items);
+        safeLocalSet('contact_messages', items);
+      },
+      (err) => handleFirestoreError(err, OperationType.LIST, 'contactMessages')
+    );
+
+    return () => {
+      unsubAdmissions();
+      unsubMessages();
+    };
+  }, [isCloudAdmin]);
 
   useEffect(() => {
     if (chatEndRef.current) {
@@ -172,78 +575,449 @@ const App: React.FC = () => {
     }
   }, [chatMessages]);
 
-  const persist = (key: string, data: any) => {
+  const persistLocal = (key: string, data: any) => {
     setDbStatus('syncing');
+    safeLocalSet(key, data);
+    setTimeout(() => setDbStatus('synced'), 400);
+  };
+
+  const signInWithGoogle = async (): Promise<boolean> => {
     try {
-      localStorage.setItem(key, JSON.stringify(data));
-      setTimeout(() => setDbStatus('synced'), 600);
-    } catch (e) {
-      setDbStatus('error');
+      await signInWithPopup(auth, googleProvider);
+      return true;
+    } catch (err) {
+      console.error('Google Sign-In failed:', err);
+      return false;
+    }
+  };
+
+  const logoutGoogle = async () => {
+    try {
+      await signOut(auth);
+    } catch (err) {
+      console.error('Google Sign-Out failed:', err);
     }
   };
 
   const login = (authUser: AuthUser) => {
     setUser(authUser);
-    localStorage.setItem('school_user', JSON.stringify(authUser));
+    safeLocalSet('school_user', authUser);
   };
 
   const register = (newUser: AuthUser): boolean => {
     if (registeredUsers.some(u => u.userId.toLowerCase() === newUser.userId.toLowerCase())) return false;
     const updated = [...registeredUsers, newUser];
     setRegisteredUsers(updated);
-    persist('registered_users', updated);
+    persistLocal('registered_users', updated);
     return true;
   };
 
   const updateUser = (updatedUser: AuthUser) => {
     const updated = registeredUsers.map(u => u.userId === updatedUser.userId ? updatedUser : u);
     setRegisteredUsers(updated);
-    persist('registered_users', updated);
+    persistLocal('registered_users', updated);
     if (user?.userId === updatedUser.userId) {
       setUser(updatedUser);
-      localStorage.setItem('school_user', JSON.stringify(updatedUser));
+      safeLocalSet('school_user', updatedUser);
     }
   };
 
   const deleteUser = (userId: string) => {
-    if (userId === 'admin') return; 
+    if (userId === 'admin') return;
     const updated = registeredUsers.filter(u => u.userId !== userId);
     setRegisteredUsers(updated);
-    persist('registered_users', updated);
+    persistLocal('registered_users', updated);
   };
 
   const logout = () => {
     setUser(null);
     localStorage.removeItem('school_user');
+    if (firebaseUser) {
+      logoutGoogle();
+    }
   };
 
-  const addNotice = (n: Notice) => { const updated = [n, ...notices]; setNotices(updated); persist('db_notices', updated); };
-  const updateNotice = (n: Notice) => { const updated = notices.map(i => i.id === n.id ? n : i); setNotices(updated); persist('db_notices', updated); };
-  const deleteNotice = (id: string) => { const updated = notices.filter(n => n.id !== id); setNotices(updated); persist('db_notices', updated); };
+  // Cloud + Local CRUD helpers
+  const syncDocUpsert = async (
+    collectionName: string,
+    id: string,
+    payload: Record<string, any>,
+    isUpdate: boolean
+  ) => {
+    if (!isCloudAdmin) return;
+    setDbStatus('syncing');
+    const docRef = doc(db, collectionName, id);
+    try {
+      if (isUpdate) {
+        const snap = await getDoc(docRef);
+        if (snap.exists()) {
+          await updateDoc(docRef, { ...payload, updatedAt: serverTimestamp() });
+        } else {
+          await setDoc(docRef, { ...payload, createdAt: serverTimestamp(), updatedAt: serverTimestamp() });
+        }
+      } else {
+        await setDoc(docRef, { ...payload, createdAt: serverTimestamp(), updatedAt: serverTimestamp() });
+      }
+      setDbStatus('synced');
+    } catch (err) {
+      setDbStatus('error');
+      handleFirestoreError(err, isUpdate ? OperationType.UPDATE : OperationType.CREATE, `${collectionName}/${id}`);
+    }
+  };
 
-  const addTeacher = (t: Teacher) => { const updated = [...teachers, t]; setTeachers(updated); persist('db_teachers', updated); };
-  const updateTeacher = (t: Teacher) => { const updated = teachers.map(i => i.id === t.id ? t : i); setTeachers(updated); persist('db_teachers', updated); };
-  const deleteTeacher = (id: string) => { const updated = teachers.filter(t => t.id !== id); setTeachers(updated); persist('db_teachers', updated); };
+  const syncDocDelete = async (collectionName: string, id: string) => {
+    if (!isCloudAdmin) return;
+    setDbStatus('syncing');
+    try {
+      await deleteDoc(doc(db, collectionName, id));
+      setDbStatus('synced');
+    } catch (err) {
+      setDbStatus('error');
+      handleFirestoreError(err, OperationType.DELETE, `${collectionName}/${id}`);
+    }
+  };
 
-  const addEbook = (b: EBook) => { const updated = [...ebooks, b]; setEbooks(updated); persist('db_ebooks', updated); };
-  const updateEbook = (b: EBook) => { const updated = ebooks.map(i => i.id === b.id ? b : i); setEbooks(updated); persist('db_ebooks', updated); };
-  const deleteEbook = (id: string) => { const updated = ebooks.filter(b => b.id !== id); setEbooks(updated); persist('db_ebooks', updated); };
+  const addNotice = (n: Notice) => {
+    const id = sanitizeFirestoreId(n.id);
+    const item = { ...n, id };
+    const updated = [item, ...notices];
+    setNotices(updated);
+    persistLocal('db_notices', updated);
+    syncDocUpsert('notices', id, {
+      id,
+      title: { bn: n.title.bn.slice(0, 300), en: n.title.en.slice(0, 300) },
+      date: n.date.slice(0, 32),
+      category: n.category,
+      description: { bn: n.description.bn.slice(0, 5000), en: n.description.en.slice(0, 5000) },
+      ...(n.pdfUrl ? { pdfUrl: n.pdfUrl.slice(0, 2000) } : {}),
+      isPublic: true,
+    }, false);
+  };
 
-  const addGalleryItem = (i: GalleryItem) => { const updated = [i, ...gallery]; setGallery(updated); persist('db_gallery', updated); };
-  const updateGalleryItem = (i: GalleryItem) => { const updated = gallery.map(item => item.id === i.id ? i : item); setGallery(updated); persist('db_gallery', updated); };
-  const deleteGalleryItem = (id: string) => { const updated = gallery.filter(i => i.id !== id); setGallery(updated); persist('db_gallery', updated); };
+  const updateNotice = (n: Notice) => {
+    const id = sanitizeFirestoreId(n.id);
+    const updated = notices.map(i => i.id === n.id ? { ...n, id } : i);
+    setNotices(updated);
+    persistLocal('db_notices', updated);
+    syncDocUpsert('notices', id, {
+      id,
+      title: { bn: n.title.bn.slice(0, 300), en: n.title.en.slice(0, 300) },
+      date: n.date.slice(0, 32),
+      category: n.category,
+      description: { bn: n.description.bn.slice(0, 5000), en: n.description.en.slice(0, 5000) },
+      ...(n.pdfUrl ? { pdfUrl: n.pdfUrl.slice(0, 2000) } : {}),
+      isPublic: true,
+    }, true);
+  };
 
-  const addHoliday = (h: Holiday) => { const updated = [...holidays, h]; setHolidays(updated); persist('db_holidays', updated); };
-  const updateHoliday = (h: Holiday) => { const updated = holidays.map(i => i.id === h.id ? h : i); setHolidays(updated); persist('db_holidays', updated); };
-  const deleteHoliday = (id: string) => { const updated = holidays.filter(h => h.id !== id); setHolidays(updated); persist('db_holidays', updated); };
+  const deleteNotice = (id: string) => {
+    const updated = notices.filter(n => n.id !== id);
+    setNotices(updated);
+    persistLocal('db_notices', updated);
+    syncDocDelete('notices', sanitizeFirestoreId(id));
+  };
+
+  const addTeacher = (teach: Teacher) => {
+    const id = sanitizeFirestoreId(teach.id);
+    const item = { ...teach, id };
+    const updated = [...teachers, item];
+    setTeachers(updated);
+    persistLocal('db_teachers', updated);
+    syncDocUpsert('teachers', id, {
+      id,
+      name: { bn: teach.name.bn.slice(0, 200), en: teach.name.en.slice(0, 200) },
+      designation: { bn: teach.designation.bn.slice(0, 200), en: teach.designation.en.slice(0, 200) },
+      subject: { bn: teach.subject.bn.slice(0, 200), en: teach.subject.en.slice(0, 200) },
+      qualification: { bn: teach.qualification.bn.slice(0, 300), en: teach.qualification.en.slice(0, 300) },
+      photo: (teach.photo || '').slice(0, 600000),
+      isPublic: true,
+    }, false);
+  };
+
+  const updateTeacher = (teach: Teacher) => {
+    const id = sanitizeFirestoreId(teach.id);
+    const updated = teachers.map(i => i.id === teach.id ? { ...teach, id } : i);
+    setTeachers(updated);
+    persistLocal('db_teachers', updated);
+    syncDocUpsert('teachers', id, {
+      id,
+      name: { bn: teach.name.bn.slice(0, 200), en: teach.name.en.slice(0, 200) },
+      designation: { bn: teach.designation.bn.slice(0, 200), en: teach.designation.en.slice(0, 200) },
+      subject: { bn: teach.subject.bn.slice(0, 200), en: teach.subject.en.slice(0, 200) },
+      qualification: { bn: teach.qualification.bn.slice(0, 300), en: teach.qualification.en.slice(0, 300) },
+      photo: (teach.photo || '').slice(0, 600000),
+      isPublic: true,
+    }, true);
+  };
+
+  const deleteTeacher = (id: string) => {
+    const updated = teachers.filter(t => t.id !== id);
+    setTeachers(updated);
+    persistLocal('db_teachers', updated);
+    syncDocDelete('teachers', sanitizeFirestoreId(id));
+  };
+
+  const addEbook = (b: EBook) => {
+    const id = sanitizeFirestoreId(b.id);
+    const item = { ...b, id };
+    const updated = [...ebooks, item];
+    setEbooks(updated);
+    persistLocal('db_ebooks', updated);
+    syncDocUpsert('ebooks', id, {
+      id,
+      title: { bn: b.title.bn.slice(0, 300), en: b.title.en.slice(0, 300) },
+      classId: b.classId.slice(0, 16),
+      className: { bn: b.className.bn.slice(0, 100), en: b.className.en.slice(0, 100) },
+      subject: b.subject.slice(0, 120),
+      coverUrl: (b.coverUrl || '').slice(0, 600000),
+      downloadUrl: (b.downloadUrl || '#').slice(0, 2000),
+      isPublic: true,
+    }, false);
+  };
+
+  const updateEbook = (b: EBook) => {
+    const id = sanitizeFirestoreId(b.id);
+    const updated = ebooks.map(i => i.id === b.id ? { ...b, id } : i);
+    setEbooks(updated);
+    persistLocal('db_ebooks', updated);
+    syncDocUpsert('ebooks', id, {
+      id,
+      title: { bn: b.title.bn.slice(0, 300), en: b.title.en.slice(0, 300) },
+      classId: b.classId.slice(0, 16),
+      className: { bn: b.className.bn.slice(0, 100), en: b.className.en.slice(0, 100) },
+      subject: b.subject.slice(0, 120),
+      coverUrl: (b.coverUrl || '').slice(0, 600000),
+      downloadUrl: (b.downloadUrl || '#').slice(0, 2000),
+      isPublic: true,
+    }, true);
+  };
+
+  const deleteEbook = (id: string) => {
+    const updated = ebooks.filter(b => b.id !== id);
+    setEbooks(updated);
+    persistLocal('db_ebooks', updated);
+    syncDocDelete('ebooks', sanitizeFirestoreId(id));
+  };
+
+  const addGalleryItem = (i: GalleryItem) => {
+    const id = sanitizeFirestoreId(i.id);
+    const item = { ...i, id };
+    const updated = [item, ...gallery];
+    setGallery(updated);
+    persistLocal('db_gallery', updated);
+    syncDocUpsert('gallery', id, {
+      id,
+      url: (i.url || '').slice(0, 600000),
+      caption: { bn: i.caption.bn.slice(0, 400), en: i.caption.en.slice(0, 400) },
+      isPublic: true,
+    }, false);
+  };
+
+  const updateGalleryItem = (i: GalleryItem) => {
+    const id = sanitizeFirestoreId(i.id);
+    const updated = gallery.map(item => item.id === i.id ? { ...i, id } : item);
+    setGallery(updated);
+    persistLocal('db_gallery', updated);
+    syncDocUpsert('gallery', id, {
+      id,
+      url: (i.url || '').slice(0, 600000),
+      caption: { bn: i.caption.bn.slice(0, 400), en: i.caption.en.slice(0, 400) },
+      isPublic: true,
+    }, true);
+  };
+
+  const deleteGalleryItem = (id: string) => {
+    const updated = gallery.filter(i => i.id !== id);
+    setGallery(updated);
+    persistLocal('db_gallery', updated);
+    syncDocDelete('gallery', sanitizeFirestoreId(id));
+  };
+
+  const addHoliday = (h: Holiday) => {
+    const id = sanitizeFirestoreId(h.id);
+    const item = { ...h, id };
+    const updated = [...holidays, item];
+    setHolidays(updated);
+    persistLocal('db_holidays', updated);
+    syncDocUpsert('holidays', id, {
+      id,
+      title: { bn: h.title.bn.slice(0, 300), en: h.title.en.slice(0, 300) },
+      date: h.date.slice(0, 32),
+      duration: { bn: h.duration.bn.slice(0, 100), en: h.duration.en.slice(0, 100) },
+      type: h.type,
+      isPublic: true,
+    }, false);
+  };
+
+  const updateHoliday = (h: Holiday) => {
+    const id = sanitizeFirestoreId(h.id);
+    const updated = holidays.map(i => i.id === h.id ? { ...h, id } : i);
+    setHolidays(updated);
+    persistLocal('db_holidays', updated);
+    syncDocUpsert('holidays', id, {
+      id,
+      title: { bn: h.title.bn.slice(0, 300), en: h.title.en.slice(0, 300) },
+      date: h.date.slice(0, 32),
+      duration: { bn: h.duration.bn.slice(0, 100), en: h.duration.en.slice(0, 100) },
+      type: h.type,
+      isPublic: true,
+    }, true);
+  };
+
+  const deleteHoliday = (id: string) => {
+    const updated = holidays.filter(h => h.id !== id);
+    setHolidays(updated);
+    persistLocal('db_holidays', updated);
+    syncDocDelete('holidays', sanitizeFirestoreId(id));
+  };
 
   const updateSettings = (newSettings: SchoolSettings) => {
     setSettings(newSettings);
-    persist('school_settings', newSettings);
+    persistLocal('school_settings', newSettings);
+    if (isCloudAdmin) {
+      setDbStatus('syncing');
+      setDoc(doc(db, 'settings', 'main'), {
+        name: { bn: newSettings.name.bn.slice(0, 200), en: newSettings.name.en.slice(0, 200) },
+        eiin: newSettings.eiin.slice(0, 32),
+        phone: newSettings.phone.slice(0, 40),
+        email: newSettings.email.slice(0, 150),
+        location: { bn: newSettings.location.bn.slice(0, 300), en: newSettings.location.en.slice(0, 300) },
+        ...(newSettings.schoolPhoto ? { schoolPhoto: newSettings.schoolPhoto.slice(0, 600000) } : {}),
+        updatedAt: serverTimestamp(),
+      })
+        .then(() => setDbStatus('synced'))
+        .catch((err) => {
+          setDbStatus('error');
+          handleFirestoreError(err, OperationType.WRITE, 'settings/main');
+        });
+    }
+  };
+
+  // Public Admission Submission -> Saved Locally + Cloud Firestore
+  const addAdmission = async (appData: AdmissionApplication) => {
+    const appId = sanitizeFirestoreId(appData.appId);
+    const cleanApp: AdmissionApplication = {
+      ...appData,
+      appId,
+      status: 'pending',
+      ...(firebaseUser?.emailVerified ? { ownerUid: firebaseUser.uid } : {}),
+    };
+    const updated = [cleanApp, ...admissions];
+    setAdmissions(updated);
+    persistLocal('admission_applications', updated);
+
+    try {
+      setDbStatus('syncing');
+      await setDoc(doc(db, 'admissions', appId), {
+        appId,
+        studentName: cleanApp.studentName.slice(0, 150),
+        fatherName: cleanApp.fatherName.slice(0, 150),
+        motherName: cleanApp.motherName.slice(0, 150),
+        guardianMobile: cleanApp.guardianMobile.slice(0, 30),
+        targetClass: cleanApp.targetClass.slice(0, 40),
+        targetGroup: (cleanApp.targetGroup || 'General').slice(0, 40),
+        birthDate: cleanApp.birthDate.slice(0, 32),
+        address: cleanApp.address.slice(0, 400),
+        ...(cleanApp.prevSchool ? { prevSchool: cleanApp.prevSchool.slice(0, 200) } : {}),
+        ...(cleanApp.bloodGroup ? { bloodGroup: cleanApp.bloodGroup.slice(0, 16) } : {}),
+        status: 'pending',
+        submittedDate: cleanApp.submittedDate.slice(0, 40),
+        ...(firebaseUser?.emailVerified ? { ownerUid: firebaseUser.uid } : {}),
+        createdAt: serverTimestamp(),
+      });
+      setDbStatus('synced');
+    } catch (err) {
+      setDbStatus('error');
+      handleFirestoreError(err, OperationType.CREATE, `admissions/${appId}`);
+    }
+  };
+
+  const updateAdmissionStatus = async (appId: string, status: 'pending' | 'approved' | 'rejected') => {
+    const updated = admissions.map((a) => (a.appId === appId ? { ...a, status } : a));
+    setAdmissions(updated);
+    persistLocal('admission_applications', updated);
+    if (!isCloudAdmin) return;
+    try {
+      setDbStatus('syncing');
+      await updateDoc(doc(db, 'admissions', sanitizeFirestoreId(appId)), {
+        status,
+        updatedAt: serverTimestamp(),
+      });
+      setDbStatus('synced');
+    } catch (err) {
+      setDbStatus('error');
+      handleFirestoreError(err, OperationType.UPDATE, `admissions/${appId}`);
+    }
+  };
+
+  const deleteAdmission = async (appId: string) => {
+    const updated = admissions.filter((a) => a.appId !== appId);
+    setAdmissions(updated);
+    persistLocal('admission_applications', updated);
+    await syncDocDelete('admissions', sanitizeFirestoreId(appId));
+  };
+
+  // Public Contact Form Submission -> Saved Locally + Cloud Firestore
+  const addContactMessage = async (msgData: ContactMessage) => {
+    const id = sanitizeFirestoreId(msgData.id);
+    const cleanMsg: ContactMessage = { ...msgData, id, status: 'unread' };
+    const updated = [cleanMsg, ...contactMessages];
+    setContactMessages(updated);
+    persistLocal('contact_messages', updated);
+
+    try {
+      setDbStatus('syncing');
+      await setDoc(doc(db, 'contactMessages', id), {
+        id,
+        name: cleanMsg.name.slice(0, 150),
+        mobile: cleanMsg.mobile.slice(0, 30),
+        ...(cleanMsg.email ? { email: cleanMsg.email.slice(0, 150) } : {}),
+        message: cleanMsg.message.slice(0, 2000),
+        status: 'unread',
+        createdAt: serverTimestamp(),
+      });
+      setDbStatus('synced');
+    } catch (err) {
+      setDbStatus('error');
+      handleFirestoreError(err, OperationType.CREATE, `contactMessages/${id}`);
+    }
+  };
+
+  const markContactMessageRead = async (id: string) => {
+    const updated = contactMessages.map((m) => (m.id === id ? { ...m, status: 'read' as const } : m));
+    setContactMessages(updated);
+    persistLocal('contact_messages', updated);
+    if (!isCloudAdmin) return;
+    try {
+      setDbStatus('syncing');
+      await updateDoc(doc(db, 'contactMessages', sanitizeFirestoreId(id)), { status: 'read' });
+      setDbStatus('synced');
+    } catch (err) {
+      setDbStatus('error');
+      handleFirestoreError(err, OperationType.UPDATE, `contactMessages/${id}`);
+    }
+  };
+
+  const deleteContactMessage = async (id: string) => {
+    const updated = contactMessages.filter((m) => m.id !== id);
+    setContactMessages(updated);
+    persistLocal('contact_messages', updated);
+    await syncDocDelete('contactMessages', sanitizeFirestoreId(id));
   };
 
   const exportDatabase = () => {
-    const data = { settings, notices, teachers, ebooks, gallery, holidays, users: registeredUsers, exportDate: new Date().toISOString() };
+    const data = {
+      settings,
+      notices,
+      teachers,
+      ebooks,
+      gallery,
+      holidays,
+      admissions,
+      contactMessages,
+      users: registeredUsers,
+      exportDate: new Date().toISOString(),
+    };
     const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
@@ -256,15 +1030,52 @@ const App: React.FC = () => {
   const importDatabase = (jsonData: string): boolean => {
     try {
       const data = JSON.parse(jsonData);
-      if (data.settings) setSettings(data.settings);
-      if (data.notices) setNotices(data.notices);
-      if (data.teachers) setTeachers(data.teachers);
-      if (data.users) setRegisteredUsers(data.users);
-      if (data.ebooks) setEbooks(data.ebooks);
-      if (data.gallery) setGallery(data.gallery);
-      if (data.holidays) setHolidays(data.holidays);
+      if (data.settings) {
+        setSettings(data.settings);
+        safeLocalSet('school_settings', data.settings);
+        if (isCloudAdmin) updateSettings(data.settings);
+      }
+      if (data.notices) {
+        setNotices(data.notices);
+        safeLocalSet('db_notices', data.notices);
+        if (isCloudAdmin) data.notices.forEach((n: Notice) => updateNotice(n));
+      }
+      if (data.teachers) {
+        setTeachers(data.teachers);
+        safeLocalSet('db_teachers', data.teachers);
+        if (isCloudAdmin) data.teachers.forEach((teach: Teacher) => updateTeacher(teach));
+      }
+      if (data.users) {
+        setRegisteredUsers(data.users);
+        safeLocalSet('registered_users', data.users);
+      }
+      if (data.ebooks) {
+        setEbooks(data.ebooks);
+        safeLocalSet('db_ebooks', data.ebooks);
+        if (isCloudAdmin) data.ebooks.forEach((eb: EBook) => updateEbook(eb));
+      }
+      if (data.gallery) {
+        setGallery(data.gallery);
+        safeLocalSet('db_gallery', data.gallery);
+        if (isCloudAdmin) data.gallery.forEach((g: GalleryItem) => updateGalleryItem(g));
+      }
+      if (data.holidays) {
+        setHolidays(data.holidays);
+        safeLocalSet('db_holidays', data.holidays);
+        if (isCloudAdmin) data.holidays.forEach((h: Holiday) => updateHoliday(h));
+      }
+      if (data.admissions) {
+        setAdmissions(data.admissions);
+        safeLocalSet('admission_applications', data.admissions);
+      }
+      if (data.contactMessages) {
+        setContactMessages(data.contactMessages);
+        safeLocalSet('contact_messages', data.contactMessages);
+      }
       return true;
-    } catch (e) { return false; }
+    } catch {
+      return false;
+    }
   };
 
   const t = (obj: any) => {
@@ -311,12 +1122,15 @@ const App: React.FC = () => {
 
   return (
     <AppContext.Provider value={{ 
-      lang, setLang, user, login, register, updateUser, deleteUser, logout, t, getUsers: () => registeredUsers,
+      lang, setLang, user, firebaseUser, isCloudAdmin, signInWithGoogle, logoutGoogle,
+      login, register, updateUser, deleteUser, logout, t, getUsers: () => registeredUsers,
       notices, addNotice, updateNotice, deleteNotice, 
       teachers, addTeacher, updateTeacher, deleteTeacher, 
       ebooks, addEbook, updateEbook, deleteEbook, 
       gallery, addGalleryItem, updateGalleryItem, deleteGalleryItem, 
       holidays, addHoliday, updateHoliday, deleteHoliday,
+      admissions, addAdmission, updateAdmissionStatus, deleteAdmission,
+      contactMessages, addContactMessage, markContactMessageRead, deleteContactMessage,
       settings, updateSettings, exportDatabase, importDatabase, dbStatus
     }}>
       <Router>
@@ -366,6 +1180,7 @@ const App: React.FC = () => {
             </div>
           </footer>
 
+          <OfflineIndicator />
           <button onClick={() => setShowChat(!showChat)} className="fixed bottom-6 right-6 bg-green-700 text-white p-5 rounded-2xl shadow-2xl z-50 transition-all hover:scale-110 active:scale-95 no-print">
             {showChat ? <X /> : <Bot className="w-6 h-6" />}
           </button>

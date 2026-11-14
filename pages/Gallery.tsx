@@ -4,6 +4,7 @@ import { Camera, Image as ImageIcon, ZoomIn, PlusCircle, X, Save, Upload, Pencil
 import { TRANSLATIONS } from '../constants';
 import { useApp } from '../App';
 import { GalleryItem } from '../types';
+import { compressImageFile } from '../utils/imageUtils';
 
 const { useState } = React;
 
@@ -90,12 +91,11 @@ const Gallery: React.FC = () => {
                 </div>
                 <label className="bg-slate-100 px-4 py-2 rounded-xl text-xs font-bold cursor-pointer hover:bg-slate-200">
                   <Upload className="w-4 h-4 inline mr-2" /> Choose Photo
-                  <input type="file" className="hidden" accept="image/*" onChange={(e) => {
+                  <input type="file" className="hidden" accept="image/*" onChange={async (e) => {
                     const file = e.target.files?.[0];
                     if (file) {
-                      const reader = new FileReader();
-                      reader.onloadend = () => setPhotoBase64(reader.result as string);
-                      reader.readAsDataURL(file);
+                      const compressed = await compressImageFile(file, 900, 0.72);
+                      setPhotoBase64(compressed);
                     }
                   }} />
                 </label>

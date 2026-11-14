@@ -1,0 +1,302 @@
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // Global Safety Net (Default Deny)
+    match /{document=**} {
+      allow read, write: if false;
+    }
+
+    // Primitive Helpers
+    function isValidId(id) {
+      return id is string && id.size() >= 1 && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-]+$');
+    }
+    function incoming() {
+      return request.resource.data;
+    }
+    function existing() {
+      return resource.data;
+    }
+    function isSignedIn() {
+      return request.auth != null && request.auth.token.email_verified == true;
+    }
+    function isBootstrappedAdmin() {
+      return isSignedIn() && request.auth.token.email == 'mdjahidulislam1025@gmail.com';
+    }
+    function isAdmin() {
+      return isBootstrappedAdmin() || (isSignedIn() && exists(/databases/$(database)/documents/admins/$(request.auth.uid)));
+    }
+    function isOwner(uid) {
+      return isSignedIn() && request.auth.uid == uid;
+    }
+    function isLocalizedString(obj, maxLen) {
+      return obj is map
+        && obj.keys().hasAll(['bn', 'en'])
+        && obj.keys().hasOnly(['bn', 'en'])
+        && obj.bn is string && obj.bn.size() <= maxLen
+        && obj.en is string && obj.en.size() <= maxLen;
+    }
+
+    // Validation Blueprints
+    function isValidSettings(data) {
+      return data.keys().hasAll(['name', 'eiin', 'phone', 'email', 'location', 'updatedAt'])
+        && data.keys().hasOnly(['name', 'eiin', 'phone', 'email', 'location', 'schoolPhoto', 'updatedAt'])
+        && isLocalizedString(data.name, 200)
+        && data.eiin is string && data.eiin.size() >= 1 && data.eiin.size() <= 32
+        && data.phone is string && data.phone.size() >= 1 && data.phone.size() <= 40
+        && data.email is string && data.email.size() >= 3 && data.email.size() <= 150
+        && isLocalizedString(data.location, 300)
+        && (!('schoolPhoto' in data) || (data.schoolPhoto is string && data.schoolPhoto.size() <= 600000))
+        && data.updatedAt is timestamp;
+    }
+
+    function isValidNotice(data) {
+      return data.keys().hasAll(['id', 'title', 'date', 'category', 'description', 'isPublic', 'createdAt', 'updatedAt'])
+        && data.keys().hasOnly(['id', 'title', 'date', 'category', 'description', 'pdfUrl', 'isPublic', 'createdAt', 'updatedAt'])
+        && isValidId(data.id)
+        && isLocalizedString(data.title, 300)
+        && data.date is string && data.date.size() >= 4 && data.date.size() <= 32
+        && data.category is string && data.category in ['General', 'Admission', 'Exam', 'Holiday']
+        && isLocalizedString(data.description, 5000)
+        && (!('pdfUrl' in data) || (data.pdfUrl is string && data.pdfUrl.size() <= 2000))
+        && data.isPublic is bool
+        && data.createdAt is timestamp
+        && data.updatedAt is timestamp;
+    }
+
+    function isValidTeacher(data) {
+      return data.keys().hasAll(['id', 'name', 'designation', 'subject', 'qualification', 'photo', 'isPublic', 'createdAt', 'updatedAt'])
+        && data.keys().hasOnly(['id', 'name', 'designation', 'subject', 'qualification', 'photo', 'isPublic', 'createdAt', 'updatedAt'])
+        && isValidId(data.id)
+        && isLocalizedString(data.name, 200)
+        && isLocalizedString(data.designation, 200)
+        && isLocalizedString(data.subject, 200)
+        && isLocalizedString(data.qualification, 300)
+        && data.photo is string && data.photo.size() <= 600000
+        && data.isPublic is bool
+        && data.createdAt is timestamp
+        && data.updatedAt is timestamp;
+    }
+
+    function isValidEbook(data) {
+      return data.keys().hasAll(['id', 'title', 'classId', 'className', 'subject', 'coverUrl', 'downloadUrl', 'isPublic', 'createdAt', 'updatedAt'])
+        && data.keys().hasOnly(['id', 'title', 'classId', 'className', 'subject', 'coverUrl', 'downloadUrl', 'isPublic', 'createdAt', 'updatedAt'])
+        && isValidId(data.id)
+        && isLocalizedString(data.title, 300)
+        && data.classId is string && data.classId.size() >= 1 && data.classId.size() <= 16
+        && isLocalizedString(data.className, 100)
+        && data.subject is string && data.subject.size() >= 1 && data.subject.size() <= 120
+        && data.coverUrl is string && data.coverUrl.size() <= 600000
+        && data.downloadUrl is string && data.downloadUrl.size() <= 2000
+        && data.isPublic is bool
+        && data.createdAt is timestamp
+        && data.updatedAt is timestamp;
+    }
+
+    function isValidGalleryItem(data) {
+      return data.keys().hasAll(['id', 'url', 'caption', 'isPublic', 'createdAt', 'updatedAt'])
+        && data.keys().hasOnly(['id', 'url', 'caption', 'isPublic', 'createdAt', 'updatedAt'])
+        && isValidId(data.id)
+        && data.url is string && data.url.size() >= 1 && data.url.size() <= 600000
+        && isLocalizedString(data.caption, 400)
+        && data.isPublic is bool
+        && data.createdAt is timestamp
+        && data.updatedAt is timestamp;
+    }
+
+    function isValidHoliday(data) {
+      return data.keys().hasAll(['id', 'title', 'date', 'duration', 'type', 'isPublic', 'createdAt', 'updatedAt'])
+        && data.keys().hasOnly(['id', 'title', 'date', 'duration', 'type', 'isPublic', 'createdAt', 'updatedAt'])
+        && isValidId(data.id)
+        && isLocalizedString(data.title, 300)
+        && data.date is string && data.date.size() >= 4 && data.date.size() <= 32
+        && isLocalizedString(data.duration, 100)
+        && data.type is string && data.type in ['National', 'Religious', 'Seasonal', 'Other']
+        && data.isPublic is bool
+        && data.createdAt is timestamp
+        && data.updatedAt is timestamp;
+    }
+
+    function isValidAdmission(data) {
+      return data.keys().hasAll(['appId', 'studentName', 'fatherName', 'motherName', 'guardianMobile', 'targetClass', 'targetGroup', 'birthDate', 'address', 'status', 'submittedDate', 'createdAt'])
+        && data.keys().hasOnly(['appId', 'studentName', 'fatherName', 'motherName', 'guardianMobile', 'targetClass', 'targetGroup', 'birthDate', 'address', 'prevSchool', 'bloodGroup', 'status', 'submittedDate', 'ownerUid', 'createdAt', 'updatedAt'])
+        && isValidId(data.appId)
+        && data.studentName is string && data.studentName.size() >= 1 && data.studentName.size() <= 150
+        && data.fatherName is string && data.fatherName.size() >= 1 && data.fatherName.size() <= 150
+        && data.motherName is string && data.motherName.size() >= 1 && data.motherName.size() <= 150
+        && data.guardianMobile is string && data.guardianMobile.size() >= 6 && data.guardianMobile.size() <= 30
+        && data.targetClass is string && data.targetClass.size() >= 1 && data.targetClass.size() <= 40
+        && data.targetGroup is string && data.targetGroup.size() >= 1 && data.targetGroup.size() <= 40
+        && data.birthDate is string && data.birthDate.size() >= 4 && data.birthDate.size() <= 32
+        && data.address is string && data.address.size() >= 2 && data.address.size() <= 400
+        && (!('prevSchool' in data) || (data.prevSchool is string && data.prevSchool.size() <= 200))
+        && (!('bloodGroup' in data) || (data.bloodGroup is string && data.bloodGroup.size() <= 16))
+        && data.status is string && data.status in ['pending', 'approved', 'rejected']
+        && data.submittedDate is string && data.submittedDate.size() >= 1 && data.submittedDate.size() <= 40
+        && (!('ownerUid' in data) || (data.ownerUid is string && data.ownerUid.size() <= 128))
+        && data.createdAt is timestamp
+        && (!('updatedAt' in data) || data.updatedAt is timestamp);
+    }
+
+    function isValidContactMessage(data) {
+      return data.keys().hasAll(['id', 'name', 'mobile', 'message', 'status', 'createdAt'])
+        && data.keys().hasOnly(['id', 'name', 'mobile', 'email', 'message', 'status', 'createdAt'])
+        && isValidId(data.id)
+        && data.name is string && data.name.size() >= 1 && data.name.size() <= 150
+        && data.mobile is string && data.mobile.size() >= 6 && data.mobile.size() <= 30
+        && (!('email' in data) || (data.email is string && data.email.size() <= 150))
+        && data.message is string && data.message.size() >= 1 && data.message.size() <= 2000
+        && data.status is string && data.status in ['unread', 'read']
+        && data.createdAt is timestamp;
+    }
+
+    function isValidUserProfile(data) {
+      return data.keys().hasAll(['uid', 'name', 'email', 'role', 'createdAt', 'updatedAt'])
+        && data.keys().hasOnly(['uid', 'name', 'email', 'role', 'photo', 'createdAt', 'updatedAt'])
+        && isValidId(data.uid)
+        && data.name is string && data.name.size() >= 1 && data.name.size() <= 150
+        && data.email is string && data.email.size() >= 3 && data.email.size() <= 150
+        && data.role is string && data.role in ['student', 'teacher', 'admin']
+        && (!('photo' in data) || (data.photo is string && data.photo.size() <= 600000))
+        && data.createdAt is timestamp
+        && data.updatedAt is timestamp;
+    }
+
+    function isValidAdminRecord(data) {
+      return data.keys().hasAll(['uid', 'email', 'grantedAt'])
+        && data.keys().hasOnly(['uid', 'email', 'grantedAt'])
+        && isValidId(data.uid)
+        && data.email is string && data.email.size() >= 3 && data.email.size() <= 150
+        && data.grantedAt is timestamp;
+    }
+
+    // Connection test doc
+    match /test/{docId} {
+      allow get: if docId == 'connection';
+    }
+
+    // Public School Settings
+    match /settings/{settingId} {
+      allow get: if isValidId(settingId) && settingId == 'main';
+      allow list: if isAdmin();
+      allow create: if isAdmin() && isValidId(settingId) && settingId == 'main' && isValidSettings(incoming()) && incoming().updatedAt == request.time;
+      allow update: if isAdmin() && isValidId(settingId) && settingId == 'main' && isValidSettings(incoming()) && incoming().updatedAt == request.time;
+      allow delete: if false;
+    }
+
+    // Public School Catalog Collections (Admin Managed)
+    match /notices/{noticeId} {
+      allow get: if isValidId(noticeId) && (existing().isPublic == true || isAdmin());
+      allow list: if existing().isPublic == true || isAdmin();
+      allow create: if isAdmin() && isValidId(noticeId) && isValidNotice(incoming()) && incoming().id == noticeId && incoming().createdAt == request.time && incoming().updatedAt == request.time;
+      allow update: if isAdmin() && isValidId(noticeId) && isValidNotice(incoming()) && incoming().id == existing().id && incoming().createdAt == existing().createdAt && incoming().updatedAt == request.time;
+      allow delete: if isAdmin() && isValidId(noticeId);
+    }
+
+    match /teachers/{teacherId} {
+      allow get: if isValidId(teacherId) && (existing().isPublic == true || isAdmin());
+      allow list: if existing().isPublic == true || isAdmin();
+      allow create: if isAdmin() && isValidId(teacherId) && isValidTeacher(incoming()) && incoming().id == teacherId && incoming().createdAt == request.time && incoming().updatedAt == request.time;
+      allow update: if isAdmin() && isValidId(teacherId) && isValidTeacher(incoming()) && incoming().id == existing().id && incoming().createdAt == existing().createdAt && incoming().updatedAt == request.time;
+      allow delete: if isAdmin() && isValidId(teacherId);
+    }
+
+    match /ebooks/{ebookId} {
+      allow get: if isValidId(ebookId) && (existing().isPublic == true || isAdmin());
+      allow list: if existing().isPublic == true || isAdmin();
+      allow create: if isAdmin() && isValidId(ebookId) && isValidEbook(incoming()) && incoming().id == ebookId && incoming().createdAt == request.time && incoming().updatedAt == request.time;
+      allow update: if isAdmin() && isValidId(ebookId) && isValidEbook(incoming()) && incoming().id == existing().id && incoming().createdAt == existing().createdAt && incoming().updatedAt == request.time;
+      allow delete: if isAdmin() && isValidId(ebookId);
+    }
+
+    match /gallery/{itemId} {
+      allow get: if isValidId(itemId) && (existing().isPublic == true || isAdmin());
+      allow list: if existing().isPublic == true || isAdmin();
+      allow create: if isAdmin() && isValidId(itemId) && isValidGalleryItem(incoming()) && incoming().id == itemId && incoming().createdAt == request.time && incoming().updatedAt == request.time;
+      allow update: if isAdmin() && isValidId(itemId) && isValidGalleryItem(incoming()) && incoming().id == existing().id && incoming().createdAt == existing().createdAt && incoming().updatedAt == request.time;
+      allow delete: if isAdmin() && isValidId(itemId);
+    }
+
+    match /holidays/{holidayId} {
+      allow get: if isValidId(holidayId) && (existing().isPublic == true || isAdmin());
+      allow list: if existing().isPublic == true || isAdmin();
+      allow create: if isAdmin() && isValidId(holidayId) && isValidHoliday(incoming()) && incoming().id == holidayId && incoming().createdAt == request.time && incoming().updatedAt == request.time;
+      allow update: if isAdmin() && isValidId(holidayId) && isValidHoliday(incoming()) && incoming().id == existing().id && incoming().createdAt == existing().createdAt && incoming().updatedAt == request.time;
+      allow delete: if isAdmin() && isValidId(holidayId);
+    }
+
+    // PII Protected: Admissions
+    match /admissions/{appId} {
+      allow get: if isValidId(appId) && (isAdmin() || (isSignedIn() && 'ownerUid' in existing() && existing().ownerUid == request.auth.uid));
+      allow list: if isAdmin() || (isSignedIn() && 'ownerUid' in existing() && existing().ownerUid == request.auth.uid);
+      allow create: if isValidId(appId)
+        && isValidAdmission(incoming())
+        && incoming().appId == appId
+        && incoming().status == 'pending'
+        && incoming().createdAt == request.time
+        && (!('ownerUid' in incoming()) || (isSignedIn() && incoming().ownerUid == request.auth.uid));
+      allow update: if isAdmin()
+        && isValidId(appId)
+        && isValidAdmission(incoming())
+        && incoming().appId == existing().appId
+        && incoming().createdAt == existing().createdAt
+        && incoming().updatedAt == request.time
+        && incoming().diff(existing()).affectedKeys().hasOnly(['status', 'updatedAt']);
+      allow delete: if isAdmin() && isValidId(appId);
+    }
+
+    // PII Protected: Contact Messages
+    match /contactMessages/{msgId} {
+      allow get: if isValidId(msgId) && isAdmin();
+      allow list: if isAdmin();
+      allow create: if isValidId(msgId)
+        && isValidContactMessage(incoming())
+        && incoming().id == msgId
+        && incoming().status == 'unread'
+        && incoming().createdAt == request.time;
+      allow update: if isAdmin()
+        && isValidId(msgId)
+        && isValidContactMessage(incoming())
+        && incoming().id == existing().id
+        && incoming().createdAt == existing().createdAt
+        && incoming().diff(existing()).affectedKeys().hasOnly(['status']);
+      allow delete: if isAdmin() && isValidId(msgId);
+    }
+
+    // User Profiles & Trusted Admin Registry
+    match /users/{uid} {
+      allow get: if isValidId(uid) && (isOwner(uid) || isAdmin());
+      allow list: if isAdmin();
+      allow create: if isSignedIn()
+        && isValidId(uid)
+        && (isOwner(uid) || isAdmin())
+        && isValidUserProfile(incoming())
+        && incoming().uid == uid
+        && (incoming().role == 'student' || isAdmin())
+        && incoming().createdAt == request.time
+        && incoming().updatedAt == request.time;
+      allow update: if isValidId(uid)
+        && isValidUserProfile(incoming())
+        && incoming().uid == existing().uid
+        && incoming().createdAt == existing().createdAt
+        && incoming().updatedAt == request.time
+        && (
+          isAdmin()
+          || (
+            isOwner(uid)
+            && incoming().role == existing().role
+            && incoming().diff(existing()).affectedKeys().hasOnly(['name', 'email', 'photo', 'updatedAt'])
+          )
+        );
+      allow delete: if isAdmin() && isValidId(uid);
+    }
+
+    match /admins/{uid} {
+      allow get: if isValidId(uid) && (isOwner(uid) || isBootstrappedAdmin());
+      allow list: if isBootstrappedAdmin();
+      allow create: if isBootstrappedAdmin() && isValidId(uid) && isValidAdminRecord(incoming()) && incoming().uid == uid && incoming().grantedAt == request.time;
+      allow update: if isBootstrappedAdmin() && isValidId(uid) && isValidAdminRecord(incoming()) && incoming().uid == existing().uid && incoming().grantedAt == existing().grantedAt;
+      allow delete: if isBootstrappedAdmin() && isValidId(uid);
+    }
+  }
+}

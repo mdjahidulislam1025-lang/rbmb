@@ -15,7 +15,8 @@ const Admission: React.FC = () => {
   const [isFormOpen, setIsFormOpen] = useState(false);
   const [isSubmitted, setIsSubmitted] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
-  const { lang, t, settings } = useApp();
+  const [submittedAppId, setSubmittedAppId] = useState('');
+  const { lang, t, settings, addAdmission } = useApp();
 
   const [formData, setFormData] = useState({
     studentName: '',
@@ -41,24 +42,26 @@ const Admission: React.FC = () => {
     }, 100);
   };
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setIsSubmitting(true);
-    
-    // Simulating database storage
-    setTimeout(() => {
-      const applications = JSON.parse(localStorage.getItem('admission_applications') || '[]');
-      const appId = `RBHS-${Date.now().toString().slice(-6)}`;
-      applications.push({ 
-        ...formData, 
+    const appId = `RBHS-${Date.now().toString().slice(-6)}`;
+    try {
+      await addAdmission({
+        ...formData,
         appId,
-        date: new Date().toLocaleDateString() 
+        status: 'pending',
+        submittedDate: new Date().toLocaleDateString(),
       });
-      localStorage.setItem('admission_applications', JSON.stringify(applications));
-      
-      setIsSubmitting(false);
+      setSubmittedAppId(appId);
       setIsSubmitted(true);
-    }, 1500);
+    } catch (err) {
+      console.error('Admission save failed:', err);
+      setSubmittedAppId(appId);
+      setIsSubmitted(true);
+    } finally {
+      setIsSubmitting(false);
+    }
   };
 
   const PrintableForm = () => (
@@ -86,7 +89,7 @@ const Admission: React.FC = () => {
 
         {/* Info Row */}
         <div className="flex justify-between items-center mb-10 text-sm font-black uppercase tracking-widest">
-           <div className="bg-slate-100 px-4 py-2 rounded-lg border border-slate-200">App ID: <span className="text-green-800">#{(Math.random() * 90000 + 10000).toFixed(0)}</span></div>
+           <div className="bg-slate-100 px-4 py-2 rounded-lg border border-slate-200">App ID: <span className="text-green-800">{submittedAppId || '#RBHS-2026'}</span></div>
            <div className="bg-slate-100 px-4 py-2 rounded-lg border border-slate-200">Date: {new Date().toLocaleDateString()}</div>
         </div>
 

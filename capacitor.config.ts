@@ -1,0 +1,16 @@
+import type { CapacitorConfig } from '@capacitor/cli';
+
+const config: CapacitorConfig = {
+  appId: 'edu.rbhs.schoolapp',
+  appName: 'RBHS School App',
+  webDir: 'dist',
+  server: {
+    androidScheme: 'https',
+  },
+  android: {
+    allowMixedContent: true,
+    backgroundColor: '#15803d',
+  },
+};
+
+export default config;

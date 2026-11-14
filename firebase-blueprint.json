@@ -1,0 +1,218 @@
+{
+  "entities": {
+    "LocalizedString": {
+      "title": "LocalizedString",
+      "description": "Bilingual text object with Bangla and English strings.",
+      "type": "object",
+      "properties": {
+        "bn": { "type": "string", "maxLength": 5000 },
+        "en": { "type": "string", "maxLength": 5000 }
+      },
+      "required": ["bn", "en"]
+    },
+    "SchoolSettings": {
+      "title": "SchoolSettings",
+      "description": "Global school configuration and branding details.",
+      "type": "object",
+      "properties": {
+        "name": { "$ref": "#/entities/LocalizedString" },
+        "eiin": { "type": "string", "maxLength": 32 },
+        "phone": { "type": "string", "maxLength": 40 },
+        "email": { "type": "string", "format": "email", "maxLength": 150 },
+        "location": { "$ref": "#/entities/LocalizedString" },
+        "schoolPhoto": { "type": "string", "maxLength": 600000 },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["name", "eiin", "phone", "email", "location", "updatedAt"]
+    },
+    "Notice": {
+      "title": "Notice",
+      "description": "Official school notice board item.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "pattern": "^[a-zA-Z0-9_\\-]+$", "maxLength": 128 },
+        "title": { "$ref": "#/entities/LocalizedString" },
+        "date": { "type": "string", "maxLength": 32 },
+        "category": { "type": "string", "enum": ["General", "Admission", "Exam", "Holiday"] },
+        "description": { "$ref": "#/entities/LocalizedString" },
+        "pdfUrl": { "type": "string", "maxLength": 2000 },
+        "isPublic": { "type": "boolean" },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["id", "title", "date", "category", "description", "isPublic", "createdAt", "updatedAt"]
+    },
+    "Teacher": {
+      "title": "Teacher",
+      "description": "Faculty member profile.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "pattern": "^[a-zA-Z0-9_\\-]+$", "maxLength": 128 },
+        "name": { "$ref": "#/entities/LocalizedString" },
+        "designation": { "$ref": "#/entities/LocalizedString" },
+        "subject": { "$ref": "#/entities/LocalizedString" },
+        "qualification": { "$ref": "#/entities/LocalizedString" },
+        "photo": { "type": "string", "maxLength": 600000 },
+        "isPublic": { "type": "boolean" },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["id", "name", "designation", "subject", "qualification", "photo", "isPublic", "createdAt", "updatedAt"]
+    },
+    "EBook": {
+      "title": "EBook",
+      "description": "Digital NCTB textbook resource.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "pattern": "^[a-zA-Z0-9_\\-]+$", "maxLength": 128 },
+        "title": { "$ref": "#/entities/LocalizedString" },
+        "classId": { "type": "string", "maxLength": 16 },
+        "className": { "$ref": "#/entities/LocalizedString" },
+        "subject": { "type": "string", "maxLength": 120 },
+        "coverUrl": { "type": "string", "maxLength": 600000 },
+        "downloadUrl": { "type": "string", "maxLength": 2000 },
+        "isPublic": { "type": "boolean" },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["id", "title", "classId", "className", "subject", "coverUrl", "downloadUrl", "isPublic", "createdAt", "updatedAt"]
+    },
+    "GalleryItem": {
+      "title": "GalleryItem",
+      "description": "School campus or event photograph.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "pattern": "^[a-zA-Z0-9_\\-]+$", "maxLength": 128 },
+        "url": { "type": "string", "maxLength": 600000 },
+        "caption": { "$ref": "#/entities/LocalizedString" },
+        "isPublic": { "type": "boolean" },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["id", "url", "caption", "isPublic", "createdAt", "updatedAt"]
+    },
+    "Holiday": {
+      "title": "Holiday",
+      "description": "Academic calendar holiday entry.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "pattern": "^[a-zA-Z0-9_\\-]+$", "maxLength": 128 },
+        "title": { "$ref": "#/entities/LocalizedString" },
+        "date": { "type": "string", "maxLength": 32 },
+        "duration": { "$ref": "#/entities/LocalizedString" },
+        "type": { "type": "string", "enum": ["National", "Religious", "Seasonal", "Other"] },
+        "isPublic": { "type": "boolean" },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["id", "title", "date", "duration", "type", "isPublic", "createdAt", "updatedAt"]
+    },
+    "AdmissionApplication": {
+      "title": "AdmissionApplication",
+      "description": "Online student admission application (PII protected).",
+      "type": "object",
+      "properties": {
+        "appId": { "type": "string", "pattern": "^[a-zA-Z0-9_\\-]+$", "maxLength": 128 },
+        "studentName": { "type": "string", "minLength": 1, "maxLength": 150 },
+        "fatherName": { "type": "string", "minLength": 1, "maxLength": 150 },
+        "motherName": { "type": "string", "minLength": 1, "maxLength": 150 },
+        "guardianMobile": { "type": "string", "minLength": 6, "maxLength": 30 },
+        "targetClass": { "type": "string", "minLength": 1, "maxLength": 40 },
+        "targetGroup": { "type": "string", "maxLength": 40 },
+        "birthDate": { "type": "string", "minLength": 4, "maxLength": 32 },
+        "address": { "type": "string", "minLength": 2, "maxLength": 400 },
+        "prevSchool": { "type": "string", "maxLength": 200 },
+        "bloodGroup": { "type": "string", "maxLength": 16 },
+        "status": { "type": "string", "enum": ["pending", "approved", "rejected"] },
+        "submittedDate": { "type": "string", "maxLength": 40 },
+        "ownerUid": { "type": "string", "maxLength": 128 },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["appId", "studentName", "fatherName", "motherName", "guardianMobile", "targetClass", "targetGroup", "birthDate", "address", "status", "submittedDate", "createdAt"]
+    },
+    "ContactMessage": {
+      "title": "ContactMessage",
+      "description": "Message sent via the Contact Us form (PII protected).",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "pattern": "^[a-zA-Z0-9_\\-]+$", "maxLength": 128 },
+        "name": { "type": "string", "minLength": 1, "maxLength": 150 },
+        "mobile": { "type": "string", "minLength": 6, "maxLength": 30 },
+        "email": { "type": "string", "maxLength": 150 },
+        "message": { "type": "string", "minLength": 1, "maxLength": 2000 },
+        "status": { "type": "string", "enum": ["unread", "read"] },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["id", "name", "mobile", "message", "status", "createdAt"]
+    },
+    "UserProfile": {
+      "title": "UserProfile",
+      "description": "Authenticated user account profile.",
+      "type": "object",
+      "properties": {
+        "uid": { "type": "string", "pattern": "^[a-zA-Z0-9_\\-]+$", "maxLength": 128 },
+        "name": { "type": "string", "minLength": 1, "maxLength": 150 },
+        "email": { "type": "string", "format": "email", "maxLength": 150 },
+        "role": { "type": "string", "enum": ["student", "teacher", "admin"] },
+        "photo": { "type": "string", "maxLength": 600000 },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["uid", "name", "email", "role", "createdAt", "updatedAt"]
+    },
+    "AdminRecord": {
+      "title": "AdminRecord",
+      "description": "Trusted admin role lookup document.",
+      "type": "object",
+      "properties": {
+        "uid": { "type": "string", "pattern": "^[a-zA-Z0-9_\\-]+$", "maxLength": 128 },
+        "email": { "type": "string", "format": "email", "maxLength": 150 },
+        "grantedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["uid", "email", "grantedAt"]
+    }
+  },
+  "firestore": {
+    "/settings/{settingId}": {
+      "schema": { "$ref": "#/entities/SchoolSettings" },
+      "description": "Public school settings document (main)."
+    },
+    "/notices/{noticeId}": {
+      "schema": { "$ref": "#/entities/Notice" },
+      "description": "School notices collection."
+    },
+    "/teachers/{teacherId}": {
+      "schema": { "$ref": "#/entities/Teacher" },
+      "description": "Faculty profiles collection."
+    },
+    "/ebooks/{ebookId}": {
+      "schema": { "$ref": "#/entities/EBook" },
+      "description": "Digital library e-books collection."
+    },
+    "/gallery/{itemId}": {
+      "schema": { "$ref": "#/entities/GalleryItem" },
+      "description": "School gallery photos collection."
+    },
+    "/holidays/{holidayId}": {
+      "schema": { "$ref": "#/entities/Holiday" },
+      "description": "Academic holidays collection."
+    },
+    "/admissions/{appId}": {
+      "schema": { "$ref": "#/entities/AdmissionApplication" },
+      "description": "Private admission applications submitted by applicants."
+    },
+    "/contactMessages/{msgId}": {
+      "schema": { "$ref": "#/entities/ContactMessage" },
+      "description": "Private contact inquiries submitted by visitors."
+    },
+    "/users/{uid}": {
+      "schema": { "$ref": "#/entities/UserProfile" },
+      "description": "Authenticated user profile documents."
+    },
+    "/admins/{uid}": {
+      "schema": { "$ref": "#/entities/AdminRecord" },
+      "description": "Trusted administrator registry."
+    }
+  }
+}

@@ -4,6 +4,7 @@ import * as RouterDom from 'react-router-dom';
 import { User, Lock, Mail, ArrowRight, ShieldCheck, GraduationCap, ShieldAlert, UserPlus, Camera, Trash2 } from 'lucide-react';
 import { TRANSLATIONS, SCHOOL_NAME } from '../constants';
 import { useApp } from '../App';
+import { compressImageFile } from '../utils/imageUtils';
 
 const { useState, useRef } = React;
 const { Link, useNavigate } = RouterDom;
@@ -32,20 +33,12 @@ const Register: React.FC = () => {
     setError('');
   };
 
-  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (file) {
-      if (file.size > 2 * 1024 * 1024) { // 2MB limit
-        setError(lang === 'bn' ? 'ফাইলটি ২ মেগাবাইটের কম হতে হবে' : 'File must be less than 2MB');
-        return;
-      }
-      const reader = new FileReader();
-      reader.onloadend = () => {
-        const base64 = reader.result as string;
-        setPhotoPreview(base64);
-        setFormData(prev => ({ ...prev, photo: base64 }));
-      };
-      reader.readAsDataURL(file);
+      const compressed = await compressImageFile(file, 500, 0.75);
+      setPhotoPreview(compressed);
+      setFormData(prev => ({ ...prev, photo: compressed }));
     }
   };
 

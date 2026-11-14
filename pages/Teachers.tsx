@@ -4,6 +4,7 @@ import { Mail, GraduationCap, BookOpen, Camera, Trash2, PlusCircle, User, Shield
 import { TRANSLATIONS, SCHOOL_NAME } from '../constants';
 import { useApp } from '../App';
 import { Teacher } from '../types';
+import { compressImageFile } from '../utils/imageUtils';
 
 const { useState, useRef } = React;
 
@@ -16,14 +17,11 @@ const Teachers: React.FC = () => {
   
   const isAdmin = user?.role === 'admin';
 
-  const handlePhotoUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handlePhotoUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (file) {
-      const reader = new FileReader();
-      reader.onloadend = () => {
-        setPhotoBase64(reader.result as string);
-      };
-      reader.readAsDataURL(file);
+      const compressed = await compressImageFile(file, 600, 0.75);
+      setPhotoBase64(compressed);
     }
   };
 

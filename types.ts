@@ -64,3 +64,31 @@ export interface ClassRoutine {
     periods: RoutinePeriod[];
   }[];
 }
+
+export interface AdmissionApplication {
+  appId: string;
+  studentName: string;
+  fatherName: string;
+  motherName: string;
+  guardianMobile: string;
+  targetClass: string;
+  targetGroup: string;
+  birthDate: string;
+  address: string;
+  prevSchool?: string;
+  bloodGroup?: string;
+  status: 'pending' | 'approved' | 'rejected';
+  submittedDate: string;
+  ownerUid?: string;
+}
+
+export interface ContactMessage {
+  id: string;
+  name: string;
+  mobile: string;
+  email?: string;
+  message: string;
+  status: 'unread' | 'read';
+  createdAt?: string;
+}
+

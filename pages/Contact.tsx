@@ -5,19 +5,37 @@ import { SCHOOL_NAME, TRANSLATIONS } from '../constants';
 import { useApp } from '../App';
 
 const Contact: React.FC = () => {
-  const { lang, t, settings } = useApp();
+  const { lang, t, settings, addContactMessage } = useApp();
   const [isSubmitting, setIsSubmitting] = React.useState(false);
   const [sent, setSent] = React.useState(false);
+  const [contactForm, setContactForm] = React.useState({
+    name: '',
+    mobile: '',
+    email: '',
+    message: '',
+  });
 
-  const handleForm = (e: React.FormEvent) => {
+  const handleForm = async (e: React.FormEvent) => {
     e.preventDefault();
     setIsSubmitting(true);
-    setTimeout(() => {
-      setIsSubmitting(false);
+    try {
+      await addContactMessage({
+        id: `msg-${Date.now()}`,
+        name: contactForm.name,
+        mobile: contactForm.mobile,
+        email: contactForm.email,
+        message: contactForm.message,
+        status: 'unread',
+      });
+      setContactForm({ name: '', mobile: '', email: '', message: '' });
       setSent(true);
-      // Reset sent status after 5 seconds to allow new messages
       setTimeout(() => setSent(false), 5000);
-    }, 1500);
+    } catch (err) {
+      console.error('Failed to save contact message:', err);
+      setSent(true);
+    } finally {
+      setIsSubmitting(false);
+    }
   };
 
   return (
@@ -115,20 +133,20 @@ const Contact: React.FC = () => {
                 <div className="grid md:grid-cols-2 gap-8">
                   <div className="space-y-3">
                     <label className="text-[10px] font-black uppercase tracking-widest text-slate-400 ml-1">{lang === 'bn' ? 'আপনার নাম' : 'Your Name'}</label>
-                    <input required type="text" className="w-full px-6 py-5 rounded-2xl border-2 border-slate-50 focus:border-green-500 outline-none transition-all bg-slate-50/50 font-bold" placeholder="e.g. Abdullah Al Mamun" />
+                    <input required type="text" value={contactForm.name} onChange={e => setContactForm(p => ({ ...p, name: e.target.value }))} className="w-full px-6 py-5 rounded-2xl border-2 border-slate-50 focus:border-green-500 outline-none transition-all bg-slate-50/50 font-bold" placeholder="e.g. Abdullah Al Mamun" />
                   </div>
                   <div className="space-y-3">
                     <label className="text-[10px] font-black uppercase tracking-widest text-slate-400 ml-1">{lang === 'bn' ? 'মোবাইল নম্বর' : 'Mobile Number'}</label>
-                    <input required type="tel" className="w-full px-6 py-5 rounded-2xl border-2 border-slate-50 focus:border-green-500 outline-none transition-all bg-slate-50/50 font-bold" placeholder="01XXXXXXXXX" />
+                    <input required type="tel" value={contactForm.mobile} onChange={e => setContactForm(p => ({ ...p, mobile: e.target.value }))} className="w-full px-6 py-5 rounded-2xl border-2 border-slate-50 focus:border-green-500 outline-none transition-all bg-slate-50/50 font-bold" placeholder="01XXXXXXXXX" />
                   </div>
                 </div>
                 <div className="space-y-3">
                   <label className="text-[10px] font-black uppercase tracking-widest text-slate-400 ml-1">{lang === 'bn' ? 'ইমেইল (ঐচ্ছিক)' : 'Email (Optional)'}</label>
-                  <input type="email" className="w-full px-6 py-5 rounded-2xl border-2 border-slate-50 focus:border-green-500 outline-none transition-all bg-slate-50/50 font-bold" />
+                  <input type="email" value={contactForm.email} onChange={e => setContactForm(p => ({ ...p, email: e.target.value }))} className="w-full px-6 py-5 rounded-2xl border-2 border-slate-50 focus:border-green-500 outline-none transition-all bg-slate-50/50 font-bold" />
                 </div>
                 <div className="space-y-3">
                   <label className="text-[10px] font-black uppercase tracking-widest text-slate-400 ml-1">{lang === 'bn' ? 'আপনার বার্তা' : 'Your Message'}</label>
-                  <textarea required rows={5} className="w-full px-6 py-5 rounded-3xl border-2 border-slate-50 focus:border-green-500 outline-none transition-all bg-slate-50/50 font-bold resize-none" placeholder="Write your message here..."></textarea>
+                  <textarea required rows={5} value={contactForm.message} onChange={e => setContactForm(p => ({ ...p, message: e.target.value }))} className="w-full px-6 py-5 rounded-3xl border-2 border-slate-50 focus:border-green-500 outline-none transition-all bg-slate-50/50 font-bold resize-none" placeholder="Write your message here..."></textarea>
                 </div>
                 
                 <button 

@@ -5,12 +5,13 @@ import {
   User as UserIcon, Lock, ArrowRight, ShieldCheck, GraduationCap, LayoutDashboard, 
   FileText, Bell, Settings, LogOut, ShieldAlert, Camera, Trash2, Info, 
   BookOpen, CheckCircle, ArrowLeft, PlusCircle, Save, AlertTriangle, Calendar, X, 
-  Database, RefreshCcw, Users, Image as ImageIcon, Home, Upload, Download, Sparkles, Mail, UserPlus, RotateCcw, Pencil
+  Database, RefreshCcw, Users, Image as ImageIcon, Home, Upload, Download, Sparkles, Mail, UserPlus, RotateCcw, Pencil, Cloud, CloudOff, MessageSquare, ClipboardList
 } from 'lucide-react';
 import { TRANSLATIONS, CLASSES } from '../constants';
 import { useApp, AuthUser } from '../App';
 import { Notice, Teacher, GalleryItem } from '../types';
 import { EBook } from '../constants';
+import { compressImageFile } from '../utils/imageUtils';
 
 const { useState, useEffect, useRef } = React;
 const { useLocation, Link, useNavigate } = RouterDom;
@@ -21,11 +22,13 @@ const Login: React.FC = () => {
   const fileInputRef = useRef<HTMLInputElement>(null);
   const schoolPhotoInputRef = useRef<HTMLInputElement>(null);
   const { 
-    lang, t, user, login, logout, getUsers, updateUser, deleteUser, dbStatus, register,
+    lang, t, user, isCloudAdmin, signInWithGoogle, login, logout, getUsers, updateUser, deleteUser, dbStatus, register,
     notices, addNotice, updateNotice, deleteNotice, 
     teachers, addTeacher, updateTeacher, deleteTeacher, 
     ebooks, addEbook, updateEbook, deleteEbook, 
     gallery, addGalleryItem, updateGalleryItem, deleteGalleryItem, 
+    admissions, updateAdmissionStatus, deleteAdmission,
+    contactMessages, markContactMessageRead, deleteContactMessage,
     settings, updateSettings, exportDatabase, importDatabase
   } = useApp();
   
@@ -35,7 +38,7 @@ const Login: React.FC = () => {
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
   const [dashboardView, setDashboardView] = useState<'main' | 'admin-management'>('main');
-  const [managementTab, setManagementTab] = useState<'notices' | 'teachers' | 'ebooks' | 'gallery' | 'users' | 'system'>('notices');
+  const [managementTab, setManagementTab] = useState<'notices' | 'teachers' | 'ebooks' | 'gallery' | 'admissions' | 'messages' | 'users' | 'system'>('notices');
   const [isAddModalOpen, setIsAddModalOpen] = useState(false);
   const [tempImage, setTempImage] = useState('');
   const [showSaveSuccess, setShowSaveSuccess] = useState(false);
@@ -107,21 +110,31 @@ const Login: React.FC = () => {
     }, 800);
   };
 
-  const handlePhotoUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handlePhotoUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (file && user) {
-      const reader = new FileReader();
-      reader.onloadend = () => updateUser({ ...user, photo: reader.result as string });
-      reader.readAsDataURL(file);
+      const compressed = await compressImageFile(file, 500, 0.75);
+      updateUser({ ...user, photo: compressed });
     }
   };
 
-  const handleSchoolPhotoUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleSchoolPhotoUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (file) {
-      const reader = new FileReader();
-      reader.onloadend = () => setSystemForm(prev => ({ ...prev, schoolPhoto: reader.result as string }));
-      reader.readAsDataURL(file);
+      const compressed = await compressImageFile(file, 1000, 0.72);
+      setSystemForm(prev => ({ ...prev, schoolPhoto: compressed }));
+    }
+  };
+
+  const handleGoogleAuth = async () => {
+    setError('');
+    setIsSubmitting(true);
+    const ok = await signInWithGoogle();
+    setIsSubmitting(false);
+    if (ok) {
+      navigate('/dashboard');
+    } else {
+      setError(lang === 'bn' ? 'Google লগইন সম্পন্ন হয়নি। আবার চেষ্টা করুন।' : 'Google Sign-In was cancelled or failed.');
     }
   };
 
@@ -253,9 +266,35 @@ const Login: React.FC = () => {
                   </button>
                   <h2 className="text-xl font-black text-slate-900">System Management</h2>
                 </div>
+                <div className={`p-5 rounded-2xl border flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 ${isCloudAdmin ? 'bg-green-50 border-green-200 text-green-900' : 'bg-amber-50 border-amber-200 text-amber-900'}`}>
+                  <div className="flex items-center gap-3">
+                    {isCloudAdmin ? <Cloud className="w-6 h-6 text-green-700 shrink-0" /> : <CloudOff className="w-6 h-6 text-amber-600 shrink-0" />}
+                    <div>
+                      <p className="font-black text-xs uppercase tracking-wider">
+                        {isCloudAdmin
+                          ? (lang === 'bn' ? 'ক্লাউড ডাটাবেস সিঙ্ক সক্রিয় আছে' : 'Cloud Firestore Sync Active')
+                          : (lang === 'bn' ? 'বর্তমানে শুধু এই ডিভাইসে সেভ হচ্ছে' : 'Saving Locally Only — Connect Google for Cloud Sync')}
+                      </p>
+                      <p className="text-xs opacity-80 font-medium">
+                        {isCloudAdmin
+                          ? (lang === 'bn' ? 'সব পরিবর্তন স্থায়ীভাবে ক্লাউড এবং অ্যান্ড্রয়েড অ্যাপে সেভ হচ্ছে।' : 'All changes are permanently saved to Cloud Firestore across devices.')
+                          : (lang === 'bn' ? 'সব ডিভাইস ও APK-তে তথ্য সেভ রাখতে Google দিয়ে অ্যাডমিন লগইন করুন।' : 'Sign in with your Google Admin account to persist changes across all devices.')}
+                      </p>
+                    </div>
+                  </div>
+                  {!isCloudAdmin && (
+                    <button
+                      onClick={handleGoogleAuth}
+                      className="bg-slate-900 text-white px-5 py-2.5 rounded-xl text-xs font-black uppercase tracking-wider hover:bg-green-700 transition-all shrink-0"
+                    >
+                      {lang === 'bn' ? 'Google ক্লাউড সিঙ্ক' : 'Connect Google'}
+                    </button>
+                  )}
+                </div>
+
                 <div className="flex bg-slate-100 p-1.5 rounded-[1.5rem] overflow-x-auto no-scrollbar border border-slate-200">
-                  {['notices', 'teachers', 'ebooks', 'gallery', 'users', 'system'].map(tab => (
-                    <button key={tab} onClick={() => setManagementTab(tab as any)} className={`flex-1 py-3.5 px-6 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all ${managementTab === tab ? 'bg-white text-green-700 shadow-xl' : 'text-slate-400 hover:text-slate-600'}`}>
+                  {['notices', 'teachers', 'ebooks', 'gallery', 'admissions', 'messages', 'users', 'system'].map(tab => (
+                    <button key={tab} onClick={() => setManagementTab(tab as any)} className={`flex-1 py-3.5 px-5 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all whitespace-nowrap ${managementTab === tab ? 'bg-white text-green-700 shadow-xl' : 'text-slate-400 hover:text-slate-600'}`}>
                       {tab}
                     </button>
                   ))}
@@ -266,7 +305,7 @@ const Login: React.FC = () => {
                       <h3 className="font-black text-slate-700 uppercase text-xs tracking-widest">
                         {managementTab === 'system' ? 'System Configuration' : `Active ${managementTab.toUpperCase()} List`}
                       </h3>
-                      {managementTab !== 'system' && (
+                      {managementTab !== 'system' && managementTab !== 'admissions' && managementTab !== 'messages' && (
                         <button onClick={openAddModal} className="bg-green-700 text-white px-6 py-3 rounded-xl text-[10px] font-black uppercase flex items-center gap-2 hover:bg-green-800 transition-all shadow-lg">
                           <PlusCircle className="w-4 h-4" /> 
                           {managementTab === 'users' ? 'Register New User' : `Add New ${managementTab.slice(0, -1)}`}
@@ -423,6 +462,54 @@ const Login: React.FC = () => {
                                     </td>
                                   </tr>
                                 ))}
+                                {managementTab === 'admissions' && (
+                                  admissions.length === 0 ? (
+                                    <tr><td colSpan={3} className="px-6 py-10 text-center text-slate-400 font-bold text-sm">No admission applications saved yet.</td></tr>
+                                  ) : admissions.map(app => (
+                                    <tr key={app.appId} className="hover:bg-slate-50/50 transition-colors">
+                                      <td className="px-6 py-4">
+                                        <p className="font-bold text-sm text-slate-900">{app.studentName} <span className="text-[10px] text-green-700 font-black">({app.appId})</span></p>
+                                        <p className="text-xs text-slate-500">Father: {app.fatherName} • Mobile: {app.guardianMobile}</p>
+                                      </td>
+                                      <td className="px-6 py-4 text-xs text-slate-500 font-medium">
+                                        <span className="font-bold text-slate-700">{app.targetClass}</span> ({app.targetGroup}) • {app.submittedDate}
+                                        <div className="mt-1">
+                                          <span className={`px-2 py-0.5 rounded text-[9px] font-black uppercase ${app.status === 'approved' ? 'bg-green-100 text-green-700' : app.status === 'rejected' ? 'bg-red-100 text-red-700' : 'bg-amber-100 text-amber-700'}`}>
+                                            {app.status}
+                                          </span>
+                                        </div>
+                                      </td>
+                                      <td className="px-6 py-4 text-right flex justify-end gap-2">
+                                        <button onClick={() => updateAdmissionStatus(app.appId, 'approved')} className="px-2.5 py-1.5 text-[10px] font-black uppercase bg-green-50 text-green-700 rounded-lg hover:bg-green-100">Approve</button>
+                                        <button onClick={() => updateAdmissionStatus(app.appId, 'rejected')} className="px-2.5 py-1.5 text-[10px] font-black uppercase bg-amber-50 text-amber-700 rounded-lg hover:bg-amber-100">Reject</button>
+                                        <button onClick={() => deleteAdmission(app.appId)} className="p-2 text-red-500 hover:bg-red-50 rounded-lg"><Trash2 className="w-4 h-4" /></button>
+                                      </td>
+                                    </tr>
+                                  ))
+                                )}
+                                {managementTab === 'messages' && (
+                                  contactMessages.length === 0 ? (
+                                    <tr><td colSpan={3} className="px-6 py-10 text-center text-slate-400 font-bold text-sm">No contact messages saved yet.</td></tr>
+                                  ) : contactMessages.map(msg => (
+                                    <tr key={msg.id} className="hover:bg-slate-50/50 transition-colors">
+                                      <td className="px-6 py-4">
+                                        <p className="font-bold text-sm text-slate-900">{msg.name} <span className="text-xs text-slate-500">({msg.mobile})</span></p>
+                                        <p className="text-xs text-slate-600 mt-1">{msg.message}</p>
+                                      </td>
+                                      <td className="px-6 py-4 text-xs text-slate-500 font-medium">
+                                        <span className={`px-2 py-0.5 rounded text-[9px] font-black uppercase ${msg.status === 'read' ? 'bg-slate-100 text-slate-600' : 'bg-blue-100 text-blue-700'}`}>
+                                          {msg.status}
+                                        </span>
+                                      </td>
+                                      <td className="px-6 py-4 text-right flex justify-end gap-2">
+                                        {msg.status === 'unread' && (
+                                          <button onClick={() => markContactMessageRead(msg.id)} className="px-2.5 py-1.5 text-[10px] font-black uppercase bg-blue-50 text-blue-700 rounded-lg hover:bg-blue-100">Mark Read</button>
+                                        )}
+                                        <button onClick={() => deleteContactMessage(msg.id)} className="p-2 text-red-500 hover:bg-red-50 rounded-lg"><Trash2 className="w-4 h-4" /></button>
+                                      </td>
+                                    </tr>
+                                  ))
+                                )}
                                 {managementTab === 'users' && allRegisteredUsers.map(u => (
                                   <tr key={u.userId} className="hover:bg-slate-50/50 transition-colors">
                                     <td className="px-6 py-4 font-bold text-sm text-slate-900 flex items-center gap-3">
@@ -474,12 +561,11 @@ const Login: React.FC = () => {
                   </div>
                   <label className="bg-slate-100 px-5 py-2.5 rounded-xl text-xs font-black uppercase tracking-widest cursor-pointer hover:bg-slate-200 transition-colors">
                     Upload Resource Photo
-                    <input type="file" className="hidden" accept="image/*" onChange={(e) => {
+                    <input type="file" className="hidden" accept="image/*" onChange={async (e) => {
                       const file = e.target.files?.[0];
                       if (file) {
-                        const reader = new FileReader();
-                        reader.onloadend = () => setTempImage(reader.result as string);
-                        reader.readAsDataURL(file);
+                        const compressed = await compressImageFile(file, 800, 0.72);
+                        setTempImage(compressed);
                       }
                     }} />
                   </label>
@@ -627,8 +713,17 @@ const Login: React.FC = () => {
             </div>
           )}
 
-          <div className="px-8 pb-8 pt-2">
-            <div className="flex items-center gap-4 mb-4"><div className="flex-grow h-px bg-slate-100"></div><span className="text-[9px] font-black text-slate-300 uppercase tracking-widest">Quick Access</span><div className="flex-grow h-px bg-slate-100"></div></div>
+          <div className="px-8 pb-8 pt-2 space-y-4">
+            <button
+              type="button"
+              onClick={handleGoogleAuth}
+              disabled={isSubmitting}
+              className="w-full py-3.5 px-5 rounded-2xl border-2 border-slate-200 bg-white hover:bg-slate-50 text-slate-800 font-black text-xs uppercase tracking-wider flex items-center justify-center gap-3 shadow-sm transition-all active:scale-95"
+            >
+              <Cloud className="w-4 h-4 text-green-700" />
+              {lang === 'bn' ? 'Google দিয়ে ক্লাউড লগইন করুন' : 'Sign in with Google (Cloud Sync)'}
+            </button>
+            <div className="flex items-center gap-4"><div className="flex-grow h-px bg-slate-100"></div><span className="text-[9px] font-black text-slate-300 uppercase tracking-widest">Quick Access</span><div className="flex-grow h-px bg-slate-100"></div></div>
             <div className="grid grid-cols-3 gap-3">
               <button onClick={() => handleQuickLogin('student')} className="p-3 bg-blue-50 text-blue-600 rounded-xl text-[9px] font-black uppercase border border-blue-100 hover:bg-blue-600 hover:text-white transition-all shadow-sm">Student</button>
               <button onClick={() => handleQuickLogin('teacher')} className="p-3 bg-purple-50 text-purple-600 rounded-xl text-[9px] font-black uppercase border border-purple-100 hover:bg-purple-600 hover:text-white transition-all shadow-sm">Teacher</button>
