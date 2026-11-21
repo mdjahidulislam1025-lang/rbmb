@@ -1,5 +1,7 @@
 import {
   Notice,
+  NewsArticle,
+  CampusEvent,
   Teacher,
   ClassRoutine,
   SyllabusItem,
@@ -22,19 +24,31 @@ import {
   sportsEventImg,
 } from './src/assets/media';
 
+export const CAMPUS_BRAND = {
+  bn: 'আরবিএমবি ডিজিটাল ক্যাম্পাস',
+  en: 'RBMB Digital Campus',
+};
+
 export const SCHOOL_NAME = {
-  bn: 'রাণীর বাজার মাধ্যমিক বিদ্যালয়',
-  en: 'Ranir Bazar Secondary High School',
+  bn: 'রাণীর বাজার মডেল উচ্চ বিদ্যালয়',
+  en: 'Rani Bazar Model High School',
+};
+
+export const CAMPUS_TAGLINE = {
+  bn: 'শেখা, পাঠদান ও সংযোগের একটি স্মার্ট মাধ্যম',
+  en: 'A Smarter Way to Learn, Teach and Connect',
 };
 
 export const INITIAL_SETTINGS: SchoolSettings = {
   name: SCHOOL_NAME,
+  shortName: 'RBMB Digital Campus',
+  tagline: CAMPUS_TAGLINE,
   eiin: '105842',
   phone: '+880 1711-000000',
-  email: 'info@ranirbazarhighschool.edu.bd',
+  email: 'info@rbmb-campus.edu.bd',
   location: {
     bn: 'রাণীর বাজার, চৌদ্দগ্রাম, কুমিল্লা-৩৫৫০, বাংলাদেশ',
-    en: 'Ranir Bazar, Chauddagram, Cumilla-3550, Bangladesh',
+    en: 'Rani Bazar, Chauddagram, Cumilla-3550, Bangladesh',
   },
   schoolPhoto: heroCampusImg,
   headTeacherName: {
@@ -42,8 +56,8 @@ export const INITIAL_SETTINGS: SchoolSettings = {
     en: 'Md. Abdul Karim',
   },
   headTeacherMessage: {
-    bn: 'সুপ্রিয় শিক্ষার্থী ও অভিভাবকবৃন্দ, রাণীর বাজার মাধ্যমিক বিদ্যালয়ের ডিজিটাল পোর্টালে আপনাদের স্বাগতম। ১৯৫৮ সাল থেকে আমাদের প্রতিষ্ঠান নৈতিক শিক্ষা, বিজ্ঞানমনস্কতা ও সহশিক্ষা কার্যক্রমে অগ্রণী ভূমিকা পালন করে আসছে। আধুনিক স্মার্ট শিক্ষা ব্যবস্থার মাধ্যমে প্রতিটি শিক্ষার্থীকে যোগ্য নাগরিক হিসেবে গড়ে তোলাই আমাদের মূল লক্ষ্য।',
-    en: 'Dear Students and Guardians, welcome to the digital portal of Ranir Bazar Secondary High School. Since 1958, our institution has championed moral values, scientific inquiry, and co-curricular excellence. Our mission is to prepare every learner as a confident, compassionate citizen through modern digital education.',
+    bn: 'সুপ্রিয় শিক্ষার্থী, অভিভাবক ও প্রাক্তন শিক্ষার্থীবৃন্দ — আরবিএমবি ডিজিটাল ক্যাম্পাসে (রাণীর বাজার মডেল উচ্চ বিদ্যালয়) আপনাদের স্বাগতম। ১৯৫৮ সাল থেকে আমাদের প্রতিষ্ঠান নৈতিক শিক্ষা, বিজ্ঞানমনস্কতা ও সহশিক্ষা কার্যক্রমে অগ্রণী ভূমিকা পালন করে আসছে। ডিজিটাল ক্লাসরুম, অনলাইন পরীক্ষা ও সমন্বিত পোর্টালের মাধ্যমে প্রতিটি শিক্ষার্থীকে যোগ্য বিশ্বনাগরিক হিসেবে গড়ে তোলাই আমাদের লক্ষ্য।',
+    en: 'Dear Students, Guardians, and Alumni — welcome to RBMB Digital Campus (Rani Bazar Model High School). Since 1958, our institution has championed moral values, scientific curiosity, and co-curricular excellence. Through smart classrooms, online assessments, and unified portals, we empower every learner for tomorrow.',
   },
   headTeacherPhoto: headTeacherImg,
   latitude: 23.2248,
@@ -58,24 +72,29 @@ export const DEVELOPER_CREDIT = {
 export const TRANSLATIONS = {
   nav: {
     home: { bn: 'মূল পাতা', en: 'Home' },
-    about: { bn: 'পরিচিতি', en: 'About' },
-    notices: { bn: 'নোটিশ', en: 'Notices' },
+    about: { bn: 'বিদ্যালয় পরিচিতি', en: 'About School' },
+    aboutSchool: { bn: 'বিদ্যালয় পরিচিতি', en: 'About School' },
+    academics: { bn: 'একাডেমিক', en: 'Academics' },
+    notices: { bn: 'নোটিশ ও সংবাদ', en: 'Notice & News' },
+    noticeNews: { bn: 'নোটিশ ও সংবাদ', en: 'Notice & News' },
+    learningCenter: { bn: 'লার্নিং সেন্টার', en: 'Learning Center' },
+    portals: { bn: 'পোর্টাল', en: 'Portals' },
     teachers: { bn: 'শিক্ষকমণ্ডলী', en: 'Teachers' },
     routine: { bn: 'রুটিন', en: 'Routine' },
     syllabus: { bn: 'সিলেবাস', en: 'Syllabus' },
     ebooks: { bn: 'ডিজিটাল লাইব্রেরি', en: 'Digital Library' },
     exams: { bn: 'অনলাইন পরীক্ষা', en: 'Online Exam' },
     holidays: { bn: 'ছুটির তালিকা', en: 'Holidays' },
-    calendar: { bn: 'ক্যালেন্ডার', en: 'Calendar' },
-    admission: { bn: 'ভর্তি আবেদন', en: 'Admission' },
+    calendar: { bn: 'একাডেমিক ক্যালেন্ডার', en: 'Academic Calendar' },
+    admission: { bn: 'অনলাইন ভর্তি', en: 'Online Admission' },
     gallery: { bn: 'গ্যালারি', en: 'Gallery' },
     alumni: { bn: 'অ্যালামনাই', en: 'Alumni' },
     contact: { bn: 'যোগাযোগ', en: 'Contact' },
-    login: { bn: 'লগইন / পোর্টাল', en: 'Portal Login' },
-    studentLogin: { bn: 'শিক্ষার্থী লগইন', en: 'Student Login' },
-    teacherLogin: { bn: 'শিক্ষক লগইন', en: 'Teacher Login' },
-    parentLogin: { bn: 'অভিভাবক লগইন', en: 'Parent Login' },
-    adminLogin: { bn: 'অ্যাডমিন লগইন', en: 'Admin Login' },
+    login: { bn: 'লগইন', en: 'Login' },
+    studentLogin: { bn: 'শিক্ষার্থী পোর্টাল', en: 'Student Portal' },
+    teacherLogin: { bn: 'শিক্ষক পোর্টাল', en: 'Teacher Portal' },
+    parentLogin: { bn: 'অভিভাবক পোর্টাল', en: 'Parent Portal' },
+    adminLogin: { bn: 'অ্যাডমিন প্যানেল', en: 'Admin Panel' },
   },
   login: {
     studentTab: { bn: 'শিক্ষার্থী', en: 'Student' },
@@ -84,18 +103,15 @@ export const TRANSLATIONS = {
     adminTab: { bn: 'অ্যাডমিন', en: 'Admin' },
   },
   hero: {
-    tagline: {
-      bn: 'সুশিক্ষা ও নৈতিক মূল্যবোধের বাতিঘর — ১৯৫৮ থেকে আলোকিত প্রজন্ম গড়ার প্রত্যয়ে।',
-      en: 'A beacon of quality education & moral values — shaping bright generations since 1958.',
-    },
+    tagline: CAMPUS_TAGLINE,
     subtitle: {
-      bn: 'স্মার্ট শিক্ষা, অনলাইন পরীক্ষা, ডিজিটাল লাইব্রেরি ও আধুনিক ক্যাম্পাস ব্যবস্থাপনা।',
-      en: 'Smart classrooms, online examinations, digital library, and integrated campus management.',
+      bn: 'স্মার্ট শিক্ষা, অনলাইন পরীক্ষা, ডিজিটাল লাইব্রেরি, শিক্ষার্থী-অভিভাবক-শিক্ষক পোর্টাল ও প্রাক্তন শিক্ষার্থী নেটওয়ার্ক।',
+      en: 'Smart education, online assessments, digital library, unified portals, and alumni connectivity.',
     },
     admissionBtn: { bn: 'অনলাইন ভর্তি আবেদন', en: 'Online Admission' },
     exploreBtn: { bn: 'বিদ্যালয় পরিচিতি', en: 'Explore School' },
-    learnMore: { bn: 'বিদ্যালয় পরিচিতি', en: 'Learn More' },
-    portalBtn: { bn: 'স্টুডেন্ট ও টিচার পোর্টাল', en: 'Academic Portals' },
+    learnMore: { bn: 'বিদ্যালয় পরিচিতি', en: 'About School' },
+    portalBtn: { bn: 'পোর্টালসমূহ', en: 'Open Portals' },
   },
   ui: {
     latestNews: { bn: 'সর্বশেষ সংবাদ:', en: 'Latest:' },
@@ -216,6 +232,120 @@ export const INITIAL_NOTICES: Notice[] = [
       en: 'Regular classes will remain closed during the scheduled Eid-ul-Fitr holidays as per the academic calendar.',
     },
     pdfUrl: '#',
+    isPublic: true,
+  },
+];
+
+export const INITIAL_NEWS: NewsArticle[] = [
+  {
+    id: 'news-2026-1',
+    title: {
+      bn: 'আরবিএমবি ডিজিটাল ক্যাম্পাস স্মার্ট পোর্টাল ২০২৬ উদ্বোধন',
+      en: 'Launch of RBMB Digital Campus Smart Education Portal 2026',
+    },
+    summary: {
+      bn: 'শিক্ষার্থী, শিক্ষক ও অভিভাবকদের জন্য সমন্বিত ডিজিটাল লার্নিং, অনলাইন পরীক্ষা ও ফলাফল পোর্টাল চালু করা হয়েছে।',
+      en: 'Integrated student, teacher, and parent portals alongside online MCQ assessments and digital library resources are now live.',
+    },
+    content: {
+      bn: 'রাণীর বাজার মডেল উচ্চ বিদ্যালয়ের একাডেমিক কার্যক্রম আরও গতিশীল ও স্বচ্ছ করতে আরবিএমবি ডিজিটাল ক্যাম্পাস চালু করা হয়েছে। শিক্ষার্থীরা এখন থেকে ঘরে বসেই পাঠ্যবই, নোট, অনলাইন পরীক্ষা ও ফলাফল দেখতে পারবে।',
+      en: 'To modernize classroom administration and self-paced learning, Rani Bazar Model High School has rolled out RBMB Digital Campus. Learners can access textbooks, chapter notes, timed MCQ exams, and attendance updates from any device.',
+    },
+    category: 'Academic',
+    date: '2026-06-10',
+    imageUrl: computerLabImg,
+    author: 'Administration Office',
+    isPublic: true,
+  },
+  {
+    id: 'news-2026-2',
+    title: {
+      bn: 'উপজেলা পর্যায়ে বিজ্ঞান ও প্রযুক্তি মেলায় প্রথম স্থান অর্জন',
+      en: 'First Place Award at Upazila Science & Innovation Fair',
+    },
+    summary: {
+      bn: 'নবম ও দশম শ্রেণীর বিজ্ঞান দলের সৌরশক্তি চালিত সেচ প্রকল্প উপজেলা পর্যায়ে শ্রেষ্ঠ প্রকল্প হিসেবে নির্বাচিত হয়েছে।',
+      en: 'Our Class 9 & 10 science team earned first prize for their solar smart-irrigation prototype.',
+    },
+    content: {
+      bn: 'বিদ্যালয়ের আধুনিক বিজ্ঞান ল্যাবের তত্ত্বাবধানে নির্মিত সৌরশক্তি ও সেন্সরভিত্তিক প্রকল্পটি বিচারকদের প্রশংসা অর্জন করে প্রথম পুরস্কার লাভ করে।',
+      en: 'Built inside our modern Science Lab under faculty mentorship, the solar sensor-driven prototype secured top honors across competing schools.',
+    },
+    category: 'Achievement',
+    date: '2026-05-24',
+    imageUrl: scienceLabImg,
+    author: 'Science Club',
+    isPublic: true,
+  },
+  {
+    id: 'news-2026-3',
+    title: {
+      bn: 'বার্ষিক ক্রীড়া, সাংস্কৃতিক সপ্তাহ ও পুরস্কার বিতরণী সম্পন্ন',
+      en: 'Annual Athletics, Cultural Week & Prize Distribution Concludes',
+    },
+    summary: {
+      bn: '৬ষ্ঠ থেকে ১০ম শ্রেণীর শিক্ষার্থীদের অংশগ্রহণে উৎসবমুখর পরিবেশে বার্ষিক ক্রীড়া ও সাংস্কৃতিক অনুষ্ঠান উদযাপিত হয়।',
+      en: 'Students from Classes 6 to 10 celebrated three days of athletics, debate, and cultural performances.',
+    },
+    content: {
+      bn: 'বিদ্যালয় প্রাঙ্গণে অনুষ্ঠিত বার্ষিক ক্রীড়া ও সাংস্কৃতিক প্রতিযোগিতায় কৃতি শিক্ষার্থীদের মাঝে সনদ ও পুরস্কার প্রদান করা হয়।',
+      en: 'Award certificates and medals were presented to student winners across athletics, Bangla debate, and recitation competitions on campus.',
+    },
+    category: 'Campus',
+    date: '2026-04-28',
+    imageUrl: sportsEventImg,
+    author: 'Cultural Committee',
+    isPublic: true,
+  },
+];
+
+export const INITIAL_EVENTS: CampusEvent[] = [
+  {
+    id: 'evt-2026-1',
+    title: {
+      bn: 'অর্ধবার্ষিক অভিভাবক ও শিক্ষক মতবিনিময় সভা',
+      en: 'Half-Yearly Parent-Teacher Academic Review Meeting',
+    },
+    description: {
+      bn: 'সকল শ্রেণীর শিক্ষার্থীদের অর্ধবার্ষিক প্রস্তুতি ও উপস্থিতি অগ্রগতি নিয়ে অভিভাবকদের সাথে মতবিনিময়।',
+      en: 'Reviewing half-yearly exam readiness, attendance trends, and study support for Classes 6–10.',
+    },
+    date: '2026-06-28',
+    time: '10:30 AM',
+    location: { bn: 'বিদ্যালয় অডিটোরিয়াম', en: 'School Auditorium' },
+    category: 'Academic',
+    isPublic: true,
+  },
+  {
+    id: 'evt-2026-2',
+    title: {
+      bn: 'আন্তঃশ্রেণী বিজ্ঞান অলিম্পিয়াড ও কুইজ ফাইনাল',
+      en: 'Inter-Class Science Olympiad & Digital Quiz Final',
+    },
+    description: {
+      bn: '৬ষ্ঠ–১০ম শ্রেণীর বাছাইকৃত শিক্ষার্থীদের নিয়ে গণিত, বিজ্ঞান ও আইসিটি অলিম্পিয়াড।',
+      en: 'Finals in Mathematics, General Science, and ICT for qualifying students across all grades.',
+    },
+    date: '2026-07-08',
+    time: '11:00 AM',
+    location: { bn: 'ডিজিটাল ল্যাব ও হল রুম', en: 'Digital Lab & Main Hall' },
+    category: 'Science',
+    isPublic: true,
+  },
+  {
+    id: 'evt-2026-3',
+    title: {
+      bn: 'বর্ষাকালীন বৃক্ষরোপণ ও পরিচ্ছন্ন ক্যাম্পাস কর্মসূচি',
+      en: 'Monsoon Tree Plantation & Clean Campus Drive',
+    },
+    description: {
+      bn: 'স্কাউট দল ও শিক্ষার্থীদের উদ্যোগে বিদ্যালয় প্রাঙ্গণে ফলজ ও বনজ বৃক্ষরোপণ।',
+      en: 'Campus greening initiative led by RBMB Scouts and student volunteers.',
+    },
+    date: '2026-07-18',
+    time: '09:30 AM',
+    location: { bn: 'বিদ্যালয় প্রাঙ্গণ', en: 'Main Campus Grounds' },
+    category: 'Cultural',
     isPublic: true,
   },
 ];

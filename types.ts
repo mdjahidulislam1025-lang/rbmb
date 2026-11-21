@@ -10,6 +10,8 @@ export interface LocalizedString {
 
 export interface SchoolSettings {
   name: LocalizedString;
+  shortName?: string;
+  tagline?: LocalizedString;
   eiin: string;
   phone: string;
   email: string;
@@ -29,6 +31,29 @@ export interface Notice {
   category: 'General' | 'Admission' | 'Exam' | 'Holiday';
   description: LocalizedString;
   pdfUrl?: string;
+  isPublic?: boolean;
+}
+
+export interface NewsArticle {
+  id: string;
+  title: LocalizedString;
+  summary: LocalizedString;
+  content: LocalizedString;
+  category: 'Academic' | 'Achievement' | 'Campus' | 'Community';
+  date: string;
+  imageUrl?: string;
+  author?: string;
+  isPublic?: boolean;
+}
+
+export interface CampusEvent {
+  id: string;
+  title: LocalizedString;
+  description: LocalizedString;
+  date: string;
+  time: string;
+  location: LocalizedString;
+  category: 'Cultural' | 'Sports' | 'Science' | 'Academic';
   isPublic?: boolean;
 }
 

@@ -14,7 +14,7 @@ async function startServer() {
   app.use(express.json({ limit: '1mb' }));
 
   app.get('/api/health', (_req, res) => {
-    res.json({ status: 'ok', service: 'rbhs-portal' });
+    res.json({ status: 'ok', service: 'rbmb-digital-campus' });
   });
 
   // Expose public browser Google Maps API key if configured only in server env
@@ -40,8 +40,8 @@ async function startServer() {
         error: 'AI assistant key is not configured on the server.',
         fallback:
           lang === 'bn'
-            ? 'রাণীর বাজার মাধ্যমিক বিদ্যালয়ের ভর্তি, রুটিন, নোটিশ বা পোর্টাল সম্পর্কে জানতে সরাসরি +880 1711-000000 নম্বরে যোগাযোগ করুন অথবা আমাদের ওয়েবসাইটের নোটিশ বোর্ড ও স্টাডি হাব দেখুন।'
-            : 'For assistance with admissions, routines, notices, or portal accounts, please call +880 1711-000000 or visit our Notice Board & Digital Library.',
+            ? 'RBMB Digital Campus (রাণীর বাজার মডেল উচ্চ বিদ্যালয়)-এর ভর্তি, রুটিন, নোটিশ বা পোর্টাল সম্পর্কে জানতে সরাসরি +880 1711-000000 নম্বরে যোগাযোগ করুন অথবা আমাদের নোটিশ বোর্ড ও ডিজিটাল লাইব্রেরি দেখুন।'
+            : 'For assistance with RBMB Digital Campus admissions, routines, notices, or portal accounts, please call +880 1711-000000 or visit our Notice Board & Digital Library.',
       });
       return;
     }
@@ -56,7 +56,7 @@ async function startServer() {
         },
       });
 
-      const systemInstruction = `You are the official School Helpdesk & Study Assistant for Ranir Bazar Secondary High School (রাণীর বাজার মাধ্যমিক বিদ্যালয়), established 1958, EIIN 105842, Cumilla, Bangladesh.
+      const systemInstruction = `You are the official School Helpdesk & Study Assistant for RBMB Digital Campus — Rani Bazar Model High School (রাণীর বাজার মডেল উচ্চ বিদ্যালয়), established 1958, EIIN 105842, Rani Bazar, Chauddagram, Cumilla-3550, Bangladesh.
 Answer clearly, politely, and concisely in ${lang === 'bn' ? 'Bangla (বাংলা)' : 'English'}.
 School Portal Context:
 ${contextSummary}
@@ -94,7 +94,7 @@ Only answer questions relevant to school info, admissions, class routines, exams
   }
 
   app.listen(PORT, '0.0.0.0', () => {
-    console.log(`RBHS Full-Stack Portal running on http://0.0.0.0:${PORT}`);
+    console.log(`RBMB Digital Campus running on http://0.0.0.0:${PORT}`);
   });
 }
 

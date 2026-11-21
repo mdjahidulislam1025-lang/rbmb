@@ -33,10 +33,14 @@ import {
   Calendar,
 } from 'lucide-react';
 import {
+  CAMPUS_BRAND,
   SCHOOL_NAME,
+  CAMPUS_TAGLINE,
   INITIAL_SETTINGS,
   INITIAL_EBOOKS,
   INITIAL_NOTICES,
+  INITIAL_NEWS,
+  INITIAL_EVENTS,
   TEACHERS,
   INITIAL_GALLERY,
   HOLIDAYS_2026,
@@ -54,6 +58,8 @@ import {
   UserRole as BaseUserRole,
   SchoolSettings,
   Notice,
+  NewsArticle,
+  CampusEvent,
   Teacher,
   GalleryItem,
   Holiday,
@@ -201,6 +207,14 @@ interface AppContextType {
   addNotice: (notice: Notice) => void;
   updateNotice: (notice: Notice) => void;
   deleteNotice: (id: string) => void;
+  newsList: NewsArticle[];
+  addNews: (news: NewsArticle) => void;
+  updateNews: (news: NewsArticle) => void;
+  deleteNews: (id: string) => void;
+  eventsList: CampusEvent[];
+  addEvent: (evt: CampusEvent) => void;
+  updateEvent: (evt: CampusEvent) => void;
+  deleteEvent: (id: string) => void;
   teachers: Teacher[];
   addTeacher: (teacher: Teacher) => void;
   updateTeacher: (teacher: Teacher) => void;
@@ -309,7 +323,7 @@ const stripPlaintextPassword = (u: AuthUser): AuthUser => {
 
 // Global Quick Search Modal rendered inside Router context
 const GlobalSearchModal: React.FC<{ open: boolean; onClose: () => void }> = ({ open, onClose }) => {
-  const { lang, t, notices, ebooks, onlineExams, teachers, holidays } = useApp();
+  const { lang, t, notices, newsList, eventsList, ebooks, onlineExams, teachers, holidays } = useApp();
   const navigate = useNavigate();
   const [queryText, setQueryText] = useState('');
 
@@ -320,18 +334,21 @@ const GlobalSearchModal: React.FC<{ open: boolean; onClose: () => void }> = ({ o
   const results = useMemo(() => {
     const q = queryText.trim().toLowerCase();
     const quickPages = [
-      { label: lang === 'bn' ? 'অনলাইন পরীক্ষা (MCQ)' : 'Online Examination', path: '/exams', badge: 'Portal' },
+      { label: lang === 'bn' ? 'অনলাইন পরীক্ষা (MCQ)' : 'Online Examination', path: '/exams', badge: 'Learning' },
       { label: lang === 'bn' ? 'ডিজিটাল লাইব্রেরি' : 'Digital Library', path: '/ebooks', badge: 'Library' },
+      { label: lang === 'bn' ? 'নোটিশ, সংবাদ ও ইভেন্ট' : 'Notice, News & Events', path: '/notices', badge: 'Updates' },
       { label: lang === 'bn' ? 'অনলাইন ভর্তি আবেদন ও স্ট্যাটাস' : 'Online Admission & Status', path: '/admission', badge: 'Admission' },
-      { label: lang === 'bn' ? 'ক্লাস ও পরীক্ষার রুটিন' : 'Class & Exam Routine', path: '/routine', badge: 'Routine' },
+      { label: lang === 'bn' ? 'ক্লাস ও পরীক্ষার রুটিন' : 'Class & Exam Routine', path: '/routine', badge: 'Academics' },
       { label: lang === 'bn' ? 'অ্যালামনাই নেটওয়ার্ক' : 'Alumni Network', path: '/alumni', badge: 'Community' },
-      { label: lang === 'bn' ? 'অভিভাবক / শিক্ষার্থী / শিক্ষক লগইন' : 'Student, Teacher & Parent Portal', path: '/login/student', badge: 'Login' },
+      { label: lang === 'bn' ? 'শিক্ষার্থী / শিক্ষক / অভিভাবক পোর্টাল' : 'Student, Teacher & Parent Portals', path: '/login/student', badge: 'Portals' },
     ];
 
     if (!q) {
       return {
         pages: quickPages,
         notices: notices.slice(0, 3),
+        news: newsList.slice(0, 2),
+        events: eventsList.slice(0, 2),
         ebooks: ebooks.slice(0, 3),
         exams: onlineExams.slice(0, 2),
         teachers: [],
@@ -342,12 +359,14 @@ const GlobalSearchModal: React.FC<{ open: boolean; onClose: () => void }> = ({ o
     return {
       pages: quickPages.filter((p) => p.label.toLowerCase().includes(q) || p.badge.toLowerCase().includes(q)),
       notices: notices.filter((n) => t(n.title).toLowerCase().includes(q) || t(n.description).toLowerCase().includes(q)).slice(0, 4),
+      news: newsList.filter((item) => t(item.title).toLowerCase().includes(q) || t(item.summary).toLowerCase().includes(q)).slice(0, 3),
+      events: eventsList.filter((ev) => t(ev.title).toLowerCase().includes(q) || t(ev.description).toLowerCase().includes(q)).slice(0, 3),
       ebooks: ebooks.filter((b) => t(b.title).toLowerCase().includes(q) || b.subject.toLowerCase().includes(q) || b.classId.includes(q)).slice(0, 4),
       exams: onlineExams.filter((ex) => t(ex.title).toLowerCase().includes(q) || ex.subject.toLowerCase().includes(q)).slice(0, 4),
       teachers: teachers.filter((tc) => t(tc.name).toLowerCase().includes(q) || t(tc.subject).toLowerCase().includes(q)).slice(0, 4),
       holidays: holidays.filter((h) => t(h.title).toLowerCase().includes(q)).slice(0, 3),
     };
-  }, [queryText, lang, t, notices, ebooks, onlineExams, teachers, holidays]);
+  }, [queryText, lang, t, notices, newsList, eventsList, ebooks, onlineExams, teachers, holidays]);
 
   if (!open) return null;
 
@@ -400,6 +419,46 @@ const GlobalSearchModal: React.FC<{ open: boolean; onClose: () => void }> = ({ o
                       {p.label}
                     </span>
                     <ArrowRight className="w-3.5 h-3.5 text-slate-400 group-hover:text-emerald-600" />
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {results.news.length > 0 && (
+            <div className="space-y-2">
+              <p className="text-[11px] font-bold uppercase tracking-wider text-slate-400">
+                {lang === 'bn' ? 'ক্যাম্পাস সংবাদ' : 'Campus News'}
+              </p>
+              <div className="space-y-1.5">
+                {results.news.map((item) => (
+                  <button
+                    key={item.id}
+                    onClick={() => go('/news')}
+                    className="w-full flex items-center justify-between px-3.5 py-2.5 rounded-xl hover:bg-slate-50 dark:hover:bg-slate-800 text-left"
+                  >
+                    <span className="text-xs font-semibold text-slate-800 dark:text-slate-100 truncate pr-3">{t(item.title)}</span>
+                    <span className="text-[11px] text-slate-400 shrink-0">{item.date}</span>
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {results.events.length > 0 && (
+            <div className="space-y-2">
+              <p className="text-[11px] font-bold uppercase tracking-wider text-slate-400">
+                {lang === 'bn' ? 'আসন্ন ইভেন্ট' : 'Upcoming Events'}
+              </p>
+              <div className="space-y-1.5">
+                {results.events.map((ev) => (
+                  <button
+                    key={ev.id}
+                    onClick={() => go('/events')}
+                    className="w-full flex items-center justify-between px-3.5 py-2.5 rounded-xl hover:bg-slate-50 dark:hover:bg-slate-800 text-left"
+                  >
+                    <span className="text-xs font-semibold text-slate-800 dark:text-slate-100 truncate pr-3">{t(ev.title)}</span>
+                    <span className="text-[11px] text-slate-400 shrink-0">{ev.date}</span>
                   </button>
                 ))}
               </div>
@@ -534,6 +593,8 @@ const App: React.FC = () => {
   const chatEndRef = useRef<HTMLDivElement>(null);
 
   const [notices, setNotices] = useState<Notice[]>(() => safeLocalGet('db_notices', INITIAL_NOTICES));
+  const [newsList, setNewsList] = useState<NewsArticle[]>(() => safeLocalGet('db_news', INITIAL_NEWS));
+  const [eventsList, setEventsList] = useState<CampusEvent[]>(() => safeLocalGet('db_events', INITIAL_EVENTS));
   const [teachers, setTeachers] = useState<Teacher[]>(() => safeLocalGet('db_teachers', TEACHERS));
   const [ebooks, setEbooks] = useState<EBook[]>(() => safeLocalGet('db_ebooks', INITIAL_EBOOKS));
   const [gallery, setGallery] = useState<GalleryItem[]>(() => safeLocalGet('db_gallery', INITIAL_GALLERY));
@@ -655,6 +716,8 @@ const App: React.FC = () => {
   // Keep latest state ref for initial cloud seeding when admin connects
   const latestStateRef = useRef({
     notices,
+    newsList,
+    eventsList,
     teachers,
     ebooks,
     gallery,
@@ -668,6 +731,8 @@ const App: React.FC = () => {
   useEffect(() => {
     latestStateRef.current = {
       notices,
+      newsList,
+      eventsList,
       teachers,
       ebooks,
       gallery,
@@ -678,7 +743,7 @@ const App: React.FC = () => {
       subjects,
       alumni,
     };
-  }, [notices, teachers, ebooks, gallery, holidays, settings, onlineExams, examRoutines, subjects, alumni]);
+  }, [notices, newsList, eventsList, teachers, ebooks, gallery, holidays, settings, onlineExams, examRoutines, subjects, alumni]);
 
   useEffect(() => {
     const savedUser = safeLocalGet<AuthUser | null>('school_user', null);
@@ -811,6 +876,11 @@ const App: React.FC = () => {
 
         batch.set(settingsRef, {
           name: { bn: (cur.settings.name?.bn || SCHOOL_NAME.bn).slice(0, 200), en: (cur.settings.name?.en || SCHOOL_NAME.en).slice(0, 200) },
+          shortName: (cur.settings.shortName || INITIAL_SETTINGS.shortName || 'RBMB Digital Campus').slice(0, 100),
+          tagline: {
+            bn: (cur.settings.tagline?.bn || CAMPUS_TAGLINE.bn).slice(0, 300),
+            en: (cur.settings.tagline?.en || CAMPUS_TAGLINE.en).slice(0, 300),
+          },
           eiin: (cur.settings.eiin || INITIAL_SETTINGS.eiin).slice(0, 32),
           phone: (cur.settings.phone || INITIAL_SETTINGS.phone).slice(0, 40),
           email: (cur.settings.email && cur.settings.email.length >= 3 ? cur.settings.email : INITIAL_SETTINGS.email).slice(0, 150),
@@ -833,6 +903,39 @@ const App: React.FC = () => {
             category: n.category || 'General',
             description: { bn: (n.description?.bn || '').slice(0, 5000), en: (n.description?.en || '').slice(0, 5000) },
             ...(n.pdfUrl ? { pdfUrl: n.pdfUrl.slice(0, 2000) } : {}),
+            isPublic: true,
+            createdAt: serverTimestamp(),
+            updatedAt: serverTimestamp(),
+          });
+        });
+
+        cur.newsList.forEach((item) => {
+          const id = sanitizeFirestoreId(item.id);
+          batch.set(doc(db, 'news', id), {
+            id,
+            title: { bn: (item.title?.bn || 'News').slice(0, 300), en: (item.title?.en || 'News').slice(0, 300) },
+            summary: { bn: (item.summary?.bn || '').slice(0, 600), en: (item.summary?.en || '').slice(0, 600) },
+            content: { bn: (item.content?.bn || '').slice(0, 5000), en: (item.content?.en || '').slice(0, 5000) },
+            category: item.category || 'Academic',
+            date: (item.date && item.date.length >= 4 ? item.date : '2026-01-01').slice(0, 32),
+            ...(item.imageUrl ? { imageUrl: item.imageUrl.slice(0, 600000) } : {}),
+            ...(item.author ? { author: item.author.slice(0, 150) } : {}),
+            isPublic: true,
+            createdAt: serverTimestamp(),
+            updatedAt: serverTimestamp(),
+          });
+        });
+
+        cur.eventsList.forEach((ev) => {
+          const id = sanitizeFirestoreId(ev.id);
+          batch.set(doc(db, 'events', id), {
+            id,
+            title: { bn: (ev.title?.bn || 'Event').slice(0, 300), en: (ev.title?.en || 'Event').slice(0, 300) },
+            description: { bn: (ev.description?.bn || '').slice(0, 3000), en: (ev.description?.en || '').slice(0, 3000) },
+            date: (ev.date && ev.date.length >= 4 ? ev.date : '2026-01-01').slice(0, 32),
+            time: (ev.time || '10:00 AM').slice(0, 64),
+            location: { bn: (ev.location?.bn || 'Campus').slice(0, 300), en: (ev.location?.en || 'Campus').slice(0, 300) },
+            category: ev.category || 'Academic',
             isPublic: true,
             createdAt: serverTimestamp(),
             updatedAt: serverTimestamp(),
@@ -990,6 +1093,8 @@ const App: React.FC = () => {
           const d = snap.data();
           const nextSettings: SchoolSettings = {
             name: d.name || INITIAL_SETTINGS.name,
+            shortName: d.shortName || INITIAL_SETTINGS.shortName,
+            tagline: d.tagline || INITIAL_SETTINGS.tagline,
             eiin: d.eiin || INITIAL_SETTINGS.eiin,
             phone: d.phone || INITIAL_SETTINGS.phone,
             email: d.email || INITIAL_SETTINGS.email,
@@ -1019,6 +1124,32 @@ const App: React.FC = () => {
         }
       },
       (err) => safeListenerError(err, OperationType.LIST, 'notices')
+    );
+
+    const unsubNews = onSnapshot(
+      query(collection(db, 'news'), where('isPublic', '==', true)),
+      (snap) => {
+        if (!snap.empty) {
+          const items = snap.docs.map((d) => d.data() as NewsArticle);
+          items.sort((a, b) => (b.date || '').localeCompare(a.date || ''));
+          setNewsList(items);
+          safeLocalSet('db_news', items);
+        }
+      },
+      (err) => safeListenerError(err, OperationType.LIST, 'news')
+    );
+
+    const unsubEvents = onSnapshot(
+      query(collection(db, 'events'), where('isPublic', '==', true)),
+      (snap) => {
+        if (!snap.empty) {
+          const items = snap.docs.map((d) => d.data() as CampusEvent);
+          items.sort((a, b) => (a.date || '').localeCompare(b.date || ''));
+          setEventsList(items);
+          safeLocalSet('db_events', items);
+        }
+      },
+      (err) => safeListenerError(err, OperationType.LIST, 'events')
     );
 
     const unsubTeachers = onSnapshot(
@@ -1123,6 +1254,8 @@ const App: React.FC = () => {
     return () => {
       unsubSettings();
       unsubNotices();
+      unsubNews();
+      unsubEvents();
       unsubTeachers();
       unsubEbooks();
       unsubGallery();
@@ -1621,6 +1754,120 @@ const App: React.FC = () => {
     syncDocDelete('notices', sanitizeFirestoreId(id));
   };
 
+  // News Articles (Teacher + Admin can publish/edit)
+  const addNews = (item: NewsArticle) => {
+    const id = sanitizeFirestoreId(item.id);
+    const clean = { ...item, id, isPublic: true };
+    const updated = [clean, ...newsList];
+    setNewsList(updated);
+    persistLocal('db_news', updated);
+    syncDocUpsert(
+      'news',
+      id,
+      {
+        id,
+        title: { bn: clean.title.bn.slice(0, 300), en: clean.title.en.slice(0, 300) },
+        summary: { bn: clean.summary.bn.slice(0, 600), en: clean.summary.en.slice(0, 600) },
+        content: { bn: clean.content.bn.slice(0, 5000), en: clean.content.en.slice(0, 5000) },
+        category: clean.category,
+        date: clean.date.slice(0, 32),
+        ...(clean.imageUrl ? { imageUrl: clean.imageUrl.slice(0, 600000) } : {}),
+        ...(clean.author ? { author: clean.author.slice(0, 150) } : {}),
+        isPublic: true,
+      },
+      false,
+      true
+    );
+  };
+
+  const updateNews = (item: NewsArticle) => {
+    const id = sanitizeFirestoreId(item.id);
+    const clean = { ...item, id, isPublic: true };
+    const updated = newsList.map((i) => (i.id === item.id ? clean : i));
+    setNewsList(updated);
+    persistLocal('db_news', updated);
+    syncDocUpsert(
+      'news',
+      id,
+      {
+        id,
+        title: { bn: clean.title.bn.slice(0, 300), en: clean.title.en.slice(0, 300) },
+        summary: { bn: clean.summary.bn.slice(0, 600), en: clean.summary.en.slice(0, 600) },
+        content: { bn: clean.content.bn.slice(0, 5000), en: clean.content.en.slice(0, 5000) },
+        category: clean.category,
+        date: clean.date.slice(0, 32),
+        ...(clean.imageUrl ? { imageUrl: clean.imageUrl.slice(0, 600000) } : {}),
+        ...(clean.author ? { author: clean.author.slice(0, 150) } : {}),
+        isPublic: true,
+      },
+      true,
+      true
+    );
+  };
+
+  const deleteNews = (id: string) => {
+    const updated = newsList.filter((i) => i.id !== id);
+    setNewsList(updated);
+    persistLocal('db_news', updated);
+    syncDocDelete('news', sanitizeFirestoreId(id));
+  };
+
+  // Campus Events (Teacher + Admin can publish/edit)
+  const addEvent = (ev: CampusEvent) => {
+    const id = sanitizeFirestoreId(ev.id);
+    const clean = { ...ev, id, isPublic: true };
+    const updated = [clean, ...eventsList];
+    setEventsList(updated);
+    persistLocal('db_events', updated);
+    syncDocUpsert(
+      'events',
+      id,
+      {
+        id,
+        title: { bn: clean.title.bn.slice(0, 300), en: clean.title.en.slice(0, 300) },
+        description: { bn: clean.description.bn.slice(0, 3000), en: clean.description.en.slice(0, 3000) },
+        date: clean.date.slice(0, 32),
+        time: clean.time.slice(0, 64),
+        location: { bn: clean.location.bn.slice(0, 300), en: clean.location.en.slice(0, 300) },
+        category: clean.category,
+        isPublic: true,
+      },
+      false,
+      true
+    );
+  };
+
+  const updateEvent = (ev: CampusEvent) => {
+    const id = sanitizeFirestoreId(ev.id);
+    const clean = { ...ev, id, isPublic: true };
+    const updated = eventsList.map((i) => (i.id === ev.id ? clean : i));
+    setEventsList(updated);
+    persistLocal('db_events', updated);
+    syncDocUpsert(
+      'events',
+      id,
+      {
+        id,
+        title: { bn: clean.title.bn.slice(0, 300), en: clean.title.en.slice(0, 300) },
+        description: { bn: clean.description.bn.slice(0, 3000), en: clean.description.en.slice(0, 3000) },
+        date: clean.date.slice(0, 32),
+        time: clean.time.slice(0, 64),
+        location: { bn: clean.location.bn.slice(0, 300), en: clean.location.en.slice(0, 300) },
+        category: clean.category,
+        isPublic: true,
+      },
+      true,
+      true
+    );
+  };
+
+  const deleteEvent = (id: string) => {
+    const updated = eventsList.filter((i) => i.id !== id);
+    setEventsList(updated);
+    persistLocal('db_events', updated);
+    syncDocDelete('events', sanitizeFirestoreId(id));
+  };
+
   // Teachers
   const addTeacher = (teach: Teacher) => {
     const id = sanitizeFirestoreId(teach.id);
@@ -1839,6 +2086,8 @@ const App: React.FC = () => {
       setDbStatus('syncing');
       setDoc(doc(db, 'settings', 'main'), {
         name: { bn: (newSettings.name?.bn || SCHOOL_NAME.bn).slice(0, 200), en: (newSettings.name?.en || SCHOOL_NAME.en).slice(0, 200) },
+        ...(newSettings.shortName ? { shortName: newSettings.shortName.slice(0, 100) } : {}),
+        ...(newSettings.tagline ? { tagline: { bn: newSettings.tagline.bn.slice(0, 300), en: newSettings.tagline.en.slice(0, 300) } } : {}),
         eiin: (newSettings.eiin || INITIAL_SETTINGS.eiin).slice(0, 32),
         phone: (newSettings.phone || INITIAL_SETTINGS.phone).slice(0, 40),
         email: (newSettings.email && newSettings.email.length >= 3 ? newSettings.email : INITIAL_SETTINGS.email).slice(0, 150),
@@ -2671,6 +2920,8 @@ const App: React.FC = () => {
     const data = {
       settings,
       notices,
+      newsList,
+      eventsList,
       teachers,
       ebooks,
       gallery,
@@ -2714,6 +2965,14 @@ const App: React.FC = () => {
         setNotices(data.notices);
         safeLocalSet('db_notices', data.notices);
         if (isCloudAdmin) data.notices.forEach((n: Notice) => updateNotice(n));
+      }
+      if (data.newsList) {
+        setNewsList(data.newsList);
+        safeLocalSet('db_news', data.newsList);
+      }
+      if (data.eventsList) {
+        setEventsList(data.eventsList);
+        safeLocalSet('db_events', data.eventsList);
       }
       if (data.teachers) {
         setTeachers(data.teachers);
@@ -2896,6 +3155,14 @@ Available Features: Online Admission (/admission), Online MCQ Exams (/exams), Di
         addNotice,
         updateNotice,
         deleteNotice,
+        newsList,
+        addNews,
+        updateNews,
+        deleteNews,
+        eventsList,
+        addEvent,
+        updateEvent,
+        deleteEvent,
         teachers,
         addTeacher,
         updateTeacher,
@@ -3013,6 +3280,8 @@ Available Features: Online Admission (/admission), Online MCQ Exams (/exams), Di
               <Route path="/" element={<Home />} />
               <Route path="/about" element={<About />} />
               <Route path="/notices" element={<NoticeBoard />} />
+              <Route path="/news" element={<NoticeBoard initialTab="news" />} />
+              <Route path="/events" element={<NoticeBoard initialTab="events" />} />
               <Route path="/teachers" element={<Teachers />} />
               <Route path="/admission" element={<Admission />} />
               <Route path="/holidays" element={<Holidays />} />
@@ -3024,6 +3293,7 @@ Available Features: Online Admission (/admission), Online MCQ Exams (/exams), Di
               <Route path="/gallery" element={<Gallery />} />
               <Route path="/contact" element={<Contact />} />
               <Route path="/calendar" element={<AcademicCalendar />} />
+              <Route path="/portals" element={<Login />} />
               <Route path="/login/*" element={<Login />} />
               <Route path="/register" element={<Register />} />
               <Route path="/dashboard" element={<Login />} />
@@ -3033,12 +3303,24 @@ Available Features: Online Admission (/admission), Online MCQ Exams (/exams), Di
 
           <footer className="bg-white dark:bg-slate-900 border-t border-slate-200 dark:border-slate-800 py-12 px-4 text-center no-print">
             <div className="max-w-5xl mx-auto">
-              <h3 className="text-xl font-black text-emerald-900 dark:text-emerald-400 mb-2">{t(settings.name)}</h3>
-              <p className="text-xs text-slate-500 dark:text-slate-400 mb-6">
-                {t(settings.location)} • EIIN: {settings.eiin} • {settings.phone}
+              <p className="text-[11px] font-bold uppercase tracking-widest text-emerald-700 dark:text-emerald-400 mb-1">
+                {t(CAMPUS_BRAND)}
+              </p>
+              <h3 className="text-xl font-black text-slate-900 dark:text-white mb-1">{t(settings.name)}</h3>
+              <p className="text-xs font-medium text-slate-500 dark:text-slate-400 mb-2">
+                {t(settings.tagline || CAMPUS_TAGLINE)}
+              </p>
+              <p className="text-xs text-slate-500 dark:text-slate-400 mb-6 tabular-nums">
+                {t(settings.location)} · EIIN: {settings.eiin} · {settings.phone}
               </p>
 
               <div className="flex flex-wrap justify-center gap-x-6 gap-y-2 text-xs font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400 mb-6">
+                <Link to="/about" className="hover:text-emerald-700 dark:hover:text-emerald-400">
+                  {lang === 'bn' ? 'পরিচিতি' : 'About'}
+                </Link>
+                <Link to="/notices" className="hover:text-emerald-700 dark:hover:text-emerald-400">
+                  {lang === 'bn' ? 'নোটিশ ও সংবাদ' : 'Notice & News'}
+                </Link>
                 <Link to="/exams" className="hover:text-emerald-700 dark:hover:text-emerald-400">
                   {lang === 'bn' ? 'অনলাইন পরীক্ষা' : 'Online Exam'}
                 </Link>
@@ -3055,7 +3337,7 @@ Available Features: Online Admission (/admission), Online MCQ Exams (/exams), Di
                   {lang === 'bn' ? 'অভিভাবক পোর্টাল' : 'Parent Portal'}
                 </Link>
                 <Link to="/login/admin" className="hover:text-emerald-700 dark:hover:text-emerald-400">
-                  {lang === 'bn' ? 'অ্যাডমিন লগইন' : 'Admin Login'}
+                  {lang === 'bn' ? 'অ্যাডমিন প্যানেল' : 'Admin Panel'}
                 </Link>
                 <Link to="/contact" className="hover:text-emerald-700 dark:hover:text-emerald-400">
                   {lang === 'bn' ? 'যোগাযোগ' : 'Contact'}
@@ -3063,7 +3345,7 @@ Available Features: Online Admission (/admission), Online MCQ Exams (/exams), Di
               </div>
 
               <p className="text-xs text-slate-400 dark:text-slate-500 font-semibold mb-4">
-                © 2026 {t(settings.name)}। {lang === 'bn' ? 'সর্বস্বত্ব সংরক্ষিত।' : 'All rights reserved.'}
+                © 2026 {t(CAMPUS_BRAND)} · {t(settings.name)}। {lang === 'bn' ? 'সর্বস্বত্ব সংরক্ষিত।' : 'All rights reserved.'}
               </p>
 
               <div className="inline-block border-t border-slate-100 dark:border-slate-800 pt-4 px-6">

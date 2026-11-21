@@ -22,8 +22,11 @@ import {
   Sun,
   Moon,
   Users,
+  BookOpen,
+  Trophy,
+  ClipboardCheck,
 } from 'lucide-react';
-import { SCHOOL_NAME, EIIN, TRANSLATIONS } from '../constants';
+import { CAMPUS_BRAND, TRANSLATIONS } from '../constants';
 import { useApp } from '../App';
 import { PWAInstallButton } from './PWAInstallButton';
 import { compressImageFile } from '../utils/imageUtils';
@@ -34,7 +37,7 @@ const { Link, useLocation, useNavigate } = RouterDom;
 const Navbar: React.FC = () => {
   const [isOpen, setIsOpen] = useState(false);
   const [isLoginOpen, setIsLoginOpen] = useState(false);
-  const [openDropdown, setOpenDropdown] = useState<'academic' | 'community' | null>(null);
+  const [openDropdown, setOpenDropdown] = useState<'academics' | 'learning' | 'portals' | null>(null);
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
   const [showSuccess, setShowSuccess] = useState(false);
 
@@ -99,27 +102,26 @@ const Navbar: React.FC = () => {
 
   const isActive = (path: string) => location.pathname === path;
 
-  const primaryLinks = [
-    { name: t(TRANSLATIONS.nav.home), path: '/' },
-    { name: t(TRANSLATIONS.nav.notices), path: '/notices' },
-    { name: t(TRANSLATIONS.nav.exams), path: '/exams' },
-    { name: t(TRANSLATIONS.nav.ebooks), path: '/ebooks' },
-    { name: t(TRANSLATIONS.nav.admission), path: '/admission' },
-  ];
-
   const academicLinks = [
-    { name: t(TRANSLATIONS.nav.about), path: '/about' },
     { name: t(TRANSLATIONS.nav.teachers), path: '/teachers' },
     { name: t(TRANSLATIONS.nav.routine), path: '/routine' },
     { name: t(TRANSLATIONS.nav.syllabus), path: '/syllabus' },
-    { name: t(TRANSLATIONS.nav.holidays), path: '/holidays' },
     { name: t(TRANSLATIONS.nav.calendar), path: '/calendar' },
+    { name: t(TRANSLATIONS.nav.holidays), path: '/holidays' },
   ];
 
-  const communityLinks = [
-    { name: t(TRANSLATIONS.nav.gallery), path: '/gallery' },
+  const learningLinks = [
+    { name: t(TRANSLATIONS.nav.ebooks), path: '/ebooks' },
+    { name: t(TRANSLATIONS.nav.exams), path: '/exams' },
+    { name: t(TRANSLATIONS.nav.admission), path: '/admission' },
+  ];
+
+  const portalLinks = [
+    { name: t(TRANSLATIONS.nav.studentLogin), path: '/login/student' },
+    { name: t(TRANSLATIONS.nav.parentLogin), path: '/login/parent' },
+    { name: t(TRANSLATIONS.nav.teacherLogin), path: '/login/teacher' },
+    { name: t(TRANSLATIONS.nav.adminLogin), path: '/login/admin' },
     { name: t(TRANSLATIONS.nav.alumni), path: '/alumni' },
-    { name: t(TRANSLATIONS.nav.contact), path: '/contact' },
   ];
 
   const handleLogout = () => {
@@ -183,73 +185,66 @@ const Navbar: React.FC = () => {
     return null;
   };
 
+  const navLinkClass = (active: boolean) =>
+    `px-2.5 py-2 rounded-lg text-xs font-bold whitespace-nowrap shrink-0 transition-colors ${
+      active
+        ? 'text-emerald-800 dark:text-emerald-300 bg-emerald-50 dark:bg-emerald-950/70'
+        : 'text-slate-600 dark:text-slate-300 hover:text-emerald-700 dark:hover:text-emerald-300 hover:bg-slate-100 dark:hover:bg-slate-800'
+    }`;
+
   return (
-    <nav className="bg-white/95 dark:bg-slate-900/95 backdrop-blur-md shadow-sm sticky top-0 z-50 border-b border-slate-200 dark:border-slate-800 no-print">
+    <nav className="bg-white/95 dark:bg-slate-900/95 backdrop-blur-md sticky top-0 z-50 border-b border-slate-200 dark:border-slate-800 no-print">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-        <div className="flex justify-between items-center h-18 py-3 gap-3">
-          {/* Left: Brand */}
-          <div className="flex items-center min-w-0">
+        <div className="flex justify-between items-center h-16 gap-3">
+          {/* Left: Clean Brand Wordmark */}
+          <div className="flex items-center min-w-0 shrink-0">
             {!isHome && (
               <button
                 onClick={handleBack}
-                className="p-2.5 mr-2.5 bg-slate-100 dark:bg-slate-800 text-emerald-700 dark:text-emerald-400 rounded-xl hover:bg-emerald-700 hover:text-white transition-all active:scale-95"
+                className="p-2 mr-2 bg-slate-100 dark:bg-slate-800 text-emerald-700 dark:text-emerald-400 rounded-lg hover:bg-emerald-700 hover:text-white transition-colors"
                 title={lang === 'bn' ? 'ফিরে যান' : 'Go Back'}
+                aria-label="Go back"
               >
                 <ArrowLeft className="w-4 h-4" />
               </button>
             )}
             <Link to="/" className="flex items-center gap-2.5 min-w-0">
-              <div className="bg-emerald-700 p-2 rounded-xl shadow-md shadow-emerald-700/20 shrink-0">
-                <GraduationCap className="text-white w-6 h-6" />
+              <div className="bg-emerald-700 p-2 rounded-lg text-white shrink-0">
+                <GraduationCap className="w-5 h-5" />
               </div>
-              <div className="hidden sm:block min-w-0">
-                <span className="block text-sm md:text-base font-extrabold text-emerald-950 dark:text-white leading-tight truncate max-w-[230px]">
-                  {t(settings.name || SCHOOL_NAME)}
-                </span>
-                <span className="block text-[10px] text-slate-400 font-bold tracking-widest uppercase">
-                  EIIN: {settings.eiin || EIIN} • EST. 1958
-                </span>
-              </div>
+              <span className="text-sm sm:text-base font-extrabold text-slate-900 dark:text-white tracking-tight whitespace-nowrap">
+                {settings.shortName || t(CAMPUS_BRAND)}
+              </span>
             </Link>
           </div>
 
-          {/* Center: Clean 5-7 item navigation */}
-          <div className="hidden xl:flex items-center gap-1" ref={navMenuRef}>
-            {primaryLinks.map((link) => (
-              <Link
-                key={link.path}
-                to={link.path}
-                className={`px-3 py-2 rounded-xl text-xs font-bold whitespace-nowrap transition-colors ${
-                  isActive(link.path)
-                    ? 'text-emerald-700 dark:text-emerald-300 bg-emerald-50 dark:bg-emerald-950/60'
-                    : 'text-slate-600 dark:text-slate-300 hover:text-emerald-700 dark:hover:text-emerald-300 hover:bg-slate-100 dark:hover:bg-slate-800'
-                }`}
-              >
-                {link.name}
-              </Link>
-            ))}
+          {/* Center: Single-Line 8-Section Desktop Navigation */}
+          <div className="hidden xl:flex items-center gap-0.5" ref={navMenuRef}>
+            <Link to="/" className={navLinkClass(isActive('/'))}>
+              {t(TRANSLATIONS.nav.home)}
+            </Link>
 
-            {/* Academic Dropdown */}
+            <Link to="/about" className={navLinkClass(isActive('/about'))}>
+              {t(TRANSLATIONS.nav.aboutSchool)}
+            </Link>
+
+            {/* Academics Dropdown */}
             <div className="relative">
               <button
-                onClick={() => setOpenDropdown(openDropdown === 'academic' ? null : 'academic')}
-                className={`flex items-center gap-1 px-3 py-2 rounded-xl text-xs font-bold whitespace-nowrap transition-colors ${
-                  academicLinks.some((l) => isActive(l.path))
-                    ? 'text-emerald-700 dark:text-emerald-300 bg-emerald-50 dark:bg-emerald-950/60'
-                    : 'text-slate-600 dark:text-slate-300 hover:text-emerald-700 dark:hover:text-emerald-300 hover:bg-slate-100 dark:hover:bg-slate-800'
-                }`}
+                onClick={() => setOpenDropdown(openDropdown === 'academics' ? null : 'academics')}
+                className={`flex items-center gap-1 ${navLinkClass(academicLinks.some((l) => isActive(l.path)))}`}
               >
-                {lang === 'bn' ? 'একাডেমিক' : 'Academic'}
-                <ChevronDown className={`w-3.5 h-3.5 transition-transform ${openDropdown === 'academic' ? 'rotate-180' : ''}`} />
+                {t(TRANSLATIONS.nav.academics)}
+                <ChevronDown className={`w-3.5 h-3.5 transition-transform ${openDropdown === 'academics' ? 'rotate-180' : ''}`} />
               </button>
-              {openDropdown === 'academic' && (
-                <div className="absolute left-0 mt-2 w-52 bg-white dark:bg-slate-900 rounded-2xl shadow-xl border border-slate-100 dark:border-slate-800 py-2 z-50">
+              {openDropdown === 'academics' && (
+                <div className="absolute left-0 mt-2 w-52 bg-white dark:bg-slate-900 rounded-xl shadow-xl border border-slate-200 dark:border-slate-800 py-1.5 z-50">
                   {academicLinks.map((item) => (
                     <Link
                       key={item.path}
                       to={item.path}
                       onClick={() => setOpenDropdown(null)}
-                      className={`block px-4 py-2.5 text-xs font-bold transition-colors ${
+                      className={`block px-4 py-2 text-xs font-bold transition-colors ${
                         isActive(item.path)
                           ? 'text-emerald-700 dark:text-emerald-300 bg-emerald-50 dark:bg-emerald-950/60'
                           : 'text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-800'
@@ -262,27 +257,30 @@ const Navbar: React.FC = () => {
               )}
             </div>
 
-            {/* Community Dropdown */}
+            <Link
+              to="/notices"
+              className={navLinkClass(isActive('/notices') || isActive('/news') || isActive('/events'))}
+            >
+              {t(TRANSLATIONS.nav.noticeNews)}
+            </Link>
+
+            {/* Learning Center Dropdown */}
             <div className="relative">
               <button
-                onClick={() => setOpenDropdown(openDropdown === 'community' ? null : 'community')}
-                className={`flex items-center gap-1 px-3 py-2 rounded-xl text-xs font-bold whitespace-nowrap transition-colors ${
-                  communityLinks.some((l) => isActive(l.path))
-                    ? 'text-emerald-700 dark:text-emerald-300 bg-emerald-50 dark:bg-emerald-950/60'
-                    : 'text-slate-600 dark:text-slate-300 hover:text-emerald-700 dark:hover:text-emerald-300 hover:bg-slate-100 dark:hover:bg-slate-800'
-                }`}
+                onClick={() => setOpenDropdown(openDropdown === 'learning' ? null : 'learning')}
+                className={`flex items-center gap-1 ${navLinkClass(learningLinks.some((l) => isActive(l.path)))}`}
               >
-                {lang === 'bn' ? 'কমিউনিটি' : 'Community'}
-                <ChevronDown className={`w-3.5 h-3.5 transition-transform ${openDropdown === 'community' ? 'rotate-180' : ''}`} />
+                {t(TRANSLATIONS.nav.learningCenter)}
+                <ChevronDown className={`w-3.5 h-3.5 transition-transform ${openDropdown === 'learning' ? 'rotate-180' : ''}`} />
               </button>
-              {openDropdown === 'community' && (
-                <div className="absolute left-0 mt-2 w-48 bg-white dark:bg-slate-900 rounded-2xl shadow-xl border border-slate-100 dark:border-slate-800 py-2 z-50">
-                  {communityLinks.map((item) => (
+              {openDropdown === 'learning' && (
+                <div className="absolute left-0 mt-2 w-52 bg-white dark:bg-slate-900 rounded-xl shadow-xl border border-slate-200 dark:border-slate-800 py-1.5 z-50">
+                  {learningLinks.map((item) => (
                     <Link
                       key={item.path}
                       to={item.path}
                       onClick={() => setOpenDropdown(null)}
-                      className={`block px-4 py-2.5 text-xs font-bold transition-colors ${
+                      className={`block px-4 py-2 text-xs font-bold transition-colors ${
                         isActive(item.path)
                           ? 'text-emerald-700 dark:text-emerald-300 bg-emerald-50 dark:bg-emerald-950/60'
                           : 'text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-800'
@@ -294,13 +292,52 @@ const Navbar: React.FC = () => {
                 </div>
               )}
             </div>
+
+            {/* Portals Dropdown */}
+            <div className="relative">
+              <button
+                onClick={() => setOpenDropdown(openDropdown === 'portals' ? null : 'portals')}
+                className={`flex items-center gap-1 ${navLinkClass(
+                  portalLinks.some((l) => isActive(l.path)) || location.pathname.startsWith('/login')
+                )}`}
+              >
+                {t(TRANSLATIONS.nav.portals)}
+                <ChevronDown className={`w-3.5 h-3.5 transition-transform ${openDropdown === 'portals' ? 'rotate-180' : ''}`} />
+              </button>
+              {openDropdown === 'portals' && (
+                <div className="absolute left-0 mt-2 w-52 bg-white dark:bg-slate-900 rounded-xl shadow-xl border border-slate-200 dark:border-slate-800 py-1.5 z-50">
+                  {portalLinks.map((item) => (
+                    <Link
+                      key={item.path}
+                      to={item.path}
+                      onClick={() => setOpenDropdown(null)}
+                      className={`block px-4 py-2 text-xs font-bold transition-colors ${
+                        isActive(item.path)
+                          ? 'text-emerald-700 dark:text-emerald-300 bg-emerald-50 dark:bg-emerald-950/60'
+                          : 'text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-800'
+                      }`}
+                    >
+                      {item.name}
+                    </Link>
+                  ))}
+                </div>
+              )}
+            </div>
+
+            <Link to="/gallery" className={navLinkClass(isActive('/gallery'))}>
+              {t(TRANSLATIONS.nav.gallery)}
+            </Link>
+
+            <Link to="/contact" className={navLinkClass(isActive('/contact'))}>
+              {t(TRANSLATIONS.nav.contact)}
+            </Link>
           </div>
 
-          {/* Right: Utilities + Portal Account */}
-          <div className="flex items-center gap-1.5 sm:gap-2 shrink-0">
+          {/* Right: Compact Utilities + Language + Portal Login */}
+          <div className="flex items-center gap-1.5 shrink-0">
             <button
               onClick={() => setSearchOpen(true)}
-              className="p-2 rounded-xl bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 hover:text-emerald-700 dark:hover:text-emerald-400 transition-colors"
+              className="p-2 rounded-lg bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 hover:text-emerald-700 dark:hover:text-emerald-400 transition-colors"
               title={lang === 'bn' ? 'তথ্য খুঁজুন (Ctrl+K)' : 'Search (Ctrl+K)'}
               aria-label="Search"
             >
@@ -309,7 +346,7 @@ const Navbar: React.FC = () => {
 
             <button
               onClick={toggleTheme}
-              className="p-2 rounded-xl bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 hover:text-emerald-700 dark:hover:text-yellow-400 transition-colors"
+              className="p-2 rounded-lg bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 hover:text-emerald-700 dark:hover:text-yellow-400 transition-colors"
               title={theme === 'dark' ? 'Light Mode' : 'Dark Mode'}
               aria-label="Toggle theme"
             >
@@ -317,46 +354,35 @@ const Navbar: React.FC = () => {
             </button>
 
             <button
-              onClick={toggleLargeText}
-              className={`hidden sm:flex items-center justify-center px-2.5 py-1.5 rounded-xl text-[11px] font-black border transition-colors ${
-                largeText
-                  ? 'bg-emerald-700 text-white border-emerald-700'
-                  : 'bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 border-transparent hover:border-slate-300'
-              }`}
-              title={lang === 'bn' ? 'লেখা বড়/ছোট করুন' : 'Toggle Large Text'}
-            >
-              A+
-            </button>
-
-            <button
               onClick={() => setLang(lang === 'bn' ? 'en' : 'bn')}
-              className="flex items-center gap-1 bg-slate-100 dark:bg-slate-800 hover:bg-emerald-50 dark:hover:bg-slate-700 px-2.5 py-1.5 rounded-xl text-[11px] font-extrabold tracking-wide transition-colors"
+              className="flex items-center gap-1 bg-slate-100 dark:bg-slate-800 hover:bg-emerald-50 dark:hover:bg-slate-700 px-2.5 py-1.5 rounded-lg text-[11px] font-extrabold tracking-wide transition-colors whitespace-nowrap"
+              title={lang === 'bn' ? 'Switch to English' : 'বাংলায় দেখুন'}
             >
-              <span className={lang === 'bn' ? 'text-emerald-700 dark:text-emerald-400' : 'text-slate-400'}>BN</span>
-              <span className="text-slate-300 dark:text-slate-600">/</span>
+              <span className={lang === 'bn' ? 'text-emerald-700 dark:text-emerald-400' : 'text-slate-400'}>বাংলা</span>
+              <span className="text-slate-300 dark:text-slate-600">|</span>
               <span className={lang === 'en' ? 'text-emerald-700 dark:text-emerald-400' : 'text-slate-400'}>EN</span>
             </button>
 
-            <div className="hidden md:block">
+            <div className="hidden 2xl:block">
               <PWAInstallButton variant="compact" />
             </div>
 
-            {/* Portal Login / Profile Dropdown */}
+            {/* Login / Active User Dropdown */}
             <div className="hidden lg:block relative" ref={dropdownRef}>
               <button
                 onClick={() => setIsLoginOpen(!isLoginOpen)}
-                className={`flex items-center gap-2 px-3.5 py-2 rounded-xl text-xs font-extrabold border transition-all active:scale-95 ${
+                className={`flex items-center gap-1.5 px-3 py-2 rounded-lg text-xs font-extrabold whitespace-nowrap transition-colors ${
                   user || isLoginOpen
-                    ? 'bg-emerald-700 text-white border-emerald-700 shadow-md'
-                    : 'border-emerald-600 text-emerald-700 dark:text-emerald-300 dark:border-emerald-500 hover:bg-emerald-50 dark:hover:bg-emerald-950/60'
+                    ? 'bg-emerald-700 text-white'
+                    : 'bg-emerald-700 hover:bg-emerald-800 text-white'
                 }`}
               >
                 {user ? (
                   <>
-                    <div className="w-6 h-6 rounded-full overflow-hidden bg-white/20 flex items-center justify-center shrink-0">
-                      {user.photo ? <img src={user.photo} alt="" className="w-full h-full object-cover" /> : getRoleIcon('w-3.5 h-3.5')}
+                    <div className="w-5 h-5 rounded-full overflow-hidden bg-white/20 flex items-center justify-center shrink-0">
+                      {user.photo ? <img src={user.photo} alt="" className="w-full h-full object-cover" /> : getRoleIcon('w-3 h-3')}
                     </div>
-                    <span className="truncate max-w-[100px]">{user.name}</span>
+                    <span className="truncate max-w-[90px]">{user.name}</span>
                   </>
                 ) : (
                   <>
@@ -368,7 +394,7 @@ const Navbar: React.FC = () => {
               </button>
 
               {isLoginOpen && (
-                <div className="absolute right-0 mt-2.5 w-72 bg-white dark:bg-slate-900 rounded-2xl shadow-2xl border border-slate-200 dark:border-slate-800 py-2.5 z-[100]">
+                <div className="absolute right-0 mt-2 w-72 bg-white dark:bg-slate-900 rounded-2xl shadow-2xl border border-slate-200 dark:border-slate-800 py-2 z-[100]">
                   {user ? (
                     <div className="space-y-1">
                       <div className="px-4 py-3 border-b border-slate-100 dark:border-slate-800 flex items-center gap-3">
@@ -411,7 +437,7 @@ const Navbar: React.FC = () => {
                   ) : (
                     <div className="space-y-1 px-2">
                       <p className="px-3 py-1.5 text-[10px] font-bold text-slate-400 uppercase tracking-wider">
-                        {lang === 'bn' ? 'পোর্টাল নির্বাচন করুন' : 'Select Portal'}
+                        {lang === 'bn' ? 'রোল অনুযায়ী লগইন করুন' : 'Select Role Portal'}
                       </p>
                       <Link
                         to="/login/student"
@@ -462,7 +488,7 @@ const Navbar: React.FC = () => {
                         </span>
                         <div>
                           <div>{t(TRANSLATIONS.nav.adminLogin)}</div>
-                          <div className="text-[10px] font-normal text-slate-400">Full School Control</div>
+                          <div className="text-[10px] font-normal text-slate-400">Full Campus Management</div>
                         </div>
                       </Link>
                     </div>
@@ -473,10 +499,10 @@ const Navbar: React.FC = () => {
 
             <button
               onClick={() => setIsOpen(!isOpen)}
-              className="xl:hidden p-2 rounded-xl text-slate-600 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800"
+              className="xl:hidden p-2 rounded-lg text-slate-600 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800"
               aria-label="Toggle Menu"
             >
-              {isOpen ? <X className="w-6 h-6" /> : <Menu className="w-6 h-6" />}
+              {isOpen ? <X className="w-5 h-5" /> : <Menu className="w-5 h-5" />}
             </button>
           </div>
         </div>
@@ -484,12 +510,12 @@ const Navbar: React.FC = () => {
 
       {/* Mobile / Tablet Drawer */}
       {isOpen && (
-        <div className="xl:hidden bg-white dark:bg-slate-900 border-t border-slate-200 dark:border-slate-800 max-h-[80vh] overflow-y-auto">
-          <div className="px-4 py-4 space-y-2">
+        <div className="xl:hidden bg-white dark:bg-slate-900 border-t border-slate-200 dark:border-slate-800 max-h-[82vh] overflow-y-auto">
+          <div className="px-4 py-4 space-y-4">
             {user && (
-              <div className="px-4 py-3 mb-2 bg-slate-50 dark:bg-slate-800 rounded-2xl flex items-center justify-between gap-3">
+              <div className="px-4 py-3 bg-slate-50 dark:bg-slate-800 rounded-xl flex items-center justify-between gap-3">
                 <div className="flex items-center gap-3 min-w-0">
-                  <div className="w-10 h-10 rounded-xl overflow-hidden bg-emerald-700 flex items-center justify-center shrink-0">
+                  <div className="w-10 h-10 rounded-lg overflow-hidden bg-emerald-700 flex items-center justify-center shrink-0">
                     {user.photo ? <img src={user.photo} alt="" className="w-full h-full object-cover" /> : getRoleIcon('w-5 h-5 text-white')}
                   </div>
                   <div className="min-w-0">
@@ -502,43 +528,104 @@ const Navbar: React.FC = () => {
                     setIsOpen(false);
                     setIsSettingsOpen(true);
                   }}
-                  className="p-2 rounded-xl bg-white dark:bg-slate-700 text-slate-600 dark:text-slate-200"
+                  className="p-2 rounded-lg bg-white dark:bg-slate-700 text-slate-600 dark:text-slate-200"
                 >
                   <Settings className="w-4 h-4" />
                 </button>
               </div>
             )}
 
-            <div className="grid grid-cols-2 gap-2">
-              {[...primaryLinks, ...academicLinks, ...communityLinks].map((link) => (
-                <Link
-                  key={link.path}
-                  to={link.path}
-                  onClick={() => setIsOpen(false)}
-                  className={`px-3.5 py-2.5 rounded-xl text-xs font-bold transition-colors ${
-                    isActive(link.path)
-                      ? 'text-emerald-700 dark:text-emerald-300 bg-emerald-50 dark:bg-emerald-950/60'
-                      : 'text-slate-700 dark:text-slate-200 bg-slate-50 dark:bg-slate-800/70'
-                  }`}
-                >
-                  {link.name}
-                </Link>
-              ))}
+            <div className="space-y-1">
+              <p className="text-[10px] font-bold uppercase tracking-wider text-slate-400 px-1">
+                {lang === 'bn' ? 'নেভিগেশন' : 'Navigation'}
+              </p>
+              <div className="grid grid-cols-2 gap-1.5">
+                {[
+                  { name: t(TRANSLATIONS.nav.home), path: '/' },
+                  { name: t(TRANSLATIONS.nav.aboutSchool), path: '/about' },
+                  { name: t(TRANSLATIONS.nav.noticeNews), path: '/notices' },
+                  { name: t(TRANSLATIONS.nav.gallery), path: '/gallery' },
+                  { name: t(TRANSLATIONS.nav.contact), path: '/contact' },
+                  { name: t(TRANSLATIONS.nav.alumni), path: '/alumni' },
+                  ...academicLinks,
+                ].map((link) => (
+                  <Link
+                    key={link.path}
+                    to={link.path}
+                    onClick={() => setIsOpen(false)}
+                    className={`px-3 py-2.5 rounded-lg text-xs font-bold transition-colors ${
+                      isActive(link.path)
+                        ? 'text-emerald-700 dark:text-emerald-300 bg-emerald-50 dark:bg-emerald-950/60'
+                        : 'text-slate-700 dark:text-slate-200 bg-slate-50 dark:bg-slate-800/70'
+                    }`}
+                  >
+                    {link.name}
+                  </Link>
+                ))}
+              </div>
             </div>
 
-            <div className="pt-2 border-t border-slate-100 dark:border-slate-800 space-y-2">
+            <div className="space-y-1">
+              <p className="text-[10px] font-bold uppercase tracking-wider text-slate-400 px-1">
+                {t(TRANSLATIONS.nav.learningCenter)}
+              </p>
+              <div className="grid grid-cols-3 gap-1.5">
+                <Link
+                  to="/ebooks"
+                  onClick={() => setIsOpen(false)}
+                  className="flex flex-col items-center justify-center gap-1 p-2.5 rounded-lg bg-emerald-50 dark:bg-emerald-950/50 text-emerald-800 dark:text-emerald-300 text-[11px] font-bold text-center"
+                >
+                  <BookOpen className="w-4 h-4" />
+                  <span>{t(TRANSLATIONS.nav.ebooks)}</span>
+                </Link>
+                <Link
+                  to="/exams"
+                  onClick={() => setIsOpen(false)}
+                  className="flex flex-col items-center justify-center gap-1 p-2.5 rounded-lg bg-amber-50 dark:bg-amber-950/50 text-amber-800 dark:text-amber-300 text-[11px] font-bold text-center"
+                >
+                  <Trophy className="w-4 h-4" />
+                  <span>{t(TRANSLATIONS.nav.exams)}</span>
+                </Link>
+                <Link
+                  to="/admission"
+                  onClick={() => setIsOpen(false)}
+                  className="flex flex-col items-center justify-center gap-1 p-2.5 rounded-lg bg-blue-50 dark:bg-blue-950/50 text-blue-800 dark:text-blue-300 text-[11px] font-bold text-center"
+                >
+                  <ClipboardCheck className="w-4 h-4" />
+                  <span>{t(TRANSLATIONS.nav.admission)}</span>
+                </Link>
+              </div>
+            </div>
+
+            <div className="pt-2 border-t border-slate-100 dark:border-slate-800 space-y-2.5">
+              <div className="flex items-center justify-between px-1">
+                <span className="text-xs font-bold text-slate-500 dark:text-slate-400">
+                  {lang === 'bn' ? 'অ্যাক্সেসিবিলিটি ফন্ট' : 'Reading Size'}
+                </span>
+                <button
+                  onClick={toggleLargeText}
+                  className={`px-3 py-1 rounded-lg text-xs font-bold border ${
+                    largeText
+                      ? 'bg-emerald-700 text-white border-emerald-700'
+                      : 'bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 border-slate-200 dark:border-slate-700'
+                  }`}
+                >
+                  {largeText ? 'A+ On' : 'A+ Default'}
+                </button>
+              </div>
+
               {user ? (
                 <div className="flex gap-2">
                   <Link
                     to="/dashboard"
                     onClick={() => setIsOpen(false)}
-                    className="flex-1 text-center py-3 rounded-xl text-xs font-bold text-white bg-emerald-700"
+                    className="flex-1 text-center py-3 rounded-lg text-xs font-bold text-white bg-emerald-700"
                   >
                     {lang === 'bn' ? 'ড্যাশবোর্ড' : 'Dashboard'}
                   </Link>
                   <button
                     onClick={handleLogout}
-                    className="px-4 py-3 rounded-xl text-xs font-bold text-red-600 bg-red-50 dark:bg-red-950/40"
+                    className="px-4 py-3 rounded-lg text-xs font-bold text-red-600 bg-red-50 dark:bg-red-950/40"
                   >
                     {lang === 'bn' ? 'লগআউট' : 'Logout'}
                   </button>
@@ -548,28 +635,28 @@ const Navbar: React.FC = () => {
                   <Link
                     to="/login/student"
                     onClick={() => setIsOpen(false)}
-                    className="text-center py-2.5 rounded-xl text-xs font-bold bg-emerald-700 text-white"
+                    className="text-center py-2.5 rounded-lg text-xs font-bold bg-emerald-700 text-white"
                   >
                     {t(TRANSLATIONS.nav.studentLogin)}
                   </Link>
                   <Link
                     to="/login/parent"
                     onClick={() => setIsOpen(false)}
-                    className="text-center py-2.5 rounded-xl text-xs font-bold bg-amber-600 text-white"
+                    className="text-center py-2.5 rounded-lg text-xs font-bold bg-amber-600 text-white"
                   >
                     {t(TRANSLATIONS.nav.parentLogin)}
                   </Link>
                   <Link
                     to="/login/teacher"
                     onClick={() => setIsOpen(false)}
-                    className="text-center py-2.5 rounded-xl text-xs font-bold bg-purple-700 text-white"
+                    className="text-center py-2.5 rounded-lg text-xs font-bold bg-purple-700 text-white"
                   >
                     {t(TRANSLATIONS.nav.teacherLogin)}
                   </Link>
                   <Link
                     to="/login/admin"
                     onClick={() => setIsOpen(false)}
-                    className="text-center py-2.5 rounded-xl text-xs font-bold bg-slate-800 text-white"
+                    className="text-center py-2.5 rounded-lg text-xs font-bold bg-slate-800 text-white"
                   >
                     {t(TRANSLATIONS.nav.adminLogin)}
                   </Link>
@@ -585,7 +672,7 @@ const Navbar: React.FC = () => {
       {isSettingsOpen && (
         <div className="fixed inset-0 z-[200] flex items-center justify-center p-4">
           <div className="absolute inset-0 bg-slate-950/60 backdrop-blur-sm" onClick={() => setIsSettingsOpen(false)} />
-          <div className="relative bg-white dark:bg-slate-900 w-full max-w-lg rounded-3xl shadow-2xl overflow-hidden flex flex-col max-h-[90vh] border border-slate-200 dark:border-slate-800">
+          <div className="relative bg-white dark:bg-slate-900 w-full max-w-lg rounded-2xl shadow-2xl overflow-hidden flex flex-col max-h-[90vh] border border-slate-200 dark:border-slate-800">
             <div className="bg-emerald-700 p-6 text-white flex justify-between items-center shrink-0">
               <div className="flex items-center gap-3">
                 <Settings className="w-5 h-5" />

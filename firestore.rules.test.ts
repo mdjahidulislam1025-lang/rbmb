@@ -155,4 +155,20 @@ export const DIRTY_DOZEN_CASES: DirtyDozenCase[] = [
     expected: 'PERMISSION_DENIED',
     reason: 'Exam marks require isSignedIn() or isTeacher()',
   },
+  {
+    id: 19,
+    name: 'Unauthenticated News Create',
+    collection: 'news',
+    operation: 'create',
+    expected: 'PERMISSION_DENIED',
+    reason: 'Only verified teachers or admins may create school news articles',
+  },
+  {
+    id: 20,
+    name: 'Student Event Update Bypass',
+    collection: 'events',
+    operation: 'update',
+    expected: 'PERMISSION_DENIED',
+    reason: 'Only verified teachers or admins may modify campus events',
+  },
 ];

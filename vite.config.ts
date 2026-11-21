@@ -18,9 +18,9 @@ export default defineConfig(() => ({
       includeAssets: ['favicon.ico', 'apple-touch-icon.png', 'icon.svg'],
       manifest: {
         id: '/',
-        name: 'রাণীর বাজার মাধ্যমিক বিদ্যালয়',
-        short_name: 'RBHS',
-        description: 'রাণীর বাজার মাধ্যমিক বিদ্যালয়ের অফিসিয়াল মোবাইল ও অ্যান্ড্রয়েড অ্যাপ - নোটিশ, স্টুডেন্ট পোর্টাল, অনলাইন পরীক্ষা, ডিজিটাল লাইব্রেরি ও ভর্তি।',
+        name: 'RBMB Digital Campus — Rani Bazar Model High School',
+        short_name: 'RBMB',
+        description: 'RBMB Digital Campus for Rani Bazar Model High School — notices, student & teacher portals, online exams, digital library & admissions.',
         theme_color: '#15803d',
         background_color: '#ffffff',
         display: 'standalone',

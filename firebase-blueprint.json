@@ -16,6 +16,8 @@
       "type": "object",
       "properties": {
         "name": { "$ref": "#/entities/LocalizedString" },
+        "shortName": { "type": "string", "maxLength": 100 },
+        "tagline": { "$ref": "#/entities/LocalizedString" },
         "eiin": { "type": "string", "maxLength": 32 },
         "phone": { "type": "string", "maxLength": 40 },
         "email": { "type": "string", "format": "email", "maxLength": 150 },
@@ -46,6 +48,43 @@
         "updatedAt": { "type": "string", "format": "date-time" }
       },
       "required": ["id", "title", "date", "category", "description", "isPublic", "createdAt", "updatedAt"]
+    },
+    "NewsArticle": {
+      "title": "NewsArticle",
+      "description": "School news and achievement story.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "pattern": "^[a-zA-Z0-9_\\-]+$", "maxLength": 128 },
+        "title": { "$ref": "#/entities/LocalizedString" },
+        "summary": { "$ref": "#/entities/LocalizedString" },
+        "content": { "$ref": "#/entities/LocalizedString" },
+        "category": { "type": "string", "enum": ["Academic", "Achievement", "Campus", "Community"] },
+        "date": { "type": "string", "maxLength": 32 },
+        "imageUrl": { "type": "string", "maxLength": 600000 },
+        "author": { "type": "string", "maxLength": 150 },
+        "isPublic": { "type": "boolean" },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["id", "title", "summary", "content", "category", "date", "isPublic", "createdAt", "updatedAt"]
+    },
+    "CampusEvent": {
+      "title": "CampusEvent",
+      "description": "Upcoming or scheduled school event.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "pattern": "^[a-zA-Z0-9_\\-]+$", "maxLength": 128 },
+        "title": { "$ref": "#/entities/LocalizedString" },
+        "description": { "$ref": "#/entities/LocalizedString" },
+        "date": { "type": "string", "maxLength": 32 },
+        "time": { "type": "string", "maxLength": 64 },
+        "location": { "$ref": "#/entities/LocalizedString" },
+        "category": { "type": "string", "enum": ["Cultural", "Sports", "Science", "Academic"] },
+        "isPublic": { "type": "boolean" },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["id", "title", "description", "date", "time", "location", "category", "isPublic", "createdAt", "updatedAt"]
     },
     "Teacher": {
       "title": "Teacher",
@@ -460,6 +499,14 @@
     "/notices/{noticeId}": {
       "schema": { "$ref": "#/entities/Notice" },
       "description": "School notices collection."
+    },
+    "/news/{newsId}": {
+      "schema": { "$ref": "#/entities/NewsArticle" },
+      "description": "School news articles collection."
+    },
+    "/events/{eventId}": {
+      "schema": { "$ref": "#/entities/CampusEvent" },
+      "description": "Scheduled campus events collection."
     },
     "/teachers/{teacherId}": {
       "schema": { "$ref": "#/entities/Teacher" },

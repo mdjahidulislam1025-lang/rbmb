@@ -47,8 +47,10 @@ service cloud.firestore {
     // Validation Blueprints
     function isValidSettings(data) {
       return data.keys().hasAll(['name', 'eiin', 'phone', 'email', 'location', 'updatedAt'])
-        && data.keys().hasOnly(['name', 'eiin', 'phone', 'email', 'location', 'schoolPhoto', 'headTeacherName', 'headTeacherMessage', 'headTeacherPhoto', 'latitude', 'longitude', 'updatedAt'])
+        && data.keys().hasOnly(['name', 'shortName', 'tagline', 'eiin', 'phone', 'email', 'location', 'schoolPhoto', 'headTeacherName', 'headTeacherMessage', 'headTeacherPhoto', 'latitude', 'longitude', 'updatedAt'])
         && isLocalizedString(data.name, 200)
+        && (!('shortName' in data) || (data.shortName is string && data.shortName.size() <= 100))
+        && (!('tagline' in data) || isLocalizedString(data.tagline, 300))
         && data.eiin is string && data.eiin.size() >= 1 && data.eiin.size() <= 32
         && data.phone is string && data.phone.size() >= 1 && data.phone.size() <= 40
         && data.email is string && data.email.size() >= 3 && data.email.size() <= 150
@@ -71,6 +73,37 @@ service cloud.firestore {
         && data.category is string && data.category in ['General', 'Admission', 'Exam', 'Holiday']
         && isLocalizedString(data.description, 5000)
         && (!('pdfUrl' in data) || (data.pdfUrl is string && data.pdfUrl.size() <= 2000))
+        && data.isPublic is bool
+        && data.createdAt is timestamp
+        && data.updatedAt is timestamp;
+    }
+
+    function isValidNews(data) {
+      return data.keys().hasAll(['id', 'title', 'summary', 'content', 'category', 'date', 'isPublic', 'createdAt', 'updatedAt'])
+        && data.keys().hasOnly(['id', 'title', 'summary', 'content', 'category', 'date', 'imageUrl', 'author', 'isPublic', 'createdAt', 'updatedAt'])
+        && isValidId(data.id)
+        && isLocalizedString(data.title, 300)
+        && isLocalizedString(data.summary, 600)
+        && isLocalizedString(data.content, 5000)
+        && data.category is string && data.category in ['Academic', 'Achievement', 'Campus', 'Community']
+        && data.date is string && data.date.size() >= 4 && data.date.size() <= 32
+        && (!('imageUrl' in data) || (data.imageUrl is string && data.imageUrl.size() <= 600000))
+        && (!('author' in data) || (data.author is string && data.author.size() <= 150))
+        && data.isPublic is bool
+        && data.createdAt is timestamp
+        && data.updatedAt is timestamp;
+    }
+
+    function isValidEvent(data) {
+      return data.keys().hasAll(['id', 'title', 'description', 'date', 'time', 'location', 'category', 'isPublic', 'createdAt', 'updatedAt'])
+        && data.keys().hasOnly(['id', 'title', 'description', 'date', 'time', 'location', 'category', 'isPublic', 'createdAt', 'updatedAt'])
+        && isValidId(data.id)
+        && isLocalizedString(data.title, 300)
+        && isLocalizedString(data.description, 3000)
+        && data.date is string && data.date.size() >= 4 && data.date.size() <= 32
+        && data.time is string && data.time.size() >= 1 && data.time.size() <= 64
+        && isLocalizedString(data.location, 300)
+        && data.category is string && data.category in ['Cultural', 'Sports', 'Science', 'Academic']
         && data.isPublic is bool
         && data.createdAt is timestamp
         && data.updatedAt is timestamp;
@@ -438,6 +471,24 @@ service cloud.firestore {
       allow create: if isTeacher() && isValidId(noticeId) && isValidNotice(incoming()) && incoming().id == noticeId && incoming().createdAt == request.time && incoming().updatedAt == request.time;
       allow update: if isTeacher() && isValidId(noticeId) && isValidNotice(incoming()) && incoming().id == existing().id && incoming().createdAt == existing().createdAt && incoming().updatedAt == request.time;
       allow delete: if isAdmin() && isValidId(noticeId);
+    }
+
+    // School News (Admin & Teacher managed)
+    match /news/{newsId} {
+      allow get: if isValidId(newsId) && (existing().isPublic == true || isTeacher());
+      allow list: if existing().isPublic == true || isTeacher();
+      allow create: if isTeacher() && isValidId(newsId) && isValidNews(incoming()) && incoming().id == newsId && incoming().createdAt == request.time && incoming().updatedAt == request.time;
+      allow update: if isTeacher() && isValidId(newsId) && isValidNews(incoming()) && incoming().id == existing().id && incoming().createdAt == existing().createdAt && incoming().updatedAt == request.time;
+      allow delete: if isAdmin() && isValidId(newsId);
+    }
+
+    // Campus Events (Admin & Teacher managed)
+    match /events/{eventId} {
+      allow get: if isValidId(eventId) && (existing().isPublic == true || isTeacher());
+      allow list: if existing().isPublic == true || isTeacher();
+      allow create: if isTeacher() && isValidId(eventId) && isValidEvent(incoming()) && incoming().id == eventId && incoming().createdAt == request.time && incoming().updatedAt == request.time;
+      allow update: if isTeacher() && isValidId(eventId) && isValidEvent(incoming()) && incoming().id == existing().id && incoming().createdAt == existing().createdAt && incoming().updatedAt == request.time;
+      allow delete: if isAdmin() && isValidId(eventId);
     }
 
     match /teachers/{teacherId} {
