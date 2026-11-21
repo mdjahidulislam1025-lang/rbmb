@@ -14,11 +14,12 @@ import {
   TrendingUp,
   Send,
   FileText,
+  ShieldCheck,
 } from 'lucide-react';
 import { useApp } from '../App';
 import { calculateOverallGpa, isSafeHttpUrl } from '../utils/security';
 
-const { useState, useMemo } = React;
+const { useState, useMemo, useEffect } = React;
 const { Link } = RouterDom;
 
 type StudentTab = 'homework' | 'marks' | 'progress' | 'attendance' | 'materials' | 'leave' | 'notices';
@@ -28,9 +29,11 @@ export const StudentPortal: React.FC = () => {
     lang,
     t,
     user,
+    firebaseUser,
     notices,
     students,
     attendanceRecords,
+    studentAttendance,
     homeworkList,
     assignmentSubmissions,
     submitAssignment,
@@ -46,6 +49,11 @@ export const StudentPortal: React.FC = () => {
   const [selectedClassId, setSelectedClassId] = useState<string>(user?.linkedChildClass || '9');
   const [selectedRoll, setSelectedRoll] = useState<string>(user?.linkedChildRoll || '01');
   const [toast, setToast] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (user?.linkedChildClass) setSelectedClassId(user.linkedChildClass);
+    if (user?.linkedChildRoll) setSelectedRoll(user.linkedChildRoll);
+  }, [user?.linkedChildClass, user?.linkedChildRoll]);
 
   const [submittingHwId, setSubmittingHwId] = useState<string | null>(null);
   const [submissionAnswer, setSubmissionAnswer] = useState('');
@@ -82,16 +90,34 @@ export const StudentPortal: React.FC = () => {
   const gpaSummary = useMemo(() => calculateOverallGpa(myMarks), [myMarks]);
 
   const myAttendance = useMemo(() => {
-    const sheets = attendanceRecords.filter((r) => r.classId === selectedClassId);
-    return sheets
-      .map((sheet) => ({
-        id: sheet.id,
-        date: sheet.date,
-        status: matchedStudent ? sheet.records[matchedStudent.id] : undefined,
-        teacherName: sheet.teacherName,
-      }))
-      .filter((item) => item.status);
-  }, [attendanceRecords, selectedClassId, matchedStudent]);
+    const byDate = new Map<string, { id: string; date: string; status: string; teacherName: string }>();
+    studentAttendance
+      .filter((sa) => sa.classId === selectedClassId && sa.roll === selectedRoll.trim())
+      .forEach((sa) => {
+        byDate.set(sa.date, {
+          id: sa.id,
+          date: sa.date,
+          status: sa.status,
+          teacherName: sa.teacherName,
+        });
+      });
+
+    attendanceRecords
+      .filter((r) => r.classId === selectedClassId)
+      .forEach((sheet) => {
+        const st = matchedStudent ? sheet.records[matchedStudent.id] : undefined;
+        if (st && !byDate.has(sheet.date)) {
+          byDate.set(sheet.date, {
+            id: sheet.id,
+            date: sheet.date,
+            status: st,
+            teacherName: sheet.teacherName,
+          });
+        }
+      });
+
+    return Array.from(byDate.values()).sort((a, b) => b.date.localeCompare(a.date));
+  }, [studentAttendance, attendanceRecords, selectedClassId, selectedRoll, matchedStudent]);
 
   const attendancePct = useMemo(() => {
     if (myAttendance.length === 0) return 0;
@@ -206,7 +232,8 @@ export const StudentPortal: React.FC = () => {
             />
           </div>
           {matchedStudent && (
-            <div className="bg-emerald-100 dark:bg-emerald-950/70 text-emerald-800 dark:text-emerald-300 px-4 py-2 rounded-xl text-xs font-extrabold">
+            <div className="bg-emerald-100 dark:bg-emerald-950/70 text-emerald-800 dark:text-emerald-300 px-4 py-2 rounded-xl text-xs font-extrabold flex items-center gap-1.5">
+              {firebaseUser && <ShieldCheck className="w-4 h-4" />}
               {matchedStudent.name} ({matchedStudent.section})
             </div>
           )}

@@ -11,11 +11,14 @@ import {
   Send,
   CheckCircle2,
   BookOpen,
+  ShieldCheck,
+  Clock,
+  XCircle,
 } from 'lucide-react';
 import { useApp } from '../App';
 import { calculateOverallGpa } from '../utils/security';
 
-const { useState, useMemo } = React;
+const { useState, useMemo, useEffect } = React;
 const { Link } = RouterDom;
 
 type ParentTab = 'overview' | 'results' | 'attendance' | 'routine' | 'notices' | 'messages';
@@ -25,20 +28,26 @@ export const ParentPortal: React.FC = () => {
     lang,
     t,
     user,
+    firebaseUser,
     updateUser,
     students,
     attendanceRecords,
+    studentAttendance,
     examMarks,
     examRoutines,
     notices,
     teachers,
     parentMessages,
     sendParentMessage,
+    parentLinks,
+    requestParentStudentLink,
   } = useApp();
 
   const [activeTab, setActiveTab] = useState<ParentTab>('overview');
   const [childClass, setChildClass] = useState<string>(user?.linkedChildClass || '9');
   const [childRoll, setChildRoll] = useState<string>(user?.linkedChildRoll || '01');
+  const [relationship, setRelationship] = useState<'Father' | 'Mother' | 'Guardian'>('Father');
+  const [isRequestingLink, setIsRequestingLink] = useState(false);
   const [toast, setToast] = useState<string | null>(null);
 
   const [msgForm, setMsgForm] = useState({
@@ -47,14 +56,27 @@ export const ParentPortal: React.FC = () => {
     message: '',
   });
 
+  useEffect(() => {
+    if (user?.linkedChildClass) setChildClass(user.linkedChildClass);
+    if (user?.linkedChildRoll) setChildRoll(user.linkedChildRoll);
+  }, [user?.linkedChildClass, user?.linkedChildRoll]);
+
   const notify = (text: string) => {
     setToast(text);
-    setTimeout(() => setToast(null), 2800);
+    setTimeout(() => setToast(null), 3000);
   };
 
   const matchedChild = useMemo(
     () => students.find((s) => s.classId === childClass && s.roll === childRoll.trim()),
     [students, childClass, childRoll]
+  );
+
+  const currentLinkRequest = useMemo(
+    () =>
+      parentLinks.find(
+        (l) => l.classId === childClass && l.roll === childRoll.trim()
+      ) || null,
+    [parentLinks, childClass, childRoll]
   );
 
   const handleSaveChildLink = async () => {
@@ -65,7 +87,27 @@ export const ParentPortal: React.FC = () => {
       linkedChildRoll: childRoll.trim() || '01',
       linkedChildName: matchedChild?.name || user.linkedChildName,
     });
-    notify(lang === 'bn' ? 'সন্তানের তথ্য যুক্ত করা হয়েছে!' : 'Child link updated!');
+    notify(lang === 'bn' ? 'সন্তানের তথ্য যুক্ত করা হয়েছে!' : 'Child preference saved!');
+  };
+
+  const handleRequestVerifiedLink = async () => {
+    if (!firebaseUser) return;
+    setIsRequestingLink(true);
+    const ok = await requestParentStudentLink({
+      classId: childClass,
+      roll: childRoll.trim() || '01',
+      relationship,
+    });
+    setIsRequestingLink(false);
+    if (ok) {
+      notify(
+        lang === 'bn'
+          ? 'যাচাইয়ের জন্য আবেদন পাঠানো হয়েছে! শিক্ষক অনুমোদন করলে তথ্য দেখতে পাবেন।'
+          : 'Verification request submitted! Data unlocks once approved by a teacher.'
+      );
+    } else {
+      notify(lang === 'bn' ? 'আবেদন পাঠানো যায়নি।' : 'Could not submit verification request.');
+    }
   };
 
   const childMarks = useMemo(
@@ -76,16 +118,34 @@ export const ParentPortal: React.FC = () => {
   const gpaStats = useMemo(() => calculateOverallGpa(childMarks), [childMarks]);
 
   const childAttendance = useMemo(() => {
-    const sheets = attendanceRecords.filter((r) => r.classId === childClass);
-    return sheets
-      .map((sheet) => ({
-        id: sheet.id,
-        date: sheet.date,
-        status: matchedChild ? sheet.records[matchedChild.id] : undefined,
-        teacherName: sheet.teacherName,
-      }))
-      .filter((x) => x.status);
-  }, [attendanceRecords, childClass, matchedChild]);
+    const byDate = new Map<string, { id: string; date: string; status: string; teacherName: string }>();
+    studentAttendance
+      .filter((sa) => sa.classId === childClass && sa.roll === childRoll.trim())
+      .forEach((sa) => {
+        byDate.set(sa.date, {
+          id: sa.id,
+          date: sa.date,
+          status: sa.status,
+          teacherName: sa.teacherName,
+        });
+      });
+
+    attendanceRecords
+      .filter((r) => r.classId === childClass)
+      .forEach((sheet) => {
+        const st = matchedChild ? sheet.records[matchedChild.id] : undefined;
+        if (st && !byDate.has(sheet.date)) {
+          byDate.set(sheet.date, {
+            id: sheet.id,
+            date: sheet.date,
+            status: st,
+            teacherName: sheet.teacherName,
+          });
+        }
+      });
+
+    return Array.from(byDate.values()).sort((a, b) => b.date.localeCompare(a.date));
+  }, [studentAttendance, attendanceRecords, childClass, childRoll, matchedChild]);
 
   const attendancePct = useMemo(() => {
     if (childAttendance.length === 0) return 0;
@@ -137,65 +197,133 @@ export const ParentPortal: React.FC = () => {
         </div>
       )}
 
-      {/* Child Selector & Link */}
-      <div className="bg-slate-50 dark:bg-slate-800/70 p-5 rounded-3xl border border-slate-200 dark:border-slate-700 flex flex-col lg:flex-row lg:items-center justify-between gap-4">
-        <div className="flex flex-wrap items-end gap-3">
-          <div>
-            <label className="block text-[10px] font-bold uppercase text-slate-400 mb-1">
-              {lang === 'bn' ? 'সন্তানের শ্রেণী' : 'Child Class'}
-            </label>
-            <select
-              value={childClass}
-              onChange={(e) => setChildClass(e.target.value)}
-              className="px-4 py-2.5 rounded-xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 text-sm font-bold"
-            >
-              {['6', '7', '8', '9', '10'].map((c) => (
-                <option key={c} value={c}>
-                  {lang === 'bn' ? `${c}ম শ্রেণী` : `Class ${c}`}
-                </option>
-              ))}
-            </select>
-          </div>
-          <div>
-            <label className="block text-[10px] font-bold uppercase text-slate-400 mb-1">
-              {lang === 'bn' ? 'রোল নম্বর' : 'Roll No'}
-            </label>
-            <input
-              maxLength={20}
-              value={childRoll}
-              onChange={(e) => setChildRoll(e.target.value)}
-              className="w-24 px-4 py-2.5 rounded-xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 text-sm font-bold"
-            />
-          </div>
-          <button
-            onClick={handleSaveChildLink}
-            className="px-4 py-2.5 rounded-xl bg-emerald-700 hover:bg-emerald-800 text-white text-xs font-bold transition-colors"
-          >
-            {lang === 'bn' ? 'তথ্য যুক্ত করুন' : 'Link Child'}
-          </button>
-          {matchedChild && (
-            <div className="px-4 py-2.5 rounded-xl bg-emerald-100 dark:bg-emerald-950/70 text-emerald-800 dark:text-emerald-300 text-xs font-bold flex items-center gap-2">
-              <Users className="w-4 h-4" />
-              {matchedChild.name} ({matchedChild.section})
+      {/* Child Selector & Verified Link */}
+      <div className="bg-slate-50 dark:bg-slate-800/70 p-5 rounded-3xl border border-slate-200 dark:border-slate-700 space-y-4">
+        <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4">
+          <div className="flex flex-wrap items-end gap-3">
+            <div>
+              <label className="block text-[10px] font-bold uppercase text-slate-400 mb-1">
+                {lang === 'bn' ? 'সন্তানের শ্রেণী' : 'Child Class'}
+              </label>
+              <select
+                value={childClass}
+                onChange={(e) => setChildClass(e.target.value)}
+                className="px-4 py-2.5 rounded-xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 text-sm font-bold"
+              >
+                {['6', '7', '8', '9', '10'].map((c) => (
+                  <option key={c} value={c}>
+                    {lang === 'bn' ? `${c}ম শ্রেণী` : `Class ${c}`}
+                  </option>
+                ))}
+              </select>
             </div>
-          )}
+            <div>
+              <label className="block text-[10px] font-bold uppercase text-slate-400 mb-1">
+                {lang === 'bn' ? 'রোল নম্বর' : 'Roll No'}
+              </label>
+              <input
+                maxLength={20}
+                value={childRoll}
+                onChange={(e) => setChildRoll(e.target.value)}
+                className="w-24 px-4 py-2.5 rounded-xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 text-sm font-bold"
+              />
+            </div>
+
+            {firebaseUser ? (
+              <>
+                <div>
+                  <label className="block text-[10px] font-bold uppercase text-slate-400 mb-1">
+                    {lang === 'bn' ? 'সম্পর্ক' : 'Relationship'}
+                  </label>
+                  <select
+                    value={relationship}
+                    onChange={(e) => setRelationship(e.target.value as 'Father' | 'Mother' | 'Guardian')}
+                    className="px-3 py-2.5 rounded-xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 text-sm font-bold"
+                  >
+                    <option value="Father">{lang === 'bn' ? 'পিতা' : 'Father'}</option>
+                    <option value="Mother">{lang === 'bn' ? 'মাতা' : 'Mother'}</option>
+                    <option value="Guardian">{lang === 'bn' ? 'অভিভাবক' : 'Guardian'}</option>
+                  </select>
+                </div>
+                <button
+                  disabled={isRequestingLink}
+                  onClick={handleRequestVerifiedLink}
+                  className="px-4 py-2.5 rounded-xl bg-emerald-700 hover:bg-emerald-800 text-white text-xs font-bold transition-colors disabled:opacity-50"
+                >
+                  {lang === 'bn' ? 'ভেরিফায়েড লিংক অনুরোধ' : 'Request Verified Link'}
+                </button>
+              </>
+            ) : (
+              <button
+                onClick={handleSaveChildLink}
+                className="px-4 py-2.5 rounded-xl bg-emerald-700 hover:bg-emerald-800 text-white text-xs font-bold transition-colors"
+              >
+                {lang === 'bn' ? 'তথ্য যুক্ত করুন' : 'Link Child'}
+              </button>
+            )}
+
+            {matchedChild && (
+              <div className="px-4 py-2.5 rounded-xl bg-emerald-100 dark:bg-emerald-950/70 text-emerald-800 dark:text-emerald-300 text-xs font-bold flex items-center gap-2">
+                <Users className="w-4 h-4" />
+                {matchedChild.name} ({matchedChild.section})
+              </div>
+            )}
+          </div>
+
+          <div className="flex gap-2 text-xs font-bold">
+            <Link
+              to="/routine"
+              className="px-4 py-2.5 rounded-xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 hover:border-emerald-500"
+            >
+              {lang === 'bn' ? 'ক্লাস রুটিন' : 'Class Routine'}
+            </Link>
+            <Link
+              to="/ebooks"
+              className="px-4 py-2.5 rounded-xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 hover:border-emerald-500 flex items-center gap-1.5"
+            >
+              <BookOpen className="w-3.5 h-3.5" />
+              {lang === 'bn' ? 'ডিজিটাল লাইব্রেরি' : 'Library'}
+            </Link>
+          </div>
         </div>
 
-        <div className="flex gap-2 text-xs font-bold">
-          <Link
-            to="/routine"
-            className="px-4 py-2.5 rounded-xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 hover:border-emerald-500"
-          >
-            {lang === 'bn' ? 'ক্লাস রুটিন' : 'Class Routine'}
-          </Link>
-          <Link
-            to="/ebooks"
-            className="px-4 py-2.5 rounded-xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 hover:border-emerald-500 flex items-center gap-1.5"
-          >
-            <BookOpen className="w-3.5 h-3.5" />
-            {lang === 'bn' ? 'ডিজিটাল লাইব্রেরি' : 'Library'}
-          </Link>
-        </div>
+        {/* Cloud Verification Status Banner */}
+        {firebaseUser && (
+          <div className="flex flex-wrap items-center gap-3 text-xs font-bold pt-2 border-t border-slate-200 dark:border-slate-700">
+            {currentLinkRequest ? (
+              <span
+                className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-lg uppercase ${
+                  currentLinkRequest.status === 'approved'
+                    ? 'bg-emerald-100 text-emerald-800 dark:bg-emerald-950 dark:text-emerald-300'
+                    : currentLinkRequest.status === 'rejected'
+                    ? 'bg-red-100 text-red-800 dark:bg-red-950 dark:text-red-300'
+                    : 'bg-amber-100 text-amber-800 dark:bg-amber-950 dark:text-amber-300'
+                }`}
+              >
+                {currentLinkRequest.status === 'approved' ? (
+                  <ShieldCheck className="w-3.5 h-3.5" />
+                ) : currentLinkRequest.status === 'rejected' ? (
+                  <XCircle className="w-3.5 h-3.5" />
+                ) : (
+                  <Clock className="w-3.5 h-3.5" />
+                )}
+                {lang === 'bn'
+                  ? currentLinkRequest.status === 'approved'
+                    ? 'ভেরিফায়েড সংযোগ সক্রিয়'
+                    : currentLinkRequest.status === 'rejected'
+                    ? 'লিংক আবেদন বাতিল হয়েছে'
+                    : 'শিক্ষকের অনুমোদনের অপেক্ষায়'
+                  : `Link Status: ${currentLinkRequest.status}`}
+              </span>
+            ) : (
+              <span className="text-slate-500 dark:text-slate-400">
+                {lang === 'bn'
+                  ? 'ক্লাউড ডাটাবেজে সন্তানের ফলাফল ও হাজিরা দেখতে উপরে শ্রেণী ও রোল দিয়ে "ভেরিফায়েড লিংক অনুরোধ" পাঠান।'
+                  : 'Submit a Verified Link Request above so your teacher can authorize private marks & attendance access.'}
+              </span>
+            )}
+          </div>
+        )}
       </div>
 
       {/* Summary Cards */}
@@ -271,8 +399,8 @@ export const ParentPortal: React.FC = () => {
           {childMarks.length === 0 ? (
             <p className="text-sm text-slate-500 py-8 text-center">
               {lang === 'bn'
-                ? 'এখনো পরীক্ষার ফলাফল প্রকাশিত হয়নি। শিক্ষক নম্বর আপলোড করলে এখানে অগ্রগতি দেখা যাবে।'
-                : 'No published exam marks yet. Subject progress bars appear once teachers publish marks.'}
+                ? 'এখনো পরীক্ষার ফলাফল প্রকাশিত হয়নি অথবা অভিভাবক লিংক অনুমোদনের অপেক্ষায় রয়েছে।'
+                : 'No published marks available yet (or awaiting teacher link verification).'}
             </p>
           ) : (
             <div className="space-y-4">

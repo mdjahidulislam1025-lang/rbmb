@@ -24,8 +24,9 @@ import {
 } from 'lucide-react';
 import { CLASSES } from '../constants';
 import { useApp } from '../App';
+import { AdmissionStatusProjection } from '../types';
 
-const { useState, useMemo } = React;
+const { useState } = React;
 
 const Admission: React.FC = () => {
   const [isFormOpen, setIsFormOpen] = useState(false);
@@ -33,7 +34,11 @@ const Admission: React.FC = () => {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [submittedAppId, setSubmittedAppId] = useState('');
   const [statusQuery, setStatusQuery] = useState('');
-  const { lang, t, settings, admissions, addAdmission } = useApp();
+  const [isCheckingStatus, setIsCheckingStatus] = useState(false);
+  const [hasSearchedStatus, setHasSearchedStatus] = useState(false);
+  const [last4Input, setLast4Input] = useState('');
+  const [matchedStatus, setMatchedStatus] = useState<AdmissionStatusProjection | null>(null);
+  const { lang, t, settings, addAdmission, lookupAdmissionStatus } = useApp();
 
   const [formData, setFormData] = useState({
     studentName: '',
@@ -48,18 +53,15 @@ const Admission: React.FC = () => {
     bloodGroup: '',
   });
 
-  const matchedApplication = useMemo(() => {
-    const q = statusQuery.trim().toLowerCase();
-    if (!q) return null;
-    return (
-      admissions.find(
-        (a) =>
-          a.appId.toLowerCase() === q ||
-          `#${a.appId.toLowerCase()}` === q ||
-          a.guardianMobile.replace(/\s+/g, '') === q.replace(/\s+/g, '')
-      ) || null
-    );
-  }, [admissions, statusQuery]);
+  const handleCheckStatus = async (e?: React.FormEvent) => {
+    if (e) e.preventDefault();
+    if (!statusQuery.trim()) return;
+    setIsCheckingStatus(true);
+    setHasSearchedStatus(true);
+    const result = await lookupAdmissionStatus(statusQuery.trim(), last4Input.trim() || undefined);
+    setMatchedStatus(result);
+    setIsCheckingStatus(false);
+  };
 
   const handleInputChange = (
     e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>
@@ -218,6 +220,8 @@ const Admission: React.FC = () => {
               <button
                 onClick={() => {
                   setStatusQuery(submittedAppId);
+                  setHasSearchedStatus(true);
+                  lookupAdmissionStatus(submittedAppId).then((res) => setMatchedStatus(res));
                   setIsSubmitted(false);
                   setIsFormOpen(false);
                 }}
@@ -455,9 +459,9 @@ const Admission: React.FC = () => {
           </p>
         </section>
 
-        {/* Live Application Status Checker */}
+        {/* Live Application Status Checker (Non-PII Projection) */}
         <section className="bg-white dark:bg-slate-900 rounded-3xl p-6 md:p-8 shadow-xl border border-emerald-100 dark:border-slate-800 space-y-5">
-          <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+          <form onSubmit={handleCheckStatus} className="flex flex-col lg:flex-row lg:items-center justify-between gap-4">
             <div>
               <h2 className="text-xl font-black text-slate-900 dark:text-white flex items-center gap-2">
                 <Search className="w-5 h-5 text-emerald-600" />
@@ -465,54 +469,85 @@ const Admission: React.FC = () => {
               </h2>
               <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">
                 {lang === 'bn'
-                  ? 'আপনার প্রাপ্ত App ID (যেমন: RBHS-123456) অথবা অভিভাবকের মোবাইল নম্বর লিখুন।'
-                  : 'Enter your Tracking App ID (e.g. RBHS-123456) or Guardian Mobile number.'}
+                  ? 'আপনার প্রাপ্ত Tracking App ID (যেমন: RBHS-123456) এবং প্রয়োজনে মোবাইলের শেষ ৪ সংখ্যা দিন। ব্যক্তিগত তথ্য গোপন রাখা হয়।'
+                  : 'Enter your Tracking App ID (e.g. RBHS-123456) and optional last 4 guardian mobile digits. Personal PII is protected.'}
               </p>
             </div>
-            <div className="flex items-center gap-2 w-full md:w-96">
+            <div className="flex flex-wrap sm:flex-nowrap items-center gap-2 w-full lg:w-auto">
               <input
                 type="text"
                 value={statusQuery}
-                onChange={(e) => setStatusQuery(e.target.value)}
-                placeholder={lang === 'bn' ? 'RBHS-... অথবা 017...' : 'Enter App ID or Mobile...'}
-                className="w-full px-4 py-3 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-slate-900 dark:text-white text-sm font-bold outline-none focus:ring-2 focus:ring-emerald-500"
+                onChange={(e) => {
+                  setStatusQuery(e.target.value);
+                  setHasSearchedStatus(false);
+                }}
+                placeholder={lang === 'bn' ? 'App ID (RBHS-...)' : 'Tracking App ID...'}
+                className="flex-1 sm:w-52 px-4 py-3 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-slate-900 dark:text-white text-sm font-bold outline-none focus:ring-2 focus:ring-emerald-500"
               />
+              <input
+                type="text"
+                maxLength={4}
+                value={last4Input}
+                onChange={(e) => {
+                  setLast4Input(e.target.value.replace(/\D/g, ''));
+                  setHasSearchedStatus(false);
+                }}
+                placeholder={lang === 'bn' ? 'শেষ ৪ ডিজিট' : 'Last 4 digits'}
+                className="w-28 px-3 py-3 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-slate-900 dark:text-white text-sm font-bold outline-none focus:ring-2 focus:ring-emerald-500"
+              />
+              <button
+                type="submit"
+                disabled={isCheckingStatus}
+                className="px-5 py-3 rounded-xl bg-emerald-700 hover:bg-emerald-800 text-white text-xs font-black uppercase tracking-wider disabled:opacity-50"
+              >
+                {isCheckingStatus
+                  ? lang === 'bn'
+                    ? 'যাচাই...'
+                    : 'Checking...'
+                  : lang === 'bn'
+                  ? 'যাচাই করুন'
+                  : 'Check'}
+              </button>
             </div>
-          </div>
+          </form>
 
-          {statusQuery.trim() && (
-            matchedApplication ? (
+          {hasSearchedStatus && !isCheckingStatus && (
+            matchedStatus ? (
               <div className="p-5 rounded-2xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
                 <div className="space-y-1">
                   <p className="text-xs font-mono font-bold text-slate-500 dark:text-slate-400">
-                    ID: {matchedApplication.appId} • {matchedApplication.submittedDate}
+                    Tracking ID: {matchedStatus.appId} • {matchedStatus.submittedDate}
                   </p>
-                  <h4 className="text-lg font-black text-slate-900 dark:text-white">{matchedApplication.studentName}</h4>
-                  <p className="text-xs font-semibold text-slate-600 dark:text-slate-300">
-                    {matchedApplication.targetClass} ({matchedApplication.targetGroup}) • {matchedApplication.guardianMobile}
+                  <h4 className="text-lg font-black text-slate-900 dark:text-white">
+                    {matchedStatus.targetClass} ({matchedStatus.targetGroup})
+                  </h4>
+                  <p className="text-xs font-semibold text-slate-500 dark:text-slate-400">
+                    {lang === 'bn'
+                      ? 'গোপনীয়তা নীতির কারণে নাম ও মোবাইল নম্বর গোপন রাখা হয়েছে।'
+                      : 'Applicant name and phone number are hidden for privacy protection.'}
                   </p>
                 </div>
                 <span
                   className={`inline-flex items-center gap-1.5 px-4 py-2 rounded-xl text-xs font-black uppercase ${
-                    matchedApplication.status === 'approved'
+                    matchedStatus.status === 'approved'
                       ? 'bg-emerald-100 text-emerald-800 dark:bg-emerald-950 dark:text-emerald-300'
-                      : matchedApplication.status === 'rejected'
+                      : matchedStatus.status === 'rejected'
                       ? 'bg-red-100 text-red-800 dark:bg-red-950 dark:text-red-300'
                       : 'bg-amber-100 text-amber-800 dark:bg-amber-950 dark:text-amber-300'
                   }`}
                 >
-                  {matchedApplication.status === 'approved' ? (
+                  {matchedStatus.status === 'approved' ? (
                     <CheckCircle className="w-4 h-4" />
-                  ) : matchedApplication.status === 'rejected' ? (
+                  ) : matchedStatus.status === 'rejected' ? (
                     <XCircle className="w-4 h-4" />
                   ) : (
                     <Clock className="w-4 h-4" />
                   )}
-                  {matchedApplication.status === 'approved'
+                  {matchedStatus.status === 'approved'
                     ? lang === 'bn'
                       ? 'অনুমোদিত (Approved)'
                       : 'Approved'
-                    : matchedApplication.status === 'rejected'
+                    : matchedStatus.status === 'rejected'
                     ? lang === 'bn'
                       ? 'বাতিল (Rejected)'
                       : 'Rejected'
@@ -524,8 +559,8 @@ const Admission: React.FC = () => {
             ) : (
               <p className="text-xs font-bold text-slate-500 dark:text-slate-400">
                 {lang === 'bn'
-                  ? 'এই আইডি বা নম্বরে কোনো আবেদন খুঁজে পাওয়া যায়নি।'
-                  : 'No matching application found for this App ID or mobile number.'}
+                  ? 'এই App ID বা মোবাইলের শেষ ৪ সংখ্যায় কোনো আবেদন পাওয়া যায়নি।'
+                  : 'No matching application status found for that App ID or verification code.'}
               </p>
             )
           )}
@@ -625,7 +660,7 @@ const Admission: React.FC = () => {
               </div>
               <div className="flex items-center gap-2 text-xs text-slate-500 dark:text-slate-400 font-semibold">
                 <Users className="w-4 h-4 text-green-600" />
-                <span>{admissions.length} applications tracked digitally</span>
+                <span>{lang === 'bn' ? 'লাইভ ট্র্যাকিং ও গোপনীয়তা সুরক্ষিত' : 'Privacy-Protected Digital Status Tracking'}</span>
               </div>
               <div className="flex items-center gap-2 text-xs text-slate-500 dark:text-slate-400 font-semibold">
                 <ShieldCheck className="w-4 h-4 text-green-600" />

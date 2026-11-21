@@ -43,6 +43,11 @@ service cloud.firestore {
         && obj.bn is string && obj.bn.size() <= maxLen
         && obj.en is string && obj.en.size() <= maxLen;
     }
+    function isAllowedUidsList(uids) {
+      return uids is list
+        && uids.size() <= 5
+        && (uids.size() == 0 || (uids[0] is string && uids[0].size() >= 1 && uids[0].size() <= 128));
+    }
 
     // Validation Blueprints
     function isValidSettings(data) {
@@ -225,13 +230,32 @@ service cloud.firestore {
 
     function isValidStudent(data) {
       return data.keys().hasAll(['id', 'roll', 'name', 'classId', 'section', 'guardianMobile', 'createdAt', 'updatedAt'])
-        && data.keys().hasOnly(['id', 'roll', 'name', 'classId', 'section', 'guardianMobile', 'createdAt', 'updatedAt'])
+        && data.keys().hasOnly(['id', 'roll', 'name', 'classId', 'section', 'guardianMobile', 'studentUid', 'allowedUids', 'createdAt', 'updatedAt'])
         && isValidId(data.id)
         && data.roll is string && data.roll.size() >= 1 && data.roll.size() <= 20
         && data.name is string && data.name.size() >= 1 && data.name.size() <= 150
         && data.classId is string && data.classId in ['6', '7', '8', '9', '10']
         && data.section is string && data.section.size() >= 1 && data.section.size() <= 40
         && data.guardianMobile is string && data.guardianMobile.size() >= 6 && data.guardianMobile.size() <= 30
+        && (!('studentUid' in data) || isValidId(data.studentUid))
+        && (!('allowedUids' in data) || isAllowedUidsList(data.allowedUids))
+        && data.createdAt is timestamp
+        && data.updatedAt is timestamp;
+    }
+
+    function isValidStudentAttendance(data) {
+      return data.keys().hasAll(['id', 'date', 'classId', 'studentId', 'studentName', 'roll', 'status', 'teacherName', 'isPublished', 'createdAt', 'updatedAt'])
+        && data.keys().hasOnly(['id', 'date', 'classId', 'studentId', 'studentName', 'roll', 'status', 'teacherName', 'allowedUids', 'isPublished', 'createdAt', 'updatedAt'])
+        && isValidId(data.id)
+        && data.date is string && data.date.size() >= 4 && data.date.size() <= 32
+        && data.classId is string && data.classId in ['6', '7', '8', '9', '10']
+        && isValidId(data.studentId)
+        && data.studentName is string && data.studentName.size() >= 1 && data.studentName.size() <= 150
+        && data.roll is string && data.roll.size() >= 1 && data.roll.size() <= 20
+        && data.status is string && data.status in ['present', 'absent', 'late']
+        && data.teacherName is string && data.teacherName.size() >= 1 && data.teacherName.size() <= 150
+        && (!('allowedUids' in data) || isAllowedUidsList(data.allowedUids))
+        && data.isPublished is bool
         && data.createdAt is timestamp
         && data.updatedAt is timestamp;
     }
@@ -288,7 +312,7 @@ service cloud.firestore {
 
     function isValidExamMark(data) {
       return data.keys().hasAll(['id', 'examTerm', 'classId', 'subject', 'studentId', 'studentName', 'roll', 'totalMarks', 'obtainedMarks', 'grade', 'enteredBy', 'isPublished', 'createdAt', 'updatedAt'])
-        && data.keys().hasOnly(['id', 'examTerm', 'classId', 'subject', 'studentId', 'studentName', 'roll', 'totalMarks', 'obtainedMarks', 'grade', 'enteredBy', 'isPublished', 'createdAt', 'updatedAt'])
+        && data.keys().hasOnly(['id', 'examTerm', 'classId', 'subject', 'studentId', 'studentName', 'roll', 'totalMarks', 'obtainedMarks', 'grade', 'enteredBy', 'allowedUids', 'isPublished', 'createdAt', 'updatedAt'])
         && isValidId(data.id)
         && data.examTerm is string && data.examTerm.size() >= 1 && data.examTerm.size() <= 100
         && data.classId is string && data.classId in ['6', '7', '8', '9', '10']
@@ -300,6 +324,7 @@ service cloud.firestore {
         && (data.obtainedMarks is int || data.obtainedMarks is float) && data.obtainedMarks >= 0 && data.obtainedMarks <= data.totalMarks
         && data.grade is string && data.grade.size() >= 1 && data.grade.size() <= 8
         && data.enteredBy is string && data.enteredBy.size() >= 1 && data.enteredBy.size() <= 150
+        && (!('allowedUids' in data) || isAllowedUidsList(data.allowedUids))
         && data.isPublished is bool
         && data.createdAt is timestamp
         && data.updatedAt is timestamp;
@@ -450,6 +475,53 @@ service cloud.firestore {
         && data.updatedAt is timestamp;
     }
 
+    function isValidAdmissionStatus(data) {
+      return data.keys().hasAll(['appId', 'targetClass', 'targetGroup', 'status', 'submittedDate', 'updatedAt'])
+        && data.keys().hasOnly(['appId', 'targetClass', 'targetGroup', 'status', 'submittedDate', 'mobileLast4', 'updatedAt'])
+        && isValidId(data.appId)
+        && data.targetClass is string && data.targetClass.size() >= 1 && data.targetClass.size() <= 40
+        && data.targetGroup is string && data.targetGroup.size() >= 1 && data.targetGroup.size() <= 40
+        && data.status is string && data.status in ['pending', 'approved', 'rejected']
+        && data.submittedDate is string && data.submittedDate.size() >= 1 && data.submittedDate.size() <= 40
+        && (!('mobileLast4' in data) || (data.mobileLast4 is string && data.mobileLast4.size() <= 8))
+        && data.updatedAt is timestamp;
+    }
+
+    function isValidParentStudentLink(data) {
+      return data.keys().hasAll(['id', 'parentUid', 'parentEmail', 'parentName', 'classId', 'roll', 'relationship', 'status', 'submittedDate', 'createdAt', 'updatedAt'])
+        && data.keys().hasOnly(['id', 'parentUid', 'parentEmail', 'parentName', 'studentId', 'studentName', 'classId', 'roll', 'relationship', 'status', 'approvedBy', 'submittedDate', 'createdAt', 'updatedAt'])
+        && isValidId(data.id)
+        && isValidId(data.parentUid)
+        && data.parentEmail is string && data.parentEmail.size() >= 3 && data.parentEmail.size() <= 150
+        && data.parentName is string && data.parentName.size() >= 1 && data.parentName.size() <= 150
+        && (!('studentId' in data) || isValidId(data.studentId))
+        && (!('studentName' in data) || (data.studentName is string && data.studentName.size() <= 150))
+        && data.classId is string && data.classId in ['6', '7', '8', '9', '10']
+        && data.roll is string && data.roll.size() >= 1 && data.roll.size() <= 20
+        && data.relationship is string && data.relationship in ['Father', 'Mother', 'Guardian']
+        && data.status is string && data.status in ['pending', 'approved', 'rejected']
+        && (!('approvedBy' in data) || (data.approvedBy is string && data.approvedBy.size() <= 150))
+        && data.submittedDate is string && data.submittedDate.size() >= 4 && data.submittedDate.size() <= 32
+        && data.createdAt is timestamp
+        && data.updatedAt is timestamp;
+    }
+
+    function isValidAuditLog(data) {
+      return data.keys().hasAll(['id', 'actorUid', 'actorName', 'actorEmail', 'actorRole', 'action', 'targetCollection', 'targetId', 'summary', 'createdDate', 'createdAt'])
+        && data.keys().hasOnly(['id', 'actorUid', 'actorName', 'actorEmail', 'actorRole', 'action', 'targetCollection', 'targetId', 'summary', 'createdDate', 'createdAt'])
+        && isValidId(data.id)
+        && isValidId(data.actorUid)
+        && data.actorName is string && data.actorName.size() >= 1 && data.actorName.size() <= 150
+        && data.actorEmail is string && data.actorEmail.size() >= 3 && data.actorEmail.size() <= 150
+        && data.actorRole is string && data.actorRole in ['student', 'teacher', 'parent', 'admin']
+        && data.action is string && data.action.size() >= 2 && data.action.size() <= 64
+        && data.targetCollection is string && data.targetCollection.size() >= 1 && data.targetCollection.size() <= 64
+        && data.targetId is string && data.targetId.size() >= 1 && data.targetId.size() <= 128
+        && data.summary is string && data.summary.size() >= 1 && data.summary.size() <= 500
+        && data.createdDate is string && data.createdDate.size() >= 4 && data.createdDate.size() <= 32
+        && data.createdAt is timestamp;
+    }
+
     // Connection test doc
     match /test/{docId} {
       allow get: if docId == 'connection';
@@ -598,21 +670,29 @@ service cloud.firestore {
       allow delete: if isBootstrappedAdmin() && isValidId(uid);
     }
 
-    // Teacher & Student Portal Collections
+    // Teacher & Student Portal Collections (Isolated PII & Results)
     match /students/{studentId} {
-      allow get: if isValidId(studentId) && isTeacher();
-      allow list: if isTeacher();
+      allow get: if isValidId(studentId) && (isTeacher() || (isSignedIn() && 'allowedUids' in existing() && request.auth.uid in existing().allowedUids));
+      allow list: if isTeacher() || (isSignedIn() && 'allowedUids' in existing() && request.auth.uid in existing().allowedUids);
       allow create: if isTeacher() && isValidId(studentId) && isValidStudent(incoming()) && incoming().id == studentId && incoming().createdAt == request.time && incoming().updatedAt == request.time;
       allow update: if isTeacher() && isValidId(studentId) && isValidStudent(incoming()) && incoming().id == existing().id && incoming().createdAt == existing().createdAt && incoming().updatedAt == request.time;
       allow delete: if isTeacher() && isValidId(studentId);
     }
 
     match /attendance/{attendanceId} {
-      allow get: if isValidId(attendanceId) && ((isSignedIn() && existing().isPublished == true) || isTeacher());
-      allow list: if (isSignedIn() && existing().isPublished == true) || isTeacher();
+      allow get: if isValidId(attendanceId) && isTeacher();
+      allow list: if isTeacher();
       allow create: if isTeacher() && isValidId(attendanceId) && isValidAttendance(incoming()) && incoming().id == attendanceId && incoming().createdAt == request.time && incoming().updatedAt == request.time;
       allow update: if isTeacher() && isValidId(attendanceId) && isValidAttendance(incoming()) && incoming().id == existing().id && incoming().createdAt == existing().createdAt && incoming().updatedAt == request.time;
       allow delete: if isTeacher() && isValidId(attendanceId);
+    }
+
+    match /studentAttendance/{recordId} {
+      allow get: if isValidId(recordId) && (isTeacher() || (isSignedIn() && existing().isPublished == true && 'allowedUids' in existing() && request.auth.uid in existing().allowedUids));
+      allow list: if isTeacher() || (isSignedIn() && existing().isPublished == true && 'allowedUids' in existing() && request.auth.uid in existing().allowedUids);
+      allow create: if isTeacher() && isValidId(recordId) && isValidStudentAttendance(incoming()) && incoming().id == recordId && incoming().createdAt == request.time && incoming().updatedAt == request.time;
+      allow update: if isTeacher() && isValidId(recordId) && isValidStudentAttendance(incoming()) && incoming().id == existing().id && incoming().createdAt == existing().createdAt && incoming().updatedAt == request.time;
+      allow delete: if isTeacher() && isValidId(recordId);
     }
 
     match /homework/{homeworkId} {
@@ -645,8 +725,8 @@ service cloud.firestore {
     }
 
     match /examMarks/{markId} {
-      allow get: if isValidId(markId) && ((isSignedIn() && existing().isPublished == true) || isTeacher());
-      allow list: if (isSignedIn() && existing().isPublished == true) || isTeacher();
+      allow get: if isValidId(markId) && (isTeacher() || (isSignedIn() && existing().isPublished == true && 'allowedUids' in existing() && request.auth.uid in existing().allowedUids));
+      allow list: if isTeacher() || (isSignedIn() && existing().isPublished == true && 'allowedUids' in existing() && request.auth.uid in existing().allowedUids);
       allow create: if isTeacher() && isValidId(markId) && isValidExamMark(incoming()) && incoming().id == markId && incoming().createdAt == request.time && incoming().updatedAt == request.time;
       allow update: if isTeacher() && isValidId(markId) && isValidExamMark(incoming()) && incoming().id == existing().id && incoming().createdAt == existing().createdAt && incoming().updatedAt == request.time;
       allow delete: if isTeacher() && isValidId(markId);
@@ -769,6 +849,60 @@ service cloud.firestore {
         && incoming().updatedAt == request.time
         && incoming().diff(existing()).affectedKeys().hasOnly(['status', 'reviewedBy', 'teacherRemark', 'updatedAt']);
       allow delete: if isValidId(leaveId) && ((isSignedIn() && 'ownerUid' in existing() && existing().ownerUid == request.auth.uid && existing().status == 'pending') || isTeacher());
+    }
+
+    // Non-PII Public Admission Status Tracking (Exact ID get only, list forbidden)
+    match /admission_status/{appId} {
+      allow get: if isValidId(appId);
+      allow list: if false;
+      allow create: if isValidId(appId)
+        && isValidAdmissionStatus(incoming())
+        && incoming().appId == appId
+        && incoming().status == 'pending'
+        && incoming().updatedAt == request.time;
+      allow update: if isAdmin()
+        && isValidId(appId)
+        && isValidAdmissionStatus(incoming())
+        && incoming().appId == existing().appId
+        && incoming().updatedAt == request.time
+        && incoming().diff(existing()).affectedKeys().hasOnly(['status', 'updatedAt']);
+      allow delete: if isAdmin() && isValidId(appId);
+    }
+
+    // Parent-Student Link Requests (Parent creates pending, Teacher/Admin verifies)
+    match /parent_student_links/{linkId} {
+      allow get: if isValidId(linkId) && ((isSignedIn() && existing().parentUid == request.auth.uid) || isTeacher());
+      allow list: if (isSignedIn() && existing().parentUid == request.auth.uid) || isTeacher();
+      allow create: if isSignedIn()
+        && isValidId(linkId)
+        && isValidParentStudentLink(incoming())
+        && incoming().id == linkId
+        && incoming().parentUid == request.auth.uid
+        && incoming().status == 'pending'
+        && incoming().createdAt == request.time
+        && incoming().updatedAt == request.time;
+      allow update: if isTeacher()
+        && isValidId(linkId)
+        && isValidParentStudentLink(incoming())
+        && incoming().id == existing().id
+        && incoming().parentUid == existing().parentUid
+        && incoming().createdAt == existing().createdAt
+        && incoming().updatedAt == request.time
+        && incoming().diff(existing()).affectedKeys().hasOnly(['status', 'approvedBy', 'studentId', 'studentName', 'updatedAt']);
+      allow delete: if isValidId(linkId) && ((isSignedIn() && existing().parentUid == request.auth.uid && existing().status == 'pending') || isAdmin());
+    }
+
+    // Immutable Append-Only Audit Logs
+    match /audit_logs/{logId} {
+      allow get: if isValidId(logId) && isAdmin();
+      allow list: if isAdmin();
+      allow create: if isTeacher()
+        && isValidId(logId)
+        && isValidAuditLog(incoming())
+        && incoming().id == logId
+        && incoming().actorUid == request.auth.uid
+        && incoming().createdAt == request.time;
+      allow update, delete: if false;
     }
   }
 }

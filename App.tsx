@@ -80,6 +80,11 @@ import {
   TeacherLeave,
   StudentLeave,
   CloudUserProfile,
+  StudentAttendanceRecord,
+  ParentStudentLink,
+  AdmissionStatusProjection,
+  AuditLog,
+  AuditAction,
 } from './types';
 import { OfflineIndicator } from './components/OfflineIndicator';
 import {
@@ -93,6 +98,11 @@ import {
 import {
   onAuthStateChanged,
   signInWithPopup,
+  signInWithEmailAndPassword,
+  createUserWithEmailAndPassword,
+  sendEmailVerification,
+  sendPasswordResetEmail,
+  updateProfile,
   signOut,
   User as FirebaseUser,
 } from 'firebase/auth';
@@ -100,7 +110,10 @@ import {
   collection,
   doc,
   getDoc,
+  getDocs,
   onSnapshot,
+  orderBy,
+  limit,
   query,
   setDoc,
   updateDoc,
@@ -131,19 +144,12 @@ export interface AuthUser {
 }
 
 const DEFAULT_DEMO_PASSWORDS: Record<string, string> = {
-  admin: 'admin123',
   teacher01: '123456',
   student01: '123456',
   parent01: '123456',
 };
 
 const SEEDED_USER_TEMPLATES: Omit<AuthUser, 'passwordHash'>[] = [
-  {
-    userId: 'admin',
-    name: 'System Admin',
-    role: 'admin',
-    email: 'admin@school.com',
-  },
   {
     userId: 'teacher01',
     name: 'মোসাঃ ফাতেমা বেগম',
@@ -194,6 +200,19 @@ interface AppContextType {
   cloudUsers: CloudUserProfile[];
   updateCloudUserRole: (uid: string, role: BaseUserRole) => Promise<void>;
   signInWithGoogle: () => Promise<boolean>;
+  signInWithEmail: (email: string, password: string) => Promise<{ ok: boolean; error?: string; needsVerification?: boolean }>;
+  registerWithEmail: (payload: {
+    name: string;
+    email: string;
+    password: string;
+    role: 'student' | 'parent';
+    photo?: string;
+    linkedChildClass?: string;
+    linkedChildRoll?: string;
+  }) => Promise<{ ok: boolean; error?: string; needsVerification?: boolean }>;
+  resendVerificationEmail: () => Promise<boolean>;
+  refreshAuthSession: () => Promise<boolean>;
+  resetPassword: (email: string) => Promise<{ ok: boolean; error?: string }>;
   logoutGoogle: () => Promise<void>;
   login: (authUser: AuthUser) => void;
   verifyLocalCredentials: (userId: string, password: string, role: BaseUserRole) => Promise<AuthUser | null>;
@@ -235,6 +254,7 @@ interface AppContextType {
   addAdmission: (app: AdmissionApplication) => Promise<void>;
   updateAdmissionStatus: (appId: string, status: 'pending' | 'approved' | 'rejected') => Promise<void>;
   deleteAdmission: (appId: string) => Promise<void>;
+  lookupAdmissionStatus: (appId: string, mobileLast4?: string) => Promise<AdmissionStatusProjection | null>;
   contactMessages: ContactMessage[];
   addContactMessage: (msg: ContactMessage) => Promise<void>;
   markContactMessageRead: (id: string) => Promise<void>;
@@ -244,6 +264,7 @@ interface AppContextType {
   updateStudent: (student: SchoolStudent) => void;
   deleteStudent: (id: string) => void;
   attendanceRecords: AttendanceRecord[];
+  studentAttendance: StudentAttendanceRecord[];
   saveAttendance: (record: AttendanceRecord) => void;
   homeworkList: HomeworkItem[];
   addHomework: (hw: HomeworkItem) => void;
@@ -271,6 +292,10 @@ interface AppContextType {
   parentMessages: ParentMessage[];
   sendParentMessage: (msg: ParentMessage) => void;
   replyParentMessage: (id: string, reply: string, repliedBy: string) => void;
+  parentLinks: ParentStudentLink[];
+  requestParentStudentLink: (payload: { classId: string; roll: string; relationship: 'Father' | 'Mother' | 'Guardian' }) => Promise<boolean>;
+  reviewParentStudentLink: (linkId: string, status: 'approved' | 'rejected') => Promise<void>;
+  deleteParentStudentLink: (linkId: string) => Promise<void>;
   alumni: AlumniProfile[];
   submitAlumniProfile: (profile: AlumniProfile) => void;
   updateAlumniStatus: (id: string, status: 'pending' | 'approved') => void;
@@ -283,6 +308,7 @@ interface AppContextType {
   submitStudentLeave: (leave: StudentLeave) => void;
   updateStudentLeaveStatus: (id: string, status: 'pending' | 'approved' | 'rejected', reviewedBy: string, teacherRemark?: string) => void;
   deleteStudentLeave: (id: string) => void;
+  auditLogs: AuditLog[];
   settings: SchoolSettings;
   updateSettings: (newSettings: SchoolSettings) => void;
   exportDatabase: () => void;
@@ -603,6 +629,7 @@ const App: React.FC = () => {
   const [contactMessages, setContactMessages] = useState<ContactMessage[]>(() => safeLocalGet('contact_messages', []));
   const [students, setStudents] = useState<SchoolStudent[]>(() => safeLocalGet('db_students', INITIAL_STUDENTS));
   const [attendanceRecords, setAttendanceRecords] = useState<AttendanceRecord[]>(() => safeLocalGet('db_attendance', []));
+  const [studentAttendance, setStudentAttendance] = useState<StudentAttendanceRecord[]>(() => safeLocalGet('db_student_attendance', []));
   const [homeworkList, setHomeworkList] = useState<HomeworkItem[]>(() => safeLocalGet('db_homework', INITIAL_HOMEWORK));
   const [assignmentSubmissions, setAssignmentSubmissions] = useState<AssignmentSubmission[]>(() => safeLocalGet('db_assignment_submissions', []));
   const [examMarks, setExamMarks] = useState<ExamMark[]>(() => safeLocalGet('db_exam_marks', []));
@@ -611,13 +638,15 @@ const App: React.FC = () => {
   const [examRoutines, setExamRoutines] = useState<ExamRoutineItem[]>(() => safeLocalGet('db_exam_routines', INITIAL_EXAM_ROUTINES));
   const [subjects, setSubjects] = useState<SchoolSubject[]>(() => safeLocalGet('db_subjects', INITIAL_SUBJECTS));
   const [parentMessages, setParentMessages] = useState<ParentMessage[]>(() => safeLocalGet('db_parent_messages', []));
+  const [parentLinks, setParentLinks] = useState<ParentStudentLink[]>(() => safeLocalGet('db_parent_links', []));
   const [alumni, setAlumni] = useState<AlumniProfile[]>(() => safeLocalGet('db_alumni', INITIAL_ALUMNI));
   const [teacherLeaves, setTeacherLeaves] = useState<TeacherLeave[]>(() => safeLocalGet('db_teacher_leaves', []));
   const [studentLeaves, setStudentLeaves] = useState<StudentLeave[]>(() => safeLocalGet('db_student_leaves', INITIAL_STUDENT_LEAVES));
+  const [auditLogs, setAuditLogs] = useState<AuditLog[]>(() => safeLocalGet('db_audit_logs', []));
 
   const [registeredUsers, setRegisteredUsers] = useState<AuthUser[]>(() => {
     const saved = safeLocalGet<AuthUser[]>('registered_users', []);
-    return saved.map(stripPlaintextPassword);
+    return saved.filter((u) => u && u.role !== 'admin' && u.userId !== 'admin').map(stripPlaintextPassword);
   });
 
   const [settings, setSettings] = useState<SchoolSettings>(() => {
@@ -680,14 +709,14 @@ const App: React.FC = () => {
     };
   }, []);
 
-  // Initialize & migrate local users cleanly to salted hashes (no plaintext stored)
+  // Initialize & migrate local users cleanly to salted hashes (no plaintext stored, no local admin backdoor)
   useEffect(() => {
     let cancelled = false;
     const bootstrapUsers = async () => {
       const rawSaved = safeLocalGet<AuthUser[]>('registered_users', []);
       const migrated: AuthUser[] = [];
       for (const u of rawSaved) {
-        if (!u || !u.userId) continue;
+        if (!u || !u.userId || u.role === 'admin' || u.userId.toLowerCase() === 'admin') continue;
         let nextHash = u.passwordHash;
         if (!nextHash && u.password) {
           nextHash = await hashPassword(u.password);
@@ -747,104 +776,140 @@ const App: React.FC = () => {
 
   useEffect(() => {
     const savedUser = safeLocalGet<AuthUser | null>('school_user', null);
-    if (savedUser) setUser(stripPlaintextPassword(savedUser));
+    if (savedUser && savedUser.role !== 'admin') {
+      setUser(stripPlaintextPassword(savedUser));
+    } else if (savedUser?.role === 'admin') {
+      localStorage.removeItem('school_user');
+    }
     testFirestoreConnection();
   }, []);
 
-  // Firebase Authentication & Admin/Teacher/Parent Role Detection
-  useEffect(() => {
-    const unsubAuth = onAuthStateChanged(auth, async (fbUser) => {
-      const seq = ++authSeqRef.current;
-      setResolvedUid(null);
+  const syncFirebaseUserSession = async (fbUser: FirebaseUser | null) => {
+    const seq = ++authSeqRef.current;
+    setResolvedUid(null);
 
-      if (!fbUser) {
-        setFirebaseUser(null);
-        setIsCloudAdmin(false);
-        setIsCloudTeacher(false);
-        setCloudUsers([]);
-        return;
-      }
+    if (!fbUser) {
+      setFirebaseUser(null);
+      setIsCloudAdmin(false);
+      setIsCloudTeacher(false);
+      setCloudUsers([]);
+      return;
+    }
 
-      const isVerified = fbUser.emailVerified === true;
-      if (!isVerified) {
-        setIsCloudAdmin(false);
-        setIsCloudTeacher(false);
-        setCloudUsers([]);
-        setFirebaseUser(fbUser);
-        setResolvedUid(fbUser.uid);
-        return;
-      }
-
-      const isBootstrap = fbUser.email?.toLowerCase() === BOOTSTRAPPED_ADMIN_EMAIL.toLowerCase();
-      let adminStatus = isBootstrap;
-
-      if (!adminStatus) {
-        try {
-          const adminSnap = await getDoc(doc(db, 'admins', fbUser.uid));
-          adminStatus = adminSnap.exists();
-        } catch {
-          adminStatus = false;
-        }
-      }
-
-      if (authSeqRef.current !== seq) return;
-
-      let resolvedRole: BaseUserRole = adminStatus ? 'admin' : 'student';
-      let extraChild: Partial<AuthUser> = {};
-
-      try {
-        const userRef = doc(db, 'users', fbUser.uid);
-        const userSnap = await getDoc(userRef);
-
-        if (!userSnap.exists()) {
-          await setDoc(userRef, {
-            uid: sanitizeFirestoreId(fbUser.uid),
-            name: (fbUser.displayName || fbUser.email || 'User').slice(0, 150),
-            email: (fbUser.email || 'user@rbhs.edu').slice(0, 150),
-            role: resolvedRole,
-            ...(fbUser.photoURL ? { photo: fbUser.photoURL.slice(0, 600000) } : {}),
-            createdAt: serverTimestamp(),
-            updatedAt: serverTimestamp(),
-          });
-        } else {
-          const d = userSnap.data();
-          const docRole = d.role as BaseUserRole;
-          resolvedRole = adminStatus ? 'admin' : (docRole || 'student');
-          extraChild = {
-            ...(d.linkedChildClass ? { linkedChildClass: d.linkedChildClass } : {}),
-            ...(d.linkedChildRoll ? { linkedChildRoll: d.linkedChildRoll } : {}),
-            ...(d.linkedChildName ? { linkedChildName: d.linkedChildName } : {}),
-          };
-          if (adminStatus && docRole !== 'admin') {
-            await updateDoc(userRef, {
-              role: 'admin',
-              updatedAt: serverTimestamp(),
-            });
-          }
-        }
-
-        if (authSeqRef.current !== seq) return;
-
-        const syncedAuthUser: AuthUser = {
-          role: resolvedRole,
-          name: fbUser.displayName || fbUser.email || 'Google User',
-          userId: fbUser.uid,
-          email: fbUser.email || '',
-          photo: fbUser.photoURL || '',
-          ...extraChild,
-        };
-        setUser(syncedAuthUser);
-        safeLocalSet('school_user', syncedAuthUser);
-      } catch (err) {
-        console.warn('User profile sync skipped:', err);
-      }
-
-      if (authSeqRef.current !== seq) return;
-
-      setIsCloudAdmin(adminStatus);
-      setIsCloudTeacher(adminStatus || resolvedRole === 'teacher');
+    const isVerified = fbUser.emailVerified === true;
+    if (!isVerified) {
+      setIsCloudAdmin(false);
+      setIsCloudTeacher(false);
+      setCloudUsers([]);
       setFirebaseUser(fbUser);
       setResolvedUid(fbUser.uid);
+      return;
+    }
+
+    const isBootstrap = fbUser.email?.toLowerCase() === BOOTSTRAPPED_ADMIN_EMAIL.toLowerCase();
+    let adminStatus = isBootstrap;
+
+    if (!adminStatus) {
+      try {
+        const adminSnap = await getDoc(doc(db, 'admins', fbUser.uid));
+        adminStatus = adminSnap.exists();
+      } catch {
+        adminStatus = false;
+      }
+    }
+
+    if (authSeqRef.current !== seq) return;
+
+    let resolvedRole: BaseUserRole = adminStatus ? 'admin' : 'student';
+    let extraChild: Partial<AuthUser> = {};
+
+    const pendingKey = `pending_profile_${fbUser.uid}`;
+    const pendingProfile = safeLocalGet<{
+      name?: string;
+      role?: 'student' | 'parent';
+      photo?: string;
+      linkedChildClass?: string;
+      linkedChildRoll?: string;
+    } | null>(pendingKey, null);
+
+    try {
+      const userRef = doc(db, 'users', fbUser.uid);
+      const userSnap = await getDoc(userRef);
+
+      if (!userSnap.exists()) {
+        const initialRole: BaseUserRole = adminStatus
+          ? 'admin'
+          : pendingProfile?.role === 'parent'
+          ? 'parent'
+          : 'student';
+        resolvedRole = initialRole;
+        const safeName = (pendingProfile?.name || fbUser.displayName || fbUser.email || 'User').slice(0, 150);
+        const safePhoto = (pendingProfile?.photo || fbUser.photoURL || '').slice(0, 600000);
+        await setDoc(userRef, {
+          uid: sanitizeFirestoreId(fbUser.uid),
+          name: safeName,
+          email: (fbUser.email || 'user@rbhs.edu').slice(0, 150),
+          role: resolvedRole,
+          ...(safePhoto ? { photo: safePhoto } : {}),
+          ...(pendingProfile?.linkedChildClass ? { linkedChildClass: pendingProfile.linkedChildClass.slice(0, 16) } : {}),
+          ...(pendingProfile?.linkedChildRoll ? { linkedChildRoll: pendingProfile.linkedChildRoll.slice(0, 20) } : {}),
+          createdAt: serverTimestamp(),
+          updatedAt: serverTimestamp(),
+        });
+        if (pendingProfile) {
+          extraChild = {
+            ...(pendingProfile.linkedChildClass ? { linkedChildClass: pendingProfile.linkedChildClass } : {}),
+            ...(pendingProfile.linkedChildRoll ? { linkedChildRoll: pendingProfile.linkedChildRoll } : {}),
+          };
+          localStorage.removeItem(pendingKey);
+        }
+      } else {
+        const d = userSnap.data();
+        const docRole = d.role as BaseUserRole;
+        resolvedRole = adminStatus ? 'admin' : (docRole || 'student');
+        extraChild = {
+          ...(d.linkedChildClass ? { linkedChildClass: d.linkedChildClass } : {}),
+          ...(d.linkedChildRoll ? { linkedChildRoll: d.linkedChildRoll } : {}),
+          ...(d.linkedChildName ? { linkedChildName: d.linkedChildName } : {}),
+        };
+        if (adminStatus && docRole !== 'admin') {
+          await updateDoc(userRef, {
+            role: 'admin',
+            updatedAt: serverTimestamp(),
+          });
+        }
+        if (pendingProfile) localStorage.removeItem(pendingKey);
+      }
+
+      if (authSeqRef.current !== seq) return;
+
+      const userSnapAfter = userSnap.exists() ? userSnap.data() : null;
+      const syncedAuthUser: AuthUser = {
+        role: resolvedRole,
+        name: pendingProfile?.name || userSnapAfter?.name || fbUser.displayName || fbUser.email || 'User',
+        userId: fbUser.uid,
+        email: fbUser.email || '',
+        photo: pendingProfile?.photo || userSnapAfter?.photo || fbUser.photoURL || '',
+        ...extraChild,
+      };
+      setUser(syncedAuthUser);
+      safeLocalSet('school_user', syncedAuthUser);
+    } catch (err) {
+      console.warn('User profile sync skipped:', err);
+    }
+
+    if (authSeqRef.current !== seq) return;
+
+    setIsCloudAdmin(adminStatus);
+    setIsCloudTeacher(adminStatus || resolvedRole === 'teacher');
+    setFirebaseUser(fbUser);
+    setResolvedUid(fbUser.uid);
+  };
+
+  // Firebase Authentication & Admin/Teacher/Parent Role Detection
+  useEffect(() => {
+    const unsubAuth = onAuthStateChanged(auth, (fbUser) => {
+      syncFirebaseUserSession(fbUser);
     });
 
     return () => unsubAuth();
@@ -1343,11 +1408,22 @@ const App: React.FC = () => {
       (err) => safeListenerError(err, OperationType.LIST, 'teacherLeaves')
     );
 
+    const unsubAuditLogs = onSnapshot(
+      query(collection(db, 'audit_logs'), orderBy('createdAt', 'desc'), limit(100)),
+      (snap) => {
+        const items = snap.docs.map((d) => d.data() as AuditLog);
+        setAuditLogs(items);
+        safeLocalSet('db_audit_logs', items);
+      },
+      (err) => safeListenerError(err, OperationType.LIST, 'audit_logs')
+    );
+
     return () => {
       unsubAdmissions();
       unsubMessages();
       unsubUsers();
       unsubAllTeacherLeaves();
+      unsubAuditLogs();
     };
   }, [isCloudAdmin, firebaseUser, resolvedUid]);
 
@@ -1376,6 +1452,16 @@ const App: React.FC = () => {
           safeLocalSet('db_attendance', items);
         },
         (err) => safeListenerError(err, OperationType.LIST, 'attendance')
+      );
+
+      const unsubStudentAttendance = onSnapshot(
+        collection(db, 'studentAttendance'),
+        (snap) => {
+          const items = snap.docs.map((d) => d.data() as StudentAttendanceRecord);
+          setStudentAttendance(items);
+          safeLocalSet('db_student_attendance', items);
+        },
+        (err) => safeListenerError(err, OperationType.LIST, 'studentAttendance')
       );
 
       const unsubMarks = onSnapshot(
@@ -1418,6 +1504,17 @@ const App: React.FC = () => {
         (err) => safeListenerError(err, OperationType.LIST, 'parentMessages')
       );
 
+      const unsubParentLinks = onSnapshot(
+        collection(db, 'parent_student_links'),
+        (snap) => {
+          const items = snap.docs.map((d) => d.data() as ParentStudentLink);
+          items.sort((a, b) => (b.submittedDate || '').localeCompare(a.submittedDate || ''));
+          setParentLinks(items);
+          safeLocalSet('db_parent_links', items);
+        },
+        (err) => safeListenerError(err, OperationType.LIST, 'parent_student_links')
+      );
+
       const unsubStudentLeaves = onSnapshot(
         collection(db, 'studentLeaves'),
         (snap) => {
@@ -1447,34 +1544,66 @@ const App: React.FC = () => {
       return () => {
         unsubStudents();
         unsubAttendance();
+        unsubStudentAttendance();
         unsubMarks();
         unsubSubmissions();
         unsubAttempts();
         unsubParentMsgs();
+        unsubParentLinks();
         unsubStudentLeaves();
         unsubOwnTeacherLeaves();
       };
     }
 
-    // Signed-in Student / Parent listeners
-    const unsubPubAttendance = onSnapshot(
-      query(collection(db, 'attendance'), where('isPublished', '==', true)),
+    // Signed-in Student / Parent listeners (Strict Zero-Trust per-student isolation via allowedUids & ownerUid)
+    const unsubMyStudents = onSnapshot(
+      query(collection(db, 'students'), where('allowedUids', 'array-contains', firebaseUser.uid)),
       (snap) => {
-        const items = snap.docs.map((d) => d.data() as AttendanceRecord);
-        setAttendanceRecords(items);
-        safeLocalSet('db_attendance', items);
+        const items = snap.docs.map((d) => d.data() as SchoolStudent);
+        setStudents(items);
+        safeLocalSet('db_students', items);
       },
-      (err) => safeListenerError(err, OperationType.LIST, 'attendance')
+      (err) => safeListenerError(err, OperationType.LIST, 'students')
+    );
+
+    const unsubMyAttendance = onSnapshot(
+      query(
+        collection(db, 'studentAttendance'),
+        where('allowedUids', 'array-contains', firebaseUser.uid),
+        where('isPublished', '==', true)
+      ),
+      (snap) => {
+        const items = snap.docs.map((d) => d.data() as StudentAttendanceRecord);
+        items.sort((a, b) => (b.date || '').localeCompare(a.date || ''));
+        setStudentAttendance(items);
+        safeLocalSet('db_student_attendance', items);
+      },
+      (err) => safeListenerError(err, OperationType.LIST, 'studentAttendance')
     );
 
     const unsubPubMarks = onSnapshot(
-      query(collection(db, 'examMarks'), where('isPublished', '==', true)),
+      query(
+        collection(db, 'examMarks'),
+        where('allowedUids', 'array-contains', firebaseUser.uid),
+        where('isPublished', '==', true)
+      ),
       (snap) => {
         const items = snap.docs.map((d) => d.data() as ExamMark);
         setExamMarks(items);
         safeLocalSet('db_exam_marks', items);
       },
       (err) => safeListenerError(err, OperationType.LIST, 'examMarks')
+    );
+
+    const unsubMyParentLinks = onSnapshot(
+      query(collection(db, 'parent_student_links'), where('parentUid', '==', firebaseUser.uid)),
+      (snap) => {
+        const items = snap.docs.map((d) => d.data() as ParentStudentLink);
+        items.sort((a, b) => (b.submittedDate || '').localeCompare(a.submittedDate || ''));
+        setParentLinks(items);
+        safeLocalSet('db_parent_links', items);
+      },
+      (err) => safeListenerError(err, OperationType.LIST, 'parent_student_links')
     );
 
     const unsubOwnLeaves = onSnapshot(
@@ -1518,8 +1647,10 @@ const App: React.FC = () => {
     );
 
     return () => {
-      unsubPubAttendance();
+      unsubMyStudents();
+      unsubMyAttendance();
       unsubPubMarks();
+      unsubMyParentLinks();
       unsubOwnLeaves();
       unsubOwnSubmissions();
       unsubOwnAttempts();
@@ -1549,6 +1680,158 @@ const App: React.FC = () => {
     }
   };
 
+  const signInWithEmail = async (
+    email: string,
+    password: string
+  ): Promise<{ ok: boolean; error?: string; needsVerification?: boolean }> => {
+    try {
+      const cred = await signInWithEmailAndPassword(auth, email.trim(), password);
+      await cred.user.reload();
+      if (!cred.user.emailVerified) {
+        setFirebaseUser(cred.user);
+        return {
+          ok: false,
+          needsVerification: true,
+          error:
+            lang === 'bn'
+              ? 'লগইন সম্পন্ন করতে আপনার ইমেইল ভেরিফাই করুন।'
+              : 'Please verify your email address before accessing your portal.',
+        };
+      }
+      await syncFirebaseUserSession(cred.user);
+      return { ok: true };
+    } catch (err: unknown) {
+      const code = (err as { code?: string })?.code || '';
+      if (code === 'auth/invalid-credential' || code === 'auth/wrong-password' || code === 'auth/user-not-found') {
+        return {
+          ok: false,
+          error: lang === 'bn' ? 'ভুল ইমেইল বা পাসওয়ার্ড।' : 'Invalid email or password.',
+        };
+      }
+      if (code === 'auth/operation-not-allowed') {
+        return {
+          ok: false,
+          error:
+            lang === 'bn'
+              ? 'Firebase Console-এ Email/Password লগইন সক্রিয় করুন।'
+              : 'Email/Password sign-in is disabled in Firebase Console.',
+        };
+      }
+      return {
+        ok: false,
+        error: lang === 'bn' ? 'ইমেইল দিয়ে লগইন করা যায়নি।' : 'Email sign-in failed. Please try again.',
+      };
+    }
+  };
+
+  const registerWithEmail = async (payload: {
+    name: string;
+    email: string;
+    password: string;
+    role: 'student' | 'parent';
+    photo?: string;
+    linkedChildClass?: string;
+    linkedChildRoll?: string;
+  }): Promise<{ ok: boolean; error?: string; needsVerification?: boolean }> => {
+    const cleanEmail = payload.email.trim();
+    const cleanName = payload.name.trim();
+    if (!cleanEmail || !cleanEmail.includes('@')) {
+      return { ok: false, error: lang === 'bn' ? 'সঠিক ইমেইল দিন।' : 'Please enter a valid email address.' };
+    }
+    if (payload.password.length < 6) {
+      return {
+        ok: false,
+        error: lang === 'bn' ? 'পাসওয়ার্ড কমপক্ষে ৬ অক্ষরের হতে হবে।' : 'Password must be at least 6 characters.',
+      };
+    }
+    try {
+      const cred = await createUserWithEmailAndPassword(auth, cleanEmail, payload.password);
+      await updateProfile(cred.user, { displayName: cleanName.slice(0, 150) });
+      safeLocalSet(`pending_profile_${cred.user.uid}`, {
+        name: cleanName.slice(0, 150),
+        role: payload.role === 'parent' ? 'parent' : 'student',
+        ...(payload.photo ? { photo: payload.photo.slice(0, 600000) } : {}),
+        ...(payload.linkedChildClass ? { linkedChildClass: payload.linkedChildClass.slice(0, 16) } : {}),
+        ...(payload.linkedChildRoll ? { linkedChildRoll: payload.linkedChildRoll.slice(0, 20) } : {}),
+      });
+      await sendEmailVerification(cred.user);
+      setFirebaseUser(cred.user);
+      return { ok: true, needsVerification: true };
+    } catch (err: unknown) {
+      const code = (err as { code?: string })?.code || '';
+      if (code === 'auth/email-already-in-use') {
+        return {
+          ok: false,
+          error: lang === 'bn' ? 'এই ইমেইলে ইতিমধ্যে অ্যাকাউন্ট রয়েছে!' : 'An account with this email already exists.',
+        };
+      }
+      if (code === 'auth/weak-password') {
+        return {
+          ok: false,
+          error: lang === 'bn' ? 'পাসওয়ার্ডটি আরও শক্তিশালী করুন (কমপক্ষে ৬ অক্ষর)।' : 'Password should be at least 6 characters.',
+        };
+      }
+      if (code === 'auth/operation-not-allowed') {
+        return {
+          ok: false,
+          error:
+            lang === 'bn'
+              ? 'Firebase Console থেকে Email/Password পদ্ধতি চালু করুন।'
+              : 'Email/Password authentication is not enabled in Firebase Console yet.',
+        };
+      }
+      return {
+        ok: false,
+        error: lang === 'bn' ? 'নিবন্ধন সম্পন্ন করা যায়নি।' : 'Registration failed. Please try again.',
+      };
+    }
+  };
+
+  const resendVerificationEmail = async (): Promise<boolean> => {
+    try {
+      if (!auth.currentUser) return false;
+      await sendEmailVerification(auth.currentUser);
+      return true;
+    } catch (err) {
+      console.error('Resend verification failed:', err);
+      return false;
+    }
+  };
+
+  const refreshAuthSession = async (): Promise<boolean> => {
+    try {
+      if (!auth.currentUser) return false;
+      await auth.currentUser.reload();
+      if (auth.currentUser.emailVerified) {
+        await syncFirebaseUserSession(auth.currentUser);
+        return true;
+      }
+      return false;
+    } catch (err) {
+      console.error('Refresh auth failed:', err);
+      return false;
+    }
+  };
+
+  const resetPassword = async (email: string): Promise<{ ok: boolean; error?: string }> => {
+    const cleanEmail = email.trim();
+    if (!cleanEmail || !cleanEmail.includes('@')) {
+      return {
+        ok: false,
+        error: lang === 'bn' ? 'রিসেট লিংক পেতে ইমেইল লিখুন।' : 'Enter your registered email address first.',
+      };
+    }
+    try {
+      await sendPasswordResetEmail(auth, cleanEmail);
+      return { ok: true };
+    } catch {
+      return {
+        ok: false,
+        error: lang === 'bn' ? 'পাসওয়ার্ড রিসেট ইমেইল পাঠানো যায়নি।' : 'Could not send password reset email.',
+      };
+    }
+  };
+
   const logoutGoogle = async () => {
     try {
       await signOut(auth);
@@ -1558,6 +1841,7 @@ const App: React.FC = () => {
   };
 
   const login = (authUser: AuthUser) => {
+    if (authUser.role === 'admin') return;
     const clean = stripPlaintextPassword(authUser);
     setUser(clean);
     safeLocalSet('school_user', clean);
@@ -1568,6 +1852,8 @@ const App: React.FC = () => {
     password: string,
     role: BaseUserRole
   ): Promise<AuthUser | null> => {
+    // Admin access must strictly authenticate via verified Firebase Auth
+    if (role === 'admin') return null;
     const found = registeredUsers.find(
       (u) => u.userId.toLowerCase() === userId.trim().toLowerCase() && u.role === role
     );
@@ -1578,6 +1864,9 @@ const App: React.FC = () => {
   };
 
   const register = async (newUser: AuthUser): Promise<boolean> => {
+    if (newUser.role === 'admin' || newUser.userId.trim().toLowerCase() === 'admin') {
+      return false;
+    }
     if (registeredUsers.some((u) => u.userId.toLowerCase() === newUser.userId.trim().toLowerCase())) {
       return false;
     }
@@ -1648,14 +1937,82 @@ const App: React.FC = () => {
     }
   };
 
+  const logAuditEvent = async (
+    action: AuditAction,
+    targetCollection: string,
+    targetId: string,
+    summary: string
+  ) => {
+    const id = sanitizeFirestoreId(`aud-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`);
+    const entry: AuditLog = {
+      id,
+      actorUid: sanitizeFirestoreId(firebaseUser?.uid || user?.userId || 'system'),
+      actorName: (user?.name || firebaseUser?.displayName || 'Staff').slice(0, 150),
+      actorEmail: (firebaseUser?.email || user?.email || 'staff@rbhs.edu').slice(0, 150),
+      actorRole: (user?.role || (isCloudAdmin ? 'admin' : 'teacher')) as BaseUserRole,
+      action,
+      targetCollection: targetCollection.slice(0, 64),
+      targetId: sanitizeFirestoreId(targetId).slice(0, 128),
+      summary: summary.slice(0, 500),
+      createdDate: new Date().toISOString().split('T')[0],
+    };
+
+    const nextLocal = [entry, ...auditLogs].slice(0, 100);
+    setAuditLogs(nextLocal);
+    safeLocalSet('db_audit_logs', nextLocal);
+
+    if (isCloudTeacher && firebaseUser?.emailVerified) {
+      try {
+        await setDoc(doc(db, 'audit_logs', id), {
+          id,
+          actorUid: sanitizeFirestoreId(firebaseUser.uid),
+          actorName: entry.actorName,
+          actorEmail: entry.actorEmail,
+          actorRole: entry.actorRole,
+          action: entry.action,
+          targetCollection: entry.targetCollection,
+          targetId: entry.targetId,
+          summary: entry.summary,
+          createdDate: entry.createdDate,
+          createdAt: serverTimestamp(),
+        });
+      } catch (err) {
+        console.warn('Audit log write skipped:', err);
+      }
+    }
+  };
+
   const updateCloudUserRole = async (uid: string, role: BaseUserRole) => {
     if (!isCloudAdmin) return;
+    const safeUid = sanitizeFirestoreId(uid);
+    const targetUser = cloudUsers.find((cu) => cu.uid === uid || cu.uid === safeUid);
     try {
       setDbStatus('syncing');
-      await updateDoc(doc(db, 'users', sanitizeFirestoreId(uid)), {
+      await updateDoc(doc(db, 'users', safeUid), {
         role,
         updatedAt: serverTimestamp(),
       });
+
+      const isBootstrappedCaller =
+        firebaseUser?.email?.toLowerCase() === BOOTSTRAPPED_ADMIN_EMAIL.toLowerCase();
+      if (isBootstrappedCaller) {
+        if (role === 'admin') {
+          await setDoc(doc(db, 'admins', safeUid), {
+            uid: safeUid,
+            email: (targetUser?.email || 'admin@rbhs.edu').slice(0, 150),
+            grantedAt: serverTimestamp(),
+          });
+        } else if (targetUser?.email?.toLowerCase() !== BOOTSTRAPPED_ADMIN_EMAIL.toLowerCase()) {
+          await deleteDoc(doc(db, 'admins', safeUid)).catch(() => {});
+        }
+      }
+
+      await logAuditEvent(
+        'ROLE_CHANGED',
+        'users',
+        safeUid,
+        `Updated user ${targetUser?.email || safeUid} role to ${role}`
+      );
       setDbStatus('synced');
     } catch (err) {
       safeListenerError(err, OperationType.UPDATE, `users/${uid}`);
@@ -2100,12 +2457,15 @@ const App: React.FC = () => {
         ...(typeof newSettings.longitude === 'number' ? { longitude: newSettings.longitude } : {}),
         updatedAt: serverTimestamp(),
       })
-        .then(() => setDbStatus('synced'))
+        .then(() => {
+          setDbStatus('synced');
+          logAuditEvent('SETTINGS_UPDATED', 'settings', 'main', 'Updated campus settings & profile');
+        })
         .catch((err) => safeListenerError(err, OperationType.WRITE, 'settings/main'));
     }
   };
 
-  // Admissions
+  // Admissions + Public Non-PII Status Projection
   const addAdmission = async (appData: AdmissionApplication) => {
     const appId = sanitizeFirestoreId(appData.appId);
     const cleanApp: AdmissionApplication = {
@@ -2118,9 +2478,13 @@ const App: React.FC = () => {
     setAdmissions(updated);
     persistLocal('admission_applications', updated);
 
+    const digitsOnly = cleanApp.guardianMobile.replace(/\D/g, '');
+    const mobileLast4 = digitsOnly.length >= 4 ? digitsOnly.slice(-4) : undefined;
+
     try {
       setDbStatus('syncing');
-      await setDoc(doc(db, 'admissions', appId), {
+      const batch = writeBatch(db);
+      batch.set(doc(db, 'admissions', appId), {
         appId,
         studentName: cleanApp.studentName.slice(0, 150),
         fatherName: cleanApp.fatherName.slice(0, 150),
@@ -2137,6 +2501,16 @@ const App: React.FC = () => {
         ...(firebaseUser?.emailVerified ? { ownerUid: firebaseUser.uid } : {}),
         createdAt: serverTimestamp(),
       });
+      batch.set(doc(db, 'admission_status', appId), {
+        appId,
+        targetClass: cleanApp.targetClass.slice(0, 40),
+        targetGroup: (cleanApp.targetGroup || 'General').slice(0, 40),
+        status: 'pending',
+        submittedDate: cleanApp.submittedDate.slice(0, 40),
+        ...(mobileLast4 ? { mobileLast4 } : {}),
+        updatedAt: serverTimestamp(),
+      });
+      await batch.commit();
       setDbStatus('synced');
     } catch (err) {
       setDbStatus('error');
@@ -2145,16 +2519,32 @@ const App: React.FC = () => {
   };
 
   const updateAdmissionStatus = async (appId: string, status: 'pending' | 'approved' | 'rejected') => {
+    const cleanId = sanitizeFirestoreId(appId);
     const updated = admissions.map((a) => (a.appId === appId ? { ...a, status } : a));
     setAdmissions(updated);
     persistLocal('admission_applications', updated);
     if (!isCloudAdmin) return;
     try {
       setDbStatus('syncing');
-      await updateDoc(doc(db, 'admissions', sanitizeFirestoreId(appId)), {
+      const batch = writeBatch(db);
+      batch.update(doc(db, 'admissions', cleanId), {
         status,
         updatedAt: serverTimestamp(),
       });
+      const statusSnap = await getDoc(doc(db, 'admission_status', cleanId));
+      if (statusSnap.exists()) {
+        batch.update(doc(db, 'admission_status', cleanId), {
+          status,
+          updatedAt: serverTimestamp(),
+        });
+      }
+      await batch.commit();
+      await logAuditEvent(
+        'ADMISSION_STATUS_UPDATED',
+        'admissions',
+        cleanId,
+        `Updated admission ${cleanId} status to ${status}`
+      );
       setDbStatus('synced');
     } catch (err) {
       safeListenerError(err, OperationType.UPDATE, `admissions/${appId}`);
@@ -2162,10 +2552,63 @@ const App: React.FC = () => {
   };
 
   const deleteAdmission = async (appId: string) => {
+    const cleanId = sanitizeFirestoreId(appId);
     const updated = admissions.filter((a) => a.appId !== appId);
     setAdmissions(updated);
     persistLocal('admission_applications', updated);
-    await syncDocDelete('admissions', sanitizeFirestoreId(appId));
+    if (!isCloudAdmin) return;
+    try {
+      setDbStatus('syncing');
+      await deleteDoc(doc(db, 'admissions', cleanId));
+      await deleteDoc(doc(db, 'admission_status', cleanId)).catch(() => {});
+      await logAuditEvent('ADMISSION_DELETED', 'admissions', cleanId, `Deleted admission ${cleanId}`);
+      setDbStatus('synced');
+    } catch (err) {
+      safeListenerError(err, OperationType.DELETE, `admissions/${cleanId}`);
+    }
+  };
+
+  const lookupAdmissionStatus = async (
+    rawAppId: string,
+    mobileLast4?: string
+  ): Promise<AdmissionStatusProjection | null> => {
+    const trimmed = rawAppId.trim().replace(/^#/, '');
+    if (!trimmed) return null;
+    const cleanId = sanitizeFirestoreId(trimmed);
+    const cleanLast4 = (mobileLast4 || '').replace(/\D/g, '').slice(-4);
+
+    try {
+      const snap = await getDoc(doc(db, 'admission_status', cleanId));
+      if (snap.exists()) {
+        const d = snap.data() as AdmissionStatusProjection;
+        if (cleanLast4 && d.mobileLast4 && d.mobileLast4 !== cleanLast4) {
+          return null;
+        }
+        return {
+          appId: d.appId,
+          targetClass: d.targetClass,
+          targetGroup: d.targetGroup,
+          status: d.status,
+          submittedDate: d.submittedDate,
+        };
+      }
+    } catch {
+      // Fall back to local cache if unavailable
+    }
+
+    const localMatch = admissions.find((a) => a.appId.toLowerCase() === trimmed.toLowerCase());
+    if (!localMatch) return null;
+    const localDigits = localMatch.guardianMobile.replace(/\D/g, '');
+    if (cleanLast4 && localDigits.slice(-4) !== cleanLast4) {
+      return null;
+    }
+    return {
+      appId: localMatch.appId,
+      targetClass: localMatch.targetClass,
+      targetGroup: localMatch.targetGroup,
+      status: localMatch.status,
+      submittedDate: localMatch.submittedDate,
+    };
   };
 
   // Contact Messages
@@ -2222,10 +2665,138 @@ const App: React.FC = () => {
     await syncDocDelete('contactMessages', sanitizeFirestoreId(id));
   };
 
+  // Resolve & sync allowedUids for Zero-Trust private access isolation
+  const resolveAllowedUids = (
+    classId: string,
+    roll: string,
+    studentObj?: SchoolStudent,
+    extraUids: string[] = []
+  ): string[] => {
+    const set = new Set<string>();
+    (studentObj?.allowedUids || []).forEach((u) => {
+      if (u && u.trim()) set.add(sanitizeFirestoreId(u.trim()));
+    });
+    if (studentObj?.studentUid) {
+      set.add(sanitizeFirestoreId(studentObj.studentUid));
+    }
+    cloudUsers.forEach((cu) => {
+      if (
+        cu.role === 'student' &&
+        cu.linkedChildClass === classId &&
+        (cu.linkedChildRoll || '').trim() === roll.trim()
+      ) {
+        set.add(sanitizeFirestoreId(cu.uid));
+      }
+    });
+    parentLinks.forEach((pl) => {
+      if (
+        pl.status === 'approved' &&
+        pl.classId === classId &&
+        pl.roll.trim() === roll.trim()
+      ) {
+        set.add(sanitizeFirestoreId(pl.parentUid));
+      }
+    });
+    extraUids.forEach((u) => {
+      if (u && u.trim()) set.add(sanitizeFirestoreId(u.trim()));
+    });
+    return Array.from(set).filter((u) => u.length >= 1 && u.length <= 128).slice(0, 5);
+  };
+
+  const syncStudentAccessUids = async (
+    classId: string,
+    roll: string,
+    studentId?: string,
+    extraUids: string[] = []
+  ) => {
+    const matched =
+      (studentId ? students.find((s) => s.id === studentId) : undefined) ||
+      students.find((s) => s.classId === classId && s.roll.trim() === roll.trim());
+    const mergedUids = resolveAllowedUids(classId, roll, matched, extraUids);
+    if (mergedUids.length === 0) return;
+
+    setStudents((prev) => {
+      const next = prev.map((s) =>
+        (studentId && s.id === studentId) || (s.classId === classId && s.roll.trim() === roll.trim())
+          ? { ...s, allowedUids: mergedUids }
+          : s
+      );
+      safeLocalSet('db_students', next);
+      return next;
+    });
+    setExamMarks((prev) => {
+      const next = prev.map((m) =>
+        m.classId === classId && m.roll.trim() === roll.trim() ? { ...m, allowedUids: mergedUids } : m
+      );
+      safeLocalSet('db_exam_marks', next);
+      return next;
+    });
+    setStudentAttendance((prev) => {
+      const next = prev.map((sa) =>
+        sa.classId === classId && sa.roll.trim() === roll.trim() ? { ...sa, allowedUids: mergedUids } : sa
+      );
+      safeLocalSet('db_student_attendance', next);
+      return next;
+    });
+
+    if (!isCloudTeacher) return;
+    try {
+      const batch = writeBatch(db);
+      let ops = 0;
+
+      const stQuery = query(
+        collection(db, 'students'),
+        where('classId', '==', classId),
+        where('roll', '==', roll.trim())
+      );
+      const stSnap = await getDocs(stQuery);
+      stSnap.forEach((d) => {
+        batch.update(d.ref, { allowedUids: mergedUids, updatedAt: serverTimestamp() });
+        ops++;
+      });
+
+      const mkQuery = query(
+        collection(db, 'examMarks'),
+        where('classId', '==', classId),
+        where('roll', '==', roll.trim())
+      );
+      const mkSnap = await getDocs(mkQuery);
+      mkSnap.forEach((d) => {
+        batch.update(d.ref, { allowedUids: mergedUids, updatedAt: serverTimestamp() });
+        ops++;
+      });
+
+      const saQuery = query(
+        collection(db, 'studentAttendance'),
+        where('classId', '==', classId),
+        where('roll', '==', roll.trim())
+      );
+      const saSnap = await getDocs(saQuery);
+      saSnap.forEach((d) => {
+        batch.update(d.ref, { allowedUids: mergedUids, updatedAt: serverTimestamp() });
+        ops++;
+      });
+
+      if (ops > 0) await batch.commit();
+    } catch (err) {
+      console.warn('Access UID sync skipped:', err);
+    }
+  };
+
   // Students
   const addStudent = (student: SchoolStudent) => {
     const id = sanitizeFirestoreId(student.id);
-    const clean = { ...student, id };
+    const guardianMobile =
+      student.guardianMobile && student.guardianMobile.trim().length >= 6
+        ? student.guardianMobile.trim()
+        : '01700000000';
+    const allowedUids = resolveAllowedUids(student.classId, student.roll, student);
+    const clean: SchoolStudent = {
+      ...student,
+      id,
+      guardianMobile,
+      ...(allowedUids.length > 0 ? { allowedUids } : {}),
+    };
     const updated = [...students, clean];
     setStudents(updated);
     persistLocal('db_students', updated);
@@ -2239,6 +2810,8 @@ const App: React.FC = () => {
         classId: clean.classId,
         section: clean.section.slice(0, 40),
         guardianMobile: clean.guardianMobile.slice(0, 30),
+        ...(clean.studentUid ? { studentUid: sanitizeFirestoreId(clean.studentUid) } : {}),
+        ...(allowedUids.length > 0 ? { allowedUids } : {}),
       },
       false,
       true
@@ -2247,7 +2820,17 @@ const App: React.FC = () => {
 
   const updateStudent = (student: SchoolStudent) => {
     const id = sanitizeFirestoreId(student.id);
-    const clean = { ...student, id };
+    const guardianMobile =
+      student.guardianMobile && student.guardianMobile.trim().length >= 6
+        ? student.guardianMobile.trim()
+        : '01700000000';
+    const allowedUids = resolveAllowedUids(student.classId, student.roll, student);
+    const clean: SchoolStudent = {
+      ...student,
+      id,
+      guardianMobile,
+      ...(allowedUids.length > 0 ? { allowedUids } : {}),
+    };
     const updated = students.map((s) => (s.id === student.id ? clean : s));
     setStudents(updated);
     persistLocal('db_students', updated);
@@ -2261,6 +2844,8 @@ const App: React.FC = () => {
         classId: clean.classId,
         section: clean.section.slice(0, 40),
         guardianMobile: clean.guardianMobile.slice(0, 30),
+        ...(clean.studentUid ? { studentUid: sanitizeFirestoreId(clean.studentUid) } : {}),
+        ...(allowedUids.length > 0 ? { allowedUids } : {}),
       },
       true,
       true
@@ -2274,7 +2859,7 @@ const App: React.FC = () => {
     syncDocDelete('students', sanitizeFirestoreId(id), true);
   };
 
-  // Attendance
+  // Attendance (Teachers save full sheet + individual studentAttendance projections)
   const saveAttendance = (record: AttendanceRecord) => {
     const id = sanitizeFirestoreId(record.id);
     const clean: AttendanceRecord = { ...record, id, isPublished: record.isPublished ?? true };
@@ -2284,6 +2869,37 @@ const App: React.FC = () => {
       : [clean, ...attendanceRecords];
     setAttendanceRecords(updated);
     persistLocal('db_attendance', updated);
+
+    const classStudents = students.filter((s) => s.classId === clean.classId);
+    const newPerStudent: StudentAttendanceRecord[] = [];
+    classStudents.forEach((st) => {
+      const stStatus = clean.records[st.id];
+      if (!stStatus) return;
+      const saId = sanitizeFirestoreId(`sa_${clean.date}_${st.id}`);
+      const allowedUids = resolveAllowedUids(clean.classId, st.roll, st);
+      newPerStudent.push({
+        id: saId,
+        date: clean.date.slice(0, 32),
+        classId: clean.classId,
+        studentId: sanitizeFirestoreId(st.id),
+        studentName: st.name.slice(0, 150),
+        roll: st.roll.slice(0, 20),
+        status: stStatus,
+        teacherName: clean.teacherName.slice(0, 150),
+        ...(allowedUids.length > 0 ? { allowedUids } : {}),
+        isPublished: clean.isPublished ?? true,
+      });
+    });
+
+    if (newPerStudent.length > 0) {
+      setStudentAttendance((prev) => {
+        const filtered = prev.filter((item) => !newPerStudent.some((np) => np.id === item.id));
+        const merged = [...newPerStudent, ...filtered];
+        safeLocalSet('db_student_attendance', merged);
+        return merged;
+      });
+    }
+
     syncDocUpsert(
       'attendance',
       id,
@@ -2297,6 +2913,52 @@ const App: React.FC = () => {
       },
       exists,
       true
+    );
+
+    if (isCloudTeacher && newPerStudent.length > 0) {
+      (async () => {
+        try {
+          const batch = writeBatch(db);
+          for (const item of newPerStudent) {
+            const ref = doc(db, 'studentAttendance', item.id);
+            const snap = await getDoc(ref);
+            if (snap.exists()) {
+              batch.update(ref, {
+                status: item.status,
+                teacherName: item.teacherName,
+                ...(item.allowedUids ? { allowedUids: item.allowedUids } : {}),
+                isPublished: item.isPublished,
+                updatedAt: serverTimestamp(),
+              });
+            } else {
+              batch.set(ref, {
+                id: item.id,
+                date: item.date,
+                classId: item.classId,
+                studentId: item.studentId,
+                studentName: item.studentName,
+                roll: item.roll,
+                status: item.status,
+                teacherName: item.teacherName,
+                ...(item.allowedUids ? { allowedUids: item.allowedUids } : {}),
+                isPublished: item.isPublished,
+                createdAt: serverTimestamp(),
+                updatedAt: serverTimestamp(),
+              });
+            }
+          }
+          await batch.commit();
+        } catch (err) {
+          console.warn('studentAttendance sync warning:', err);
+        }
+      })();
+    }
+
+    logAuditEvent(
+      'ATTENDANCE_SAVED',
+      'attendance',
+      id,
+      `Saved attendance for Class ${clean.classId} on ${clean.date} (${newPerStudent.length} students)`
     );
   };
 
@@ -2420,7 +3082,13 @@ const App: React.FC = () => {
   // Exam Marks
   const saveExamMark = (mark: ExamMark) => {
     const id = sanitizeFirestoreId(mark.id);
-    const clean: ExamMark = { ...mark, id, isPublished: mark.isPublished ?? true };
+    const allowedUids = resolveAllowedUids(mark.classId, mark.roll);
+    const clean: ExamMark = {
+      ...mark,
+      id,
+      isPublished: mark.isPublished ?? true,
+      ...(allowedUids.length > 0 ? { allowedUids } : {}),
+    };
     const exists = examMarks.some((m) => m.id === id);
     const updated = exists ? examMarks.map((m) => (m.id === id ? clean : m)) : [clean, ...examMarks];
     setExamMarks(updated);
@@ -2440,10 +3108,17 @@ const App: React.FC = () => {
         obtainedMarks: clean.obtainedMarks,
         grade: clean.grade.slice(0, 8),
         enteredBy: clean.enteredBy.slice(0, 150),
+        ...(allowedUids.length > 0 ? { allowedUids } : {}),
         isPublished: clean.isPublished,
       },
       exists,
       true
+    );
+    logAuditEvent(
+      'MARKS_SAVED',
+      'examMarks',
+      id,
+      `Saved ${clean.subject} marks (${clean.obtainedMarks}/${clean.totalMarks}) for Class ${clean.classId} Roll ${clean.roll}`
     );
   };
 
@@ -2451,7 +3126,13 @@ const App: React.FC = () => {
     let next = [...examMarks];
     marks.forEach((mark) => {
       const id = sanitizeFirestoreId(mark.id);
-      const clean: ExamMark = { ...mark, id, isPublished: mark.isPublished ?? true };
+      const allowedUids = resolveAllowedUids(mark.classId, mark.roll);
+      const clean: ExamMark = {
+        ...mark,
+        id,
+        isPublished: mark.isPublished ?? true,
+        ...(allowedUids.length > 0 ? { allowedUids } : {}),
+      };
       const idx = next.findIndex((m) => m.id === id);
       if (idx >= 0) next[idx] = clean;
       else next.unshift(clean);
@@ -2470,6 +3151,7 @@ const App: React.FC = () => {
           obtainedMarks: clean.obtainedMarks,
           grade: clean.grade.slice(0, 8),
           enteredBy: clean.enteredBy.slice(0, 150),
+          ...(allowedUids.length > 0 ? { allowedUids } : {}),
           isPublished: clean.isPublished,
         },
         idx >= 0,
@@ -2478,6 +3160,14 @@ const App: React.FC = () => {
     });
     setExamMarks(next);
     persistLocal('db_exam_marks', next);
+    if (marks.length > 0) {
+      logAuditEvent(
+        'MARKS_SAVED',
+        'examMarks',
+        marks[0].id,
+        `Bulk saved ${marks.length} exam marks for Class ${marks[0].classId} (${marks[0].subject})`
+      );
+    }
   };
 
   const deleteExamMark = (id: string) => {
@@ -2485,6 +3175,7 @@ const App: React.FC = () => {
     setExamMarks(updated);
     persistLocal('db_exam_marks', updated);
     syncDocDelete('examMarks', sanitizeFirestoreId(id), true);
+    logAuditEvent('MARKS_DELETED', 'examMarks', id, `Deleted exam mark ${id}`);
   };
 
   // Online MCQ Exams & Attempts
@@ -2647,7 +3338,7 @@ const App: React.FC = () => {
     syncDocDelete('subjects', sanitizeFirestoreId(id));
   };
 
-  // Parent-Teacher Messages
+  // Parent-Teacher Messages & Verified Parent-Student Link Workflow
   const sendParentMessage = (msg: ParentMessage) => {
     const id = sanitizeFirestoreId(msg.id);
     const clean: ParentMessage = {
@@ -2703,6 +3394,134 @@ const App: React.FC = () => {
     }
   };
 
+  const requestParentStudentLink = async (payload: {
+    classId: string;
+    roll: string;
+    relationship: 'Father' | 'Mother' | 'Guardian';
+  }): Promise<boolean> => {
+    const cleanRoll = payload.roll.trim();
+    if (!cleanRoll) return false;
+    const parentUid = sanitizeFirestoreId(firebaseUser?.uid || user?.userId || `parent_${Date.now()}`);
+    const id = sanitizeFirestoreId(`psl_${parentUid}_${payload.classId}_${cleanRoll}`.slice(0, 120));
+    const link: ParentStudentLink = {
+      id,
+      parentUid,
+      parentEmail: (firebaseUser?.email || user?.email || 'parent@rbhs.edu').slice(0, 150),
+      parentName: (user?.name || firebaseUser?.displayName || 'Guardian').slice(0, 150),
+      classId: payload.classId,
+      roll: cleanRoll.slice(0, 20),
+      relationship: payload.relationship,
+      status: 'pending',
+      submittedDate: new Date().toISOString().split('T')[0],
+    };
+
+    const next = [link, ...parentLinks.filter((l) => l.id !== id)];
+    setParentLinks(next);
+    persistLocal('db_parent_links', next);
+
+    if (firebaseUser?.emailVerified) {
+      try {
+        setDbStatus('syncing');
+        await setDoc(doc(db, 'parent_student_links', id), {
+          id,
+          parentUid: firebaseUser.uid,
+          parentEmail: link.parentEmail,
+          parentName: link.parentName,
+          classId: link.classId,
+          roll: link.roll,
+          relationship: link.relationship,
+          status: 'pending',
+          submittedDate: link.submittedDate,
+          createdAt: serverTimestamp(),
+          updatedAt: serverTimestamp(),
+        });
+        setDbStatus('synced');
+        return true;
+      } catch (err) {
+        safeListenerError(err, OperationType.CREATE, `parent_student_links/${id}`);
+        return false;
+      }
+    }
+    return true;
+  };
+
+  const reviewParentStudentLink = async (linkId: string, status: 'approved' | 'rejected') => {
+    const cleanId = sanitizeFirestoreId(linkId);
+    const target = parentLinks.find((l) => l.id === linkId || l.id === cleanId);
+    if (!target) return;
+
+    const matchedStudent = students.find(
+      (s) => s.classId === target.classId && s.roll.trim() === target.roll.trim()
+    );
+    const approvedBy = (user?.name || firebaseUser?.displayName || 'Teacher').slice(0, 150);
+
+    const updated = parentLinks.map((l) =>
+      l.id === target.id
+        ? {
+            ...l,
+            status,
+            approvedBy,
+            ...(matchedStudent ? { studentId: matchedStudent.id, studentName: matchedStudent.name } : {}),
+          }
+        : l
+    );
+    setParentLinks(updated);
+    persistLocal('db_parent_links', updated);
+
+    if (isCloudTeacher) {
+      try {
+        setDbStatus('syncing');
+        await updateDoc(doc(db, 'parent_student_links', cleanId), {
+          status,
+          approvedBy,
+          ...(matchedStudent
+            ? {
+                studentId: sanitizeFirestoreId(matchedStudent.id),
+                studentName: matchedStudent.name.slice(0, 150),
+              }
+            : {}),
+          updatedAt: serverTimestamp(),
+        });
+
+        if (status === 'approved') {
+          await syncStudentAccessUids(target.classId, target.roll, matchedStudent?.id, [target.parentUid]);
+          if (isCloudAdmin) {
+            await updateDoc(doc(db, 'users', sanitizeFirestoreId(target.parentUid)), {
+              role: 'parent',
+              linkedChildClass: target.classId,
+              linkedChildRoll: target.roll,
+              ...(matchedStudent ? { linkedChildName: matchedStudent.name.slice(0, 150) } : {}),
+              updatedAt: serverTimestamp(),
+            }).catch(() => {});
+          }
+        }
+        await logAuditEvent(
+          'PARENT_LINK_REVIEWED',
+          'parent_student_links',
+          cleanId,
+          `${status.toUpperCase()} parent link for ${target.parentName} → Class ${target.classId} Roll ${target.roll}`
+        );
+        setDbStatus('synced');
+      } catch (err) {
+        safeListenerError(err, OperationType.UPDATE, `parent_student_links/${cleanId}`);
+      }
+    }
+  };
+
+  const deleteParentStudentLink = async (linkId: string) => {
+    const cleanId = sanitizeFirestoreId(linkId);
+    const updated = parentLinks.filter((l) => l.id !== linkId && l.id !== cleanId);
+    setParentLinks(updated);
+    persistLocal('db_parent_links', updated);
+    if (firebaseUser?.emailVerified) {
+      try {
+        await deleteDoc(doc(db, 'parent_student_links', cleanId));
+      } catch (err) {
+        safeListenerError(err, OperationType.DELETE, `parent_student_links/${cleanId}`);
+      }
+    }
+  };
+
   // Alumni Network
   const submitAlumniProfile = (profile: AlumniProfile) => {
     const id = sanitizeFirestoreId(profile.id);
@@ -2748,6 +3567,7 @@ const App: React.FC = () => {
         isPublic,
         updatedAt: serverTimestamp(),
       });
+      await logAuditEvent('ALUMNI_REVIEWED', 'alumni', id, `Marked alumni ${id} as ${status}`);
       setDbStatus('synced');
     } catch (err) {
       safeListenerError(err, OperationType.UPDATE, `alumni/${id}`);
@@ -2813,6 +3633,7 @@ const App: React.FC = () => {
         ...(cleanRemark ? { adminRemark: cleanRemark.slice(0, 500) } : {}),
         updatedAt: serverTimestamp(),
       });
+      await logAuditEvent('TEACHER_LEAVE_REVIEWED', 'teacherLeaves', id, `Teacher leave ${id} -> ${status}`);
       setDbStatus('synced');
     } catch (err) {
       safeListenerError(err, OperationType.UPDATE, `teacherLeaves/${id}`);
@@ -2903,6 +3724,7 @@ const App: React.FC = () => {
         ...(cleanRemark ? { teacherRemark: cleanRemark.slice(0, 500) } : {}),
         updatedAt: serverTimestamp(),
       });
+      await logAuditEvent('STUDENT_LEAVE_REVIEWED', 'studentLeaves', docId, `Student leave ${docId} -> ${status}`);
       setDbStatus('synced');
     } catch (err) {
       safeListenerError(err, OperationType.UPDATE, `studentLeaves/${id}`);
@@ -3142,6 +3964,11 @@ Available Features: Online Admission (/admission), Online MCQ Exams (/exams), Di
         cloudUsers,
         updateCloudUserRole,
         signInWithGoogle,
+        signInWithEmail,
+        registerWithEmail,
+        resendVerificationEmail,
+        refreshAuthSession,
+        resetPassword,
         logoutGoogle,
         login,
         verifyLocalCredentials,
@@ -3183,6 +4010,7 @@ Available Features: Online Admission (/admission), Online MCQ Exams (/exams), Di
         addAdmission,
         updateAdmissionStatus,
         deleteAdmission,
+        lookupAdmissionStatus,
         contactMessages,
         addContactMessage,
         markContactMessageRead,
@@ -3192,6 +4020,7 @@ Available Features: Online Admission (/admission), Online MCQ Exams (/exams), Di
         updateStudent,
         deleteStudent,
         attendanceRecords,
+        studentAttendance,
         saveAttendance,
         homeworkList,
         addHomework,
@@ -3219,6 +4048,10 @@ Available Features: Online Admission (/admission), Online MCQ Exams (/exams), Di
         parentMessages,
         sendParentMessage,
         replyParentMessage,
+        parentLinks,
+        requestParentStudentLink,
+        reviewParentStudentLink,
+        deleteParentStudentLink,
         alumni,
         submitAlumniProfile,
         updateAlumniStatus,
@@ -3231,6 +4064,7 @@ Available Features: Online Admission (/admission), Online MCQ Exams (/exams), Di
         submitStudentLeave,
         updateStudentLeaveStatus,
         deleteStudentLeave,
+        auditLogs,
         settings,
         updateSettings,
         exportDatabase,

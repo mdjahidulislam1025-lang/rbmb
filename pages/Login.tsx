@@ -52,9 +52,11 @@ type ManagementTab =
   | 'admissions'
   | 'alumni'
   | 'parent-messages'
+  | 'parent-links'
   | 'messages'
   | 'leaves'
   | 'users'
+  | 'audit-logs'
   | 'system';
 
 const Login: React.FC = () => {
@@ -68,10 +70,15 @@ const Login: React.FC = () => {
     lang,
     t,
     user,
+    firebaseUser,
     isCloudAdmin,
     cloudUsers,
     updateCloudUserRole,
     signInWithGoogle,
+    signInWithEmail,
+    resendVerificationEmail,
+    refreshAuthSession,
+    resetPassword,
     login,
     verifyLocalCredentials,
     logout,
@@ -111,12 +118,16 @@ const Login: React.FC = () => {
     deleteAlumniProfile,
     parentMessages,
     replyParentMessage,
+    parentLinks,
+    reviewParentStudentLink,
+    deleteParentStudentLink,
     contactMessages,
     markContactMessageRead,
     deleteContactMessage,
     teacherLeaves,
     updateTeacherLeaveStatus,
     deleteTeacherLeave,
+    auditLogs,
     settings,
     updateSettings,
     exportDatabase,
@@ -128,6 +139,8 @@ const Login: React.FC = () => {
   const [userId, setUserId] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
+  const [authNotice, setAuthNotice] = useState('');
+  const [needsVerification, setNeedsVerification] = useState(false);
 
   const [dashboardView, setDashboardView] = useState<'main' | 'admin-management' | 'teacher-portal'>('main');
   const [managementTab, setManagementTab] = useState<ManagementTab>('notices');
@@ -198,23 +211,50 @@ const Login: React.FC = () => {
     });
   }, [settings]);
 
-  const handleQuickLogin = (role: 'admin' | 'teacher' | 'parent' | 'student') => {
+  const handleQuickLogin = (role: 'teacher' | 'parent' | 'student') => {
     setActiveTab(role);
     setError('');
-    if (role === 'admin') {
-      setUserId('admin');
-      setPassword('admin123');
-    } else {
-      setUserId(`${role}01`);
-      setPassword('123456');
-    }
+    setAuthNotice('');
+    setNeedsVerification(false);
+    setUserId(`${role}01`);
+    setPassword('123456');
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setIsSubmitting(true);
     setError('');
-    const matched = await verifyLocalCredentials(userId, password, activeTab);
+    setAuthNotice('');
+    setNeedsVerification(false);
+
+    const identifier = userId.trim();
+
+    if (identifier.includes('@')) {
+      const res = await signInWithEmail(identifier, password);
+      setIsSubmitting(false);
+      if (res.ok) {
+        navigate('/dashboard');
+      } else {
+        if (res.needsVerification) setNeedsVerification(true);
+        setError(
+          res.error ||
+            (lang === 'bn' ? 'ইমেইল বা পাসওয়ার্ড সঠিক নয়।' : 'Invalid email or password.')
+        );
+      }
+      return;
+    }
+
+    if (activeTab === 'admin') {
+      setIsSubmitting(false);
+      setError(
+        lang === 'bn'
+          ? 'অ্যাডমিন পোর্টালে প্রবেশ করতে Google ক্লাউড লগইন অথবা ভেরিফায়েড ইমেইল-পাসওয়ার্ড ব্যবহার করুন।'
+          : 'Admin access requires Google Cloud Sign-In or a verified Firebase email/password.'
+      );
+      return;
+    }
+
+    const matched = await verifyLocalCredentials(identifier, password, activeTab);
     setIsSubmitting(false);
 
     if (matched) {
@@ -229,8 +269,33 @@ const Login: React.FC = () => {
     }
   };
 
+  const handleForgotPassword = async () => {
+    setError('');
+    setAuthNotice('');
+    const email = userId.trim();
+    if (!email.includes('@')) {
+      setError(
+        lang === 'bn'
+          ? 'পাসওয়ার্ড রিসেট করতে প্রথমে উপরের ঘরে আপনার নিবন্ধিত ইমেইল লিখুন।'
+          : 'Enter your registered email address in the input box above first.'
+      );
+      return;
+    }
+    const res = await resetPassword(email);
+    if (res.ok) {
+      setAuthNotice(
+        lang === 'bn'
+          ? 'পাসওয়ার্ড রিসেট লিংক আপনার ইমেইলে পাঠানো হয়েছে।'
+          : 'Password reset link has been sent to your email.'
+      );
+    } else {
+      setError(res.error || (lang === 'bn' ? 'রিসেট ইমেইল পাঠানো যায়নি।' : 'Failed to send password reset email.'));
+    }
+  };
+
   const handleGoogleAuth = async () => {
     setError('');
+    setAuthNotice('');
     setIsSubmitting(true);
     const ok = await signInWithGoogle();
     setIsSubmitting(false);
@@ -385,9 +450,11 @@ const Login: React.FC = () => {
       { id: 'admissions', label: lang === 'bn' ? 'ভর্তি' : 'Admissions' },
       { id: 'alumni', label: lang === 'bn' ? 'অ্যালামনাই' : 'Alumni' },
       { id: 'parent-messages', label: lang === 'bn' ? 'অভিভাবক বার্তা' : 'Parent Msgs' },
+      { id: 'parent-links', label: lang === 'bn' ? 'অভিভাবক লিংক' : 'Parent Links' },
       { id: 'messages', label: lang === 'bn' ? 'যোগাযোগ' : 'Messages' },
       { id: 'leaves', label: lang === 'bn' ? 'শিক্ষক ছুটি' : 'Leaves' },
       { id: 'users', label: lang === 'bn' ? 'ইউজার' : 'Users' },
+      { id: 'audit-logs', label: lang === 'bn' ? 'অডিট লগ' : 'Audit Logs' },
       { id: 'system', label: lang === 'bn' ? 'সেটিংস' : 'System' },
     ];
 
@@ -809,6 +876,52 @@ const Login: React.FC = () => {
                   </div>
                 )}
 
+                {managementTab === 'parent-links' && (
+                  <div className="space-y-3">
+                    {parentLinks.length === 0 ? (
+                      <p className="text-sm text-slate-400 text-center py-8">
+                        {lang === 'bn' ? 'কোনো অভিভাবক-শিক্ষার্থী লিংক আবেদন নেই।' : 'No parent-student verification requests yet.'}
+                      </p>
+                    ) : parentLinks.map((pl) => (
+                      <div key={pl.id} className="p-4 rounded-2xl bg-slate-50 dark:bg-slate-800 flex flex-wrap justify-between items-center gap-3 text-xs">
+                        <div>
+                          <p className="font-extrabold text-sm">
+                            {pl.parentName} ({pl.relationship}) → Class {pl.classId}, Roll {pl.roll}
+                          </p>
+                          <p className="text-slate-500">
+                            {pl.parentEmail} {pl.studentName ? `• Matched: ${pl.studentName}` : ''} • Status:{' '}
+                            <b className="uppercase">{pl.status}</b>
+                          </p>
+                        </div>
+                        <div className="flex gap-1.5">
+                          {pl.status !== 'approved' && (
+                            <button
+                              onClick={() => reviewParentStudentLink(pl.id, 'approved')}
+                              className="px-3 py-1.5 rounded-lg bg-emerald-600 text-white font-bold"
+                            >
+                              Approve
+                            </button>
+                          )}
+                          {pl.status !== 'rejected' && (
+                            <button
+                              onClick={() => reviewParentStudentLink(pl.id, 'rejected')}
+                              className="px-3 py-1.5 rounded-lg bg-red-600 text-white font-bold"
+                            >
+                              Reject
+                            </button>
+                          )}
+                          <button
+                            onClick={() => deleteParentStudentLink(pl.id)}
+                            className="p-1.5 text-slate-400 hover:text-red-500"
+                          >
+                            <Trash2 className="w-4 h-4" />
+                          </button>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+
                 {managementTab === 'users' && (
                   <div className="space-y-6">
                     <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-3">
@@ -820,7 +933,7 @@ const Login: React.FC = () => {
                           </div>
                           <div className="flex gap-1">
                             <button onClick={() => openEditModal(u)} className="p-1.5 text-blue-600"><Pencil className="w-4 h-4" /></button>
-                            {u.userId !== 'admin' && <button onClick={() => deleteUser(u.userId)} className="p-1.5 text-red-600"><Trash2 className="w-4 h-4" /></button>}
+                            <button onClick={() => deleteUser(u.userId)} className="p-1.5 text-red-600"><Trash2 className="w-4 h-4" /></button>
                           </div>
                         </div>
                       ))}
@@ -843,6 +956,41 @@ const Login: React.FC = () => {
                             </select>
                           </div>
                         ))}
+                      </div>
+                    )}
+                  </div>
+                )}
+
+                {managementTab === 'audit-logs' && (
+                  <div className="space-y-3">
+                    {auditLogs.length === 0 ? (
+                      <p className="text-sm text-slate-400 text-center py-8">
+                        {lang === 'bn' ? 'কোনো অডিট লগ পাওয়া যায়নি।' : 'No audit logs recorded yet.'}
+                      </p>
+                    ) : (
+                      <div className="overflow-x-auto rounded-2xl border border-slate-200 dark:border-slate-800">
+                        <table className="w-full text-left text-xs">
+                          <thead className="bg-slate-100 dark:bg-slate-800 uppercase font-bold text-slate-500">
+                            <tr>
+                              <th className="px-4 py-3">Date</th>
+                              <th className="px-4 py-3">Action</th>
+                              <th className="px-4 py-3">Actor</th>
+                              <th className="px-4 py-3">Target</th>
+                              <th className="px-4 py-3">Summary</th>
+                            </tr>
+                          </thead>
+                          <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
+                            {auditLogs.map((log) => (
+                              <tr key={log.id} className="bg-white dark:bg-slate-900">
+                                <td className="px-4 py-3 font-mono text-slate-500 whitespace-nowrap">{log.createdDate}</td>
+                                <td className="px-4 py-3 font-black uppercase text-emerald-700 dark:text-emerald-400">{log.action}</td>
+                                <td className="px-4 py-3 font-semibold">{log.actorName} ({log.actorRole})</td>
+                                <td className="px-4 py-3 text-slate-500">{log.targetCollection}</td>
+                                <td className="px-4 py-3">{log.summary}</td>
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
                       </div>
                     )}
                   </div>
@@ -994,7 +1142,6 @@ const Login: React.FC = () => {
                     <option value="student">Student</option>
                     <option value="parent">Parent</option>
                     <option value="teacher">Teacher</option>
-                    <option value="admin">Admin</option>
                   </select>
                 </>
               )}
@@ -1051,13 +1198,53 @@ const Login: React.FC = () => {
 
         <form onSubmit={handleSubmit} className="p-8 pt-6 space-y-4">
           {error && (
-            <div className="p-3.5 rounded-xl bg-red-50 dark:bg-red-950/60 border border-red-200 dark:border-red-800 text-red-700 dark:text-red-300 text-xs font-bold">
-              {error}
+            <div className="p-3.5 rounded-xl bg-red-50 dark:bg-red-950/60 border border-red-200 dark:border-red-800 text-red-700 dark:text-red-300 text-xs font-bold space-y-2">
+              <p>{error}</p>
+              {(needsVerification || (firebaseUser && !firebaseUser.emailVerified)) && (
+                <div className="flex flex-wrap gap-2 pt-1">
+                  <button
+                    type="button"
+                    onClick={async () => {
+                      const ok = await resendVerificationEmail();
+                      setAuthNotice(ok ? (lang === 'bn' ? 'ইমেইল পুনরায় পাঠানো হয়েছে।' : 'Verification email resent.') : '');
+                    }}
+                    className="px-3 py-1.5 rounded-lg bg-emerald-700 text-white text-[11px] font-bold"
+                  >
+                    {lang === 'bn' ? 'পুনরায় ইমেইল পাঠান' : 'Resend Verification'}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={async () => {
+                      const ok = await refreshAuthSession();
+                      if (ok) navigate('/dashboard');
+                    }}
+                    className="px-3 py-1.5 rounded-lg bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-700 text-[11px] font-bold"
+                  >
+                    {lang === 'bn' ? 'স্ট্যাটাস রিফ্রেশ করুন' : 'Refresh Status'}
+                  </button>
+                </div>
+              )}
+            </div>
+          )}
+
+          {authNotice && (
+            <div className="p-3.5 rounded-xl bg-emerald-50 dark:bg-emerald-950/60 border border-emerald-200 dark:border-emerald-800 text-emerald-700 dark:text-emerald-300 text-xs font-bold">
+              {authNotice}
+            </div>
+          )}
+
+          {activeTab === 'admin' && (
+            <div className="p-3 rounded-xl bg-amber-50 dark:bg-amber-950/40 border border-amber-200 dark:border-amber-800 text-[11px] font-semibold text-amber-800 dark:text-amber-300">
+              {lang === 'bn'
+                ? 'নিরাপত্তার জন্য অ্যাডমিন পোর্টাল শুধুমাত্র অনুমোদিত Google Cloud Sign-In অথবা ভেরিফায়েড ইমেইল-পাসওয়ার্ডের মাধ্যমে প্রবেশযোগ্য।'
+                : 'For security, Admin portal requires Google Cloud Sign-In or a verified Admin Firebase email.'}
             </div>
           )}
 
           <div>
-            <label className="text-xs font-bold text-slate-500">{lang === 'bn' ? 'ইউজার আইডি' : 'User ID'}</label>
+            <label className="text-xs font-bold text-slate-500">
+              {lang === 'bn' ? 'ইমেইল অথবা ইউজার আইডি' : 'Email or User ID'}
+            </label>
             <div className="relative mt-1">
               <UserIcon className="w-4 h-4 text-slate-400 absolute left-3.5 top-1/2 -translate-y-1/2" />
               <input
@@ -1065,14 +1252,23 @@ const Login: React.FC = () => {
                 type="text"
                 value={userId}
                 onChange={(e) => setUserId(e.target.value)}
-                placeholder={activeTab === 'admin' ? 'admin' : `${activeTab}01`}
+                placeholder={activeTab === 'admin' ? 'admin@school.edu' : `name@email.com or ${activeTab}01`}
                 className="w-full pl-10 pr-4 py-3 rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-sm font-semibold outline-none focus:ring-2 focus:ring-emerald-500"
               />
             </div>
           </div>
 
           <div>
-            <label className="text-xs font-bold text-slate-500">{lang === 'bn' ? 'পাসওয়ার্ড' : 'Password'}</label>
+            <div className="flex items-center justify-between">
+              <label className="text-xs font-bold text-slate-500">{lang === 'bn' ? 'পাসওয়ার্ড' : 'Password'}</label>
+              <button
+                type="button"
+                onClick={handleForgotPassword}
+                className="text-[11px] font-bold text-emerald-700 dark:text-emerald-400 hover:underline"
+              >
+                {lang === 'bn' ? 'পাসওয়ার্ড ভুলে গেছেন?' : 'Forgot Password?'}
+              </button>
+            </div>
             <div className="relative mt-1">
               <Lock className="w-4 h-4 text-slate-400 absolute left-3.5 top-1/2 -translate-y-1/2" />
               <input
@@ -1103,13 +1299,13 @@ const Login: React.FC = () => {
             {lang === 'bn' ? 'Google দিয়ে ক্লাউড লগইন' : 'Continue with Google Cloud'}
           </button>
 
-          {/* Quick Demo Buttons */}
+          {/* Non-admin Preview Helpers */}
           <div className="pt-3 border-t border-slate-100 dark:border-slate-800 space-y-2">
             <p className="text-[10px] font-bold uppercase text-center text-slate-400">
-              {lang === 'bn' ? 'দ্রুত ডেমো অ্যাক্সেস' : 'Quick Demo Access'}
+              {lang === 'bn' ? 'প্রিভিউ পোর্টাল আইডি' : 'Preview Non-Admin IDs'}
             </p>
-            <div className="grid grid-cols-4 gap-1.5">
-              {(['student', 'parent', 'teacher', 'admin'] as const).map((r) => (
+            <div className="grid grid-cols-3 gap-1.5">
+              {(['student', 'parent', 'teacher'] as const).map((r) => (
                 <button
                   key={r}
                   type="button"

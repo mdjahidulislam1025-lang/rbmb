@@ -172,6 +172,15 @@ export interface AdmissionApplication {
   ownerUid?: string;
 }
 
+export interface AdmissionStatusProjection {
+  appId: string;
+  targetClass: string;
+  targetGroup: string;
+  status: 'pending' | 'approved' | 'rejected';
+  submittedDate: string;
+  mobileLast4?: string;
+}
+
 export interface ContactMessage {
   id: string;
   name: string;
@@ -217,6 +226,8 @@ export interface SchoolStudent {
   classId: string;
   section: string;
   guardianMobile: string;
+  studentUid?: string;
+  allowedUids?: string[];
 }
 
 export type AttendanceStatus = 'present' | 'absent' | 'late';
@@ -228,6 +239,19 @@ export interface AttendanceRecord {
   teacherName: string;
   records: Record<string, AttendanceStatus>;
   isPublished?: boolean;
+}
+
+export interface StudentAttendanceRecord {
+  id: string;
+  date: string;
+  classId: string;
+  studentId: string;
+  studentName: string;
+  roll: string;
+  status: AttendanceStatus;
+  teacherName: string;
+  allowedUids?: string[];
+  isPublished: boolean;
 }
 
 export interface HomeworkItem {
@@ -271,6 +295,7 @@ export interface ExamMark {
   obtainedMarks: number;
   grade: string;
   enteredBy: string;
+  allowedUids?: string[];
   isPublished?: boolean;
 }
 
@@ -374,3 +399,46 @@ export interface StudentLeave {
   submittedDate: string;
   ownerUid?: string;
 }
+
+export interface ParentStudentLink {
+  id: string;
+  parentUid: string;
+  parentEmail: string;
+  parentName: string;
+  studentId?: string;
+  studentName?: string;
+  classId: string;
+  roll: string;
+  relationship: 'Father' | 'Mother' | 'Guardian';
+  status: 'pending' | 'approved' | 'rejected';
+  approvedBy?: string;
+  submittedDate: string;
+}
+
+export type AuditAction =
+  | 'ROLE_CHANGED'
+  | 'ADMISSION_STATUS_UPDATED'
+  | 'ADMISSION_DELETED'
+  | 'PARENT_LINK_REVIEWED'
+  | 'MARKS_SAVED'
+  | 'MARKS_DELETED'
+  | 'ATTENDANCE_SAVED'
+  | 'SETTINGS_UPDATED'
+  | 'TEACHER_LEAVE_REVIEWED'
+  | 'STUDENT_LEAVE_REVIEWED'
+  | 'ALUMNI_REVIEWED'
+  | 'RECORD_DELETED';
+
+export interface AuditLog {
+  id: string;
+  actorUid: string;
+  actorName: string;
+  actorEmail: string;
+  actorRole: UserRole;
+  action: AuditAction;
+  targetCollection: string;
+  targetId: string;
+  summary: string;
+  createdDate: string;
+}
+

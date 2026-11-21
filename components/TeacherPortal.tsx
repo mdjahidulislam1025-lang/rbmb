@@ -75,6 +75,8 @@ export const TeacherPortal: React.FC = () => {
     deleteExamRoutine,
     parentMessages,
     replyParentMessage,
+    parentLinks,
+    reviewParentStudentLink,
     teacherLeaves,
     submitTeacherLeave,
     deleteTeacherLeave,
@@ -866,6 +868,59 @@ export const TeacherPortal: React.FC = () => {
               ))}
             </div>
           </div>
+
+          {/* Pending Parent-Student Verification Requests */}
+          {parentLinks.length > 0 && (
+            <div className="lg:col-span-12 bg-white dark:bg-slate-900 p-6 rounded-3xl border border-slate-200 dark:border-slate-800 space-y-4">
+              <div className="flex items-center justify-between">
+                <h4 className="font-extrabold text-base">
+                  {lang === 'bn' ? 'অভিভাবক-শিক্ষার্থী লিংক যাচাই' : 'Parent-Student Link Verification'}
+                </h4>
+                <span className="px-3 py-1 rounded-lg bg-amber-100 dark:bg-amber-950 text-amber-800 dark:text-amber-300 text-xs font-black">
+                  {parentLinks.filter((l) => l.status === 'pending').length} {lang === 'bn' ? 'টি অপেক্ষমাণ' : 'Pending'}
+                </span>
+              </div>
+              <div className="grid md:grid-cols-2 gap-3">
+                {parentLinks.map((pl) => (
+                  <div key={pl.id} className="p-4 rounded-2xl bg-slate-50 dark:bg-slate-800 flex flex-wrap justify-between items-center gap-3 text-xs">
+                    <div>
+                      <p className="font-extrabold text-sm">
+                        {pl.parentName} ({pl.relationship}) → Class {pl.classId}, Roll {pl.roll}
+                      </p>
+                      <p className="text-slate-500">
+                        {pl.parentEmail} {pl.studentName ? `• ${pl.studentName}` : ''} •{' '}
+                        <b className="uppercase">{pl.status}</b>
+                      </p>
+                    </div>
+                    <div className="flex gap-1.5">
+                      {pl.status !== 'approved' && (
+                        <button
+                          onClick={() => {
+                            reviewParentStudentLink(pl.id, 'approved');
+                            notify(lang === 'bn' ? 'অভিভাবক লিংক অনুমোদিত!' : 'Parent link approved!');
+                          }}
+                          className="px-3 py-1.5 rounded-lg bg-emerald-600 text-white font-bold inline-flex items-center gap-1"
+                        >
+                          <Check className="w-3.5 h-3.5" /> Approve
+                        </button>
+                      )}
+                      {pl.status !== 'rejected' && (
+                        <button
+                          onClick={() => {
+                            reviewParentStudentLink(pl.id, 'rejected');
+                            notify(lang === 'bn' ? 'অভিভাবক লিংক বাতিল!' : 'Parent link rejected!');
+                          }}
+                          className="px-3 py-1.5 rounded-lg bg-red-600 text-white font-bold inline-flex items-center gap-1"
+                        >
+                          <X className="w-3.5 h-3.5" /> Reject
+                        </button>
+                      )}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
         </div>
       )}
 

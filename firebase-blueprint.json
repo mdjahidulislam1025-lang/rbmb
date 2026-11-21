@@ -235,6 +235,8 @@
         "classId": { "type": "string", "enum": ["6", "7", "8", "9", "10"] },
         "section": { "type": "string", "minLength": 1, "maxLength": 40 },
         "guardianMobile": { "type": "string", "minLength": 6, "maxLength": 30 },
+        "studentUid": { "type": "string", "maxLength": 128 },
+        "allowedUids": { "type": "array" },
         "createdAt": { "type": "string", "format": "date-time" },
         "updatedAt": { "type": "string", "format": "date-time" }
       },
@@ -315,6 +317,7 @@
         "obtainedMarks": { "type": "number" },
         "grade": { "type": "string", "maxLength": 8 },
         "enteredBy": { "type": "string", "maxLength": 150 },
+        "allowedUids": { "type": "array" },
         "isPublished": { "type": "boolean" },
         "createdAt": { "type": "string", "format": "date-time" },
         "updatedAt": { "type": "string", "format": "date-time" }
@@ -489,6 +492,82 @@
         "updatedAt": { "type": "string", "format": "date-time" }
       },
       "required": ["id", "studentId", "studentName", "roll", "classId", "leaveType", "startDate", "endDate", "reason", "status", "submittedDate", "createdAt", "updatedAt"]
+    },
+    "AdmissionStatus": {
+      "title": "AdmissionStatus",
+      "description": "Non-PII public admission tracking projection keyed by Tracking App ID.",
+      "type": "object",
+      "properties": {
+        "appId": { "type": "string", "pattern": "^[a-zA-Z0-9_\\-]+$", "maxLength": 128 },
+        "targetClass": { "type": "string", "maxLength": 40 },
+        "targetGroup": { "type": "string", "maxLength": 40 },
+        "status": { "type": "string", "enum": ["pending", "approved", "rejected"] },
+        "submittedDate": { "type": "string", "maxLength": 40 },
+        "mobileLast4": { "type": "string", "maxLength": 8 },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["appId", "targetClass", "targetGroup", "status", "submittedDate", "updatedAt"]
+    },
+    "StudentAttendance": {
+      "title": "StudentAttendance",
+      "description": "Per-student attendance entry scoped strictly by allowedUids.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "pattern": "^[a-zA-Z0-9_\\-]+$", "maxLength": 128 },
+        "date": { "type": "string", "maxLength": 32 },
+        "classId": { "type": "string", "enum": ["6", "7", "8", "9", "10"] },
+        "studentId": { "type": "string", "maxLength": 128 },
+        "studentName": { "type": "string", "maxLength": 150 },
+        "roll": { "type": "string", "maxLength": 20 },
+        "status": { "type": "string", "enum": ["present", "absent", "late"] },
+        "teacherName": { "type": "string", "maxLength": 150 },
+        "allowedUids": { "type": "array" },
+        "isPublished": { "type": "boolean" },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["id", "date", "classId", "studentId", "studentName", "roll", "status", "teacherName", "isPublished", "createdAt", "updatedAt"]
+    },
+    "ParentStudentLink": {
+      "title": "ParentStudentLink",
+      "description": "Verified guardian-to-student link request reviewed by teachers/admins.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "pattern": "^[a-zA-Z0-9_\\-]+$", "maxLength": 128 },
+        "parentUid": { "type": "string", "maxLength": 128 },
+        "parentEmail": { "type": "string", "maxLength": 150 },
+        "parentName": { "type": "string", "maxLength": 150 },
+        "studentId": { "type": "string", "maxLength": 128 },
+        "studentName": { "type": "string", "maxLength": 150 },
+        "classId": { "type": "string", "enum": ["6", "7", "8", "9", "10"] },
+        "roll": { "type": "string", "maxLength": 20 },
+        "relationship": { "type": "string", "enum": ["Father", "Mother", "Guardian"] },
+        "status": { "type": "string", "enum": ["pending", "approved", "rejected"] },
+        "approvedBy": { "type": "string", "maxLength": 150 },
+        "submittedDate": { "type": "string", "maxLength": 32 },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["id", "parentUid", "parentEmail", "parentName", "classId", "roll", "relationship", "status", "submittedDate", "createdAt", "updatedAt"]
+    },
+    "AuditLog": {
+      "title": "AuditLog",
+      "description": "Immutable administrative and academic audit trail.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "pattern": "^[a-zA-Z0-9_\\-]+$", "maxLength": 128 },
+        "actorUid": { "type": "string", "maxLength": 128 },
+        "actorName": { "type": "string", "maxLength": 150 },
+        "actorEmail": { "type": "string", "maxLength": 150 },
+        "actorRole": { "type": "string", "enum": ["student", "teacher", "parent", "admin"] },
+        "action": { "type": "string", "maxLength": 64 },
+        "targetCollection": { "type": "string", "maxLength": 64 },
+        "targetId": { "type": "string", "maxLength": 128 },
+        "summary": { "type": "string", "maxLength": 500 },
+        "createdDate": { "type": "string", "maxLength": 32 },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["id", "actorUid", "actorName", "actorEmail", "actorRole", "action", "targetCollection", "targetId", "summary", "createdDate", "createdAt"]
     }
   },
   "firestore": {
@@ -591,6 +670,22 @@
     "/studentLeaves/{leaveId}": {
       "schema": { "$ref": "#/entities/StudentLeave" },
       "description": "Student leave applications."
+    },
+    "/admission_status/{appId}": {
+      "schema": { "$ref": "#/entities/AdmissionStatus" },
+      "description": "Public non-PII admission tracking status keyed by exact App ID."
+    },
+    "/studentAttendance/{recordId}": {
+      "schema": { "$ref": "#/entities/StudentAttendance" },
+      "description": "Per-student attendance records isolated by allowedUids."
+    },
+    "/parent_student_links/{linkId}": {
+      "schema": { "$ref": "#/entities/ParentStudentLink" },
+      "description": "Parent-student link verification requests."
+    },
+    "/audit_logs/{logId}": {
+      "schema": { "$ref": "#/entities/AuditLog" },
+      "description": "Immutable admin/teacher audit trail."
     }
   }
 }
