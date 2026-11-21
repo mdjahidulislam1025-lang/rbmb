@@ -1,8 +1,7 @@
-
 import * as React from 'react';
 import * as RouterDom from 'react-router-dom';
-import { User, Lock, Mail, ArrowRight, ShieldCheck, GraduationCap, ShieldAlert, UserPlus, Camera, Trash2 } from 'lucide-react';
-import { TRANSLATIONS, SCHOOL_NAME } from '../constants';
+import { User, Lock, ArrowRight, ShieldCheck, ShieldAlert, UserPlus, Camera, Trash2, Users } from 'lucide-react';
+import { TRANSLATIONS } from '../constants';
 import { useApp } from '../App';
 import { compressImageFile } from '../utils/imageUtils';
 
@@ -13,23 +12,25 @@ const Register: React.FC = () => {
   const navigate = useNavigate();
   const { lang, t, register } = useApp();
   const fileInputRef = useRef<HTMLInputElement>(null);
-  
-  const [activeTab, setActiveTab] = useState<'student' | 'teacher' | 'admin'>('student');
+
+  const [activeTab, setActiveTab] = useState<'student' | 'parent' | 'teacher' | 'admin'>('student');
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [error, setError] = useState('');
   const [photoPreview, setPhotoPreview] = useState<string | null>(null);
-  
+
   const [formData, setFormData] = useState({
     name: '',
     userId: '',
     email: '',
     password: '',
     securityKey: '',
-    photo: ''
+    linkedChildClass: '9',
+    linkedChildRoll: '01',
+    photo: '',
   });
 
-  const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    setFormData(prev => ({ ...prev, [e.target.name]: e.target.value }));
+  const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
+    setFormData((prev) => ({ ...prev, [e.target.name]: e.target.value }));
     setError('');
   };
 
@@ -38,17 +39,17 @@ const Register: React.FC = () => {
     if (file) {
       const compressed = await compressImageFile(file, 500, 0.75);
       setPhotoPreview(compressed);
-      setFormData(prev => ({ ...prev, photo: compressed }));
+      setFormData((prev) => ({ ...prev, photo: compressed }));
     }
   };
 
   const removePhoto = () => {
     setPhotoPreview(null);
-    setFormData(prev => ({ ...prev, photo: '' }));
+    setFormData((prev) => ({ ...prev, photo: '' }));
     if (fileInputRef.current) fileInputRef.current.value = '';
   };
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError('');
 
@@ -58,156 +59,231 @@ const Register: React.FC = () => {
     }
 
     setIsSubmitting(true);
-    
-    setTimeout(() => {
-      const success = register({
-        role: activeTab,
-        name: formData.name,
-        userId: formData.userId,
-        email: formData.email,
-        password: formData.password,
-        photo: formData.photo
-      });
+    const success = await register({
+      role: activeTab,
+      name: formData.name.trim(),
+      userId: formData.userId.trim(),
+      email: formData.email.trim(),
+      password: formData.password,
+      photo: formData.photo,
+      ...(activeTab === 'parent' || activeTab === 'student'
+        ? {
+            linkedChildClass: formData.linkedChildClass,
+            linkedChildRoll: formData.linkedChildRoll.trim() || '01',
+          }
+        : {}),
+    });
+    setIsSubmitting(false);
 
-      setIsSubmitting(false);
-
-      if (success) {
-        navigate('/login');
-      } else {
-        setError(lang === 'bn' ? 'এই ইউজার আইডি ইতিমধ্যে নিবন্ধিত!' : 'User ID already registered!');
-      }
-    }, 1500);
+    if (success) {
+      navigate(`/login/${activeTab}`);
+    } else {
+      setError(lang === 'bn' ? 'এই ইউজার আইডি ইতিমধ্যে নিবন্ধিত!' : 'User ID already registered!');
+    }
   };
 
   return (
-    <div className="min-h-[80vh] flex items-center justify-center px-4 py-12 bg-slate-50">
+    <div className="min-h-[80vh] flex items-center justify-center px-4 py-12 bg-slate-50 dark:bg-slate-950">
       <div className="w-full max-w-lg">
-        <div className="text-center mb-8">
+        <div className="text-center mb-6">
           <Link to="/" className="inline-flex flex-col items-center">
-            <div className="bg-green-700 p-3 rounded-2xl shadow-lg mb-4">
-              <UserPlus className="w-10 h-10 text-white" />
+            <div className="bg-emerald-700 p-3 rounded-2xl shadow-lg mb-3">
+              <UserPlus className="w-8 h-8 text-white" />
             </div>
-            <h1 className="text-2xl font-bold text-green-900 tracking-tight">
+            <h1 className="text-2xl font-black text-emerald-950 dark:text-white tracking-tight">
               {lang === 'bn' ? 'নতুন অ্যাকাউন্ট নিবন্ধন করুন' : 'Register New Account'}
             </h1>
           </Link>
         </div>
 
-        <div className="bg-white rounded-3xl shadow-2xl border border-gray-100 overflow-hidden">
-          <div className="flex bg-gray-50 p-1 m-4 rounded-2xl">
-            {(['student', 'teacher', 'admin'] as const).map(role => (
-              <button 
+        <div className="bg-white dark:bg-slate-900 rounded-3xl shadow-2xl border border-slate-200 dark:border-slate-800 overflow-hidden">
+          <div className="grid grid-cols-4 bg-slate-100 dark:bg-slate-800 p-1 m-4 rounded-2xl gap-1">
+            {(['student', 'parent', 'teacher', 'admin'] as const).map((role) => (
+              <button
                 key={role}
-                onClick={() => { setActiveTab(role); setError(''); }}
-                className={`flex-1 flex items-center justify-center gap-2 py-3 rounded-xl font-bold transition-all ${
-                  activeTab === role ? 'bg-white text-green-700 shadow-sm' : 'text-gray-500 hover:text-gray-700'
+                type="button"
+                onClick={() => {
+                  setActiveTab(role);
+                  setError('');
+                }}
+                className={`flex items-center justify-center gap-1.5 py-2.5 rounded-xl text-xs font-bold transition-all ${
+                  activeTab === role
+                    ? 'bg-white dark:bg-slate-900 text-emerald-700 dark:text-emerald-300 shadow-sm'
+                    : 'text-slate-500 dark:text-slate-300'
                 }`}
               >
-                {role === 'student' ? <User className="w-4 h-4" /> : role === 'teacher' ? <ShieldCheck className="w-4 h-4" /> : <ShieldAlert className="w-4 h-4" />}
+                {role === 'student' ? (
+                  <User className="w-3.5 h-3.5" />
+                ) : role === 'parent' ? (
+                  <Users className="w-3.5 h-3.5" />
+                ) : role === 'teacher' ? (
+                  <ShieldCheck className="w-3.5 h-3.5" />
+                ) : (
+                  <ShieldAlert className="w-3.5 h-3.5" />
+                )}
                 <span className="hidden sm:inline">
-                   {role === 'student' ? t(TRANSLATIONS.login.studentTab) : role === 'teacher' ? t(TRANSLATIONS.login.teacherTab) : t(TRANSLATIONS.login.adminTab)}
+                  {role === 'student'
+                    ? t(TRANSLATIONS.login.studentTab)
+                    : role === 'parent'
+                    ? t(TRANSLATIONS.login.parentTab)
+                    : role === 'teacher'
+                    ? t(TRANSLATIONS.login.teacherTab)
+                    : t(TRANSLATIONS.login.adminTab)}
                 </span>
               </button>
             ))}
           </div>
 
-          <form onSubmit={handleSubmit} className="p-8 pt-4 space-y-5">
+          <form onSubmit={handleSubmit} className="p-6 sm:p-8 pt-2 space-y-4">
             {error && (
-              <div className="bg-red-50 text-red-600 p-4 rounded-xl text-sm font-bold flex items-center gap-3 border border-red-100">
-                <ShieldAlert className="w-5 h-5" /> {error}
+              <div className="bg-red-50 dark:bg-red-950/60 text-red-600 dark:text-red-300 p-3.5 rounded-xl text-xs font-bold flex items-center gap-2 border border-red-200 dark:border-red-800">
+                <ShieldAlert className="w-4 h-4 shrink-0" /> {error}
               </div>
             )}
 
-            {/* Photo Upload Section */}
-            <div className="flex flex-col items-center space-y-4 pb-4">
-              <div className="relative group">
-                <div className="w-24 h-24 rounded-full border-4 border-green-100 overflow-hidden bg-gray-100 flex items-center justify-center">
-                  {photoPreview ? (
-                    <img src={photoPreview} alt="Preview" className="w-full h-full object-cover" />
-                  ) : (
-                    <Camera className="w-10 h-10 text-gray-300" />
-                  )}
+            <div className="flex flex-col items-center space-y-2 pb-2">
+              <div className="relative">
+                <div className="w-20 h-20 rounded-full border-4 border-emerald-100 dark:border-slate-700 overflow-hidden bg-slate-100 dark:bg-slate-800 flex items-center justify-center">
+                  {photoPreview ? <img src={photoPreview} alt="Preview" className="w-full h-full object-cover" /> : <Camera className="w-8 h-8 text-slate-300" />}
                 </div>
                 {photoPreview && (
-                  <button 
-                    type="button" 
-                    onClick={removePhoto}
-                    className="absolute -top-1 -right-1 bg-red-500 text-white p-1.5 rounded-full shadow-lg hover:bg-red-600 transition-colors"
-                  >
-                    <Trash2 className="w-3.5 h-3.5" />
+                  <button type="button" onClick={removePhoto} className="absolute -top-1 -right-1 bg-red-500 text-white p-1.5 rounded-full shadow">
+                    <Trash2 className="w-3 h-3" />
                   </button>
                 )}
-                <button 
+                <button
                   type="button"
                   onClick={() => fileInputRef.current?.click()}
-                  className="absolute -bottom-1 -right-1 bg-green-700 text-white p-2 rounded-full shadow-lg hover:bg-green-800 transition-colors"
+                  className="absolute -bottom-1 -right-1 bg-emerald-700 text-white p-1.5 rounded-full shadow"
                 >
-                  <Camera className="w-4 h-4" />
+                  <Camera className="w-3.5 h-3.5" />
                 </button>
               </div>
-              <input 
-                ref={fileInputRef}
-                type="file" 
-                accept="image/*" 
-                onChange={handleFileChange}
-                className="hidden" 
-              />
-              <p className="text-xs text-gray-500 font-medium">
+              <input ref={fileInputRef} type="file" accept="image/*" onChange={handleFileChange} className="hidden" />
+              <p className="text-[11px] text-slate-400 font-medium">
                 {lang === 'bn' ? 'প্রোফাইল ছবি যোগ করুন (ঐচ্ছিক)' : 'Add Profile Picture (Optional)'}
               </p>
             </div>
 
-            <div className="space-y-4">
-              <div className="space-y-2">
-                <label className="text-sm font-bold text-gray-700 ml-1">{lang === 'bn' ? 'সম্পূর্ণ নাম' : 'Full Name'}</label>
-                <div className="relative">
-                  <div className="absolute inset-y-0 left-0 pl-4 flex items-center pointer-events-none text-gray-400"><User className="w-5 h-5" /></div>
-                  <input required type="text" name="name" value={formData.name} onChange={handleChange} className="w-full pl-11 pr-4 py-3 rounded-2xl border border-gray-200 focus:ring-2 focus:ring-green-500 outline-none bg-gray-50/30" />
+            <div className="space-y-3">
+              <div>
+                <label className="text-xs font-bold text-slate-500">{lang === 'bn' ? 'সম্পূর্ণ নাম' : 'Full Name'}</label>
+                <input
+                  required
+                  type="text"
+                  name="name"
+                  value={formData.name}
+                  onChange={handleChange}
+                  className="w-full mt-1 px-4 py-3 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-sm font-semibold outline-none focus:ring-2 focus:ring-emerald-500"
+                />
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div>
+                  <label className="text-xs font-bold text-slate-500">{lang === 'bn' ? 'ইউজার আইডি' : 'User ID'}</label>
+                  <input
+                    required
+                    type="text"
+                    name="userId"
+                    value={formData.userId}
+                    onChange={handleChange}
+                    placeholder="e.g. student02"
+                    className="w-full mt-1 px-4 py-3 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-sm font-semibold outline-none focus:ring-2 focus:ring-emerald-500"
+                  />
+                </div>
+                <div>
+                  <label className="text-xs font-bold text-slate-500">{lang === 'bn' ? 'ইমেইল' : 'Email'}</label>
+                  <input
+                    required
+                    type="email"
+                    name="email"
+                    value={formData.email}
+                    onChange={handleChange}
+                    className="w-full mt-1 px-4 py-3 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-sm font-semibold outline-none focus:ring-2 focus:ring-emerald-500"
+                  />
                 </div>
               </div>
 
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                <div className="space-y-2">
-                  <label className="text-sm font-bold text-gray-700 ml-1">{lang === 'bn' ? 'ইউজার আইডি' : 'User ID'}</label>
-                  <input required type="text" name="userId" value={formData.userId} onChange={handleChange} placeholder="e.g. ID12345" className="w-full px-4 py-3 rounded-2xl border border-gray-200 focus:ring-2 focus:ring-green-500 outline-none bg-gray-50/30" />
+              {(activeTab === 'student' || activeTab === 'parent') && (
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <label className="text-xs font-bold text-slate-500">
+                      {activeTab === 'parent' ? (lang === 'bn' ? 'সন্তানের শ্রেণী' : 'Child Class') : lang === 'bn' ? 'শ্রেণী' : 'Class'}
+                    </label>
+                    <select
+                      name="linkedChildClass"
+                      value={formData.linkedChildClass}
+                      onChange={handleChange}
+                      className="w-full mt-1 px-3 py-3 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-sm font-bold"
+                    >
+                      {['6', '7', '8', '9', '10'].map((c) => (
+                        <option key={c} value={c}>Class {c}</option>
+                      ))}
+                    </select>
+                  </div>
+                  <div>
+                    <label className="text-xs font-bold text-slate-500">
+                      {activeTab === 'parent' ? (lang === 'bn' ? 'সন্তানের রোল' : 'Child Roll') : lang === 'bn' ? 'রোল নম্বর' : 'Roll No'}
+                    </label>
+                    <input
+                      type="text"
+                      name="linkedChildRoll"
+                      value={formData.linkedChildRoll}
+                      onChange={handleChange}
+                      className="w-full mt-1 px-3 py-3 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-sm font-bold"
+                    />
+                  </div>
                 </div>
-                <div className="space-y-2">
-                  <label className="text-sm font-bold text-gray-700 ml-1">{lang === 'bn' ? 'ইমেইল' : 'Email'}</label>
-                  <input required type="email" name="email" value={formData.email} onChange={handleChange} className="w-full px-4 py-3 rounded-2xl border border-gray-200 focus:ring-2 focus:ring-green-500 outline-none bg-gray-50/30" />
-                </div>
-              </div>
+              )}
 
-              <div className="space-y-2">
-                <label className="text-sm font-bold text-gray-700 ml-1">{lang === 'bn' ? 'পাসওয়ার্ড' : 'Password'}</label>
-                <div className="relative">
-                  <div className="absolute inset-y-0 left-0 pl-4 flex items-center pointer-events-none text-gray-400"><Lock className="w-5 h-5" /></div>
-                  <input required type="password" name="password" value={formData.password} onChange={handleChange} className="w-full pl-11 pr-4 py-3 rounded-2xl border border-gray-200 focus:ring-2 focus:ring-green-500 outline-none bg-gray-50/30" />
+              <div>
+                <label className="text-xs font-bold text-slate-500">{lang === 'bn' ? 'পাসওয়ার্ড' : 'Password'}</label>
+                <div className="relative mt-1">
+                  <Lock className="w-4 h-4 text-slate-400 absolute left-3.5 top-1/2 -translate-y-1/2" />
+                  <input
+                    required
+                    type="password"
+                    name="password"
+                    value={formData.password}
+                    onChange={handleChange}
+                    className="w-full pl-10 pr-4 py-3 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-sm font-semibold outline-none focus:ring-2 focus:ring-emerald-500"
+                  />
                 </div>
               </div>
 
               {activeTab === 'admin' && (
-                <div className="space-y-2 p-4 bg-slate-50 rounded-2xl border-2 border-dashed border-gray-200">
-                  <label className="text-sm font-bold text-gray-700 flex items-center gap-2">
-                    <ShieldAlert className="w-4 h-4 text-red-500" /> {lang === 'bn' ? 'সিকিউরিটি কি (অ্যাডমিনদের জন্য)' : 'Security Key (For Admins)'}
+                <div className="p-3.5 bg-slate-50 dark:bg-slate-800 rounded-2xl border border-dashed border-slate-300 dark:border-slate-700">
+                  <label className="text-xs font-bold flex items-center gap-1.5 mb-1">
+                    <ShieldAlert className="w-3.5 h-3.5 text-red-500" />
+                    {lang === 'bn' ? 'সিকিউরিটি কি (অ্যাডমিনদের জন্য)' : 'Security Key (Admin)'}
                   </label>
-                  <input required type="password" name="securityKey" value={formData.securityKey} onChange={handleChange} placeholder="Key: SCHOOL2026" className="w-full px-4 py-3 rounded-xl border border-gray-200 focus:ring-2 focus:ring-red-500 outline-none" />
+                  <input
+                    required
+                    type="password"
+                    name="securityKey"
+                    value={formData.securityKey}
+                    onChange={handleChange}
+                    placeholder="Key: SCHOOL2026"
+                    className="w-full px-3.5 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 text-sm outline-none"
+                  />
                 </div>
               )}
             </div>
 
-            <button 
+            <button
               disabled={isSubmitting}
               type="submit"
-              className="w-full bg-green-700 text-white py-4 rounded-2xl font-bold text-lg hover:bg-green-800 shadow-xl shadow-green-700/20 flex items-center justify-center gap-3 transition-all active:scale-95"
+              className="w-full bg-emerald-700 hover:bg-emerald-800 text-white py-3.5 rounded-xl font-bold text-sm shadow-lg flex items-center justify-center gap-2 transition-all"
             >
-              {isSubmitting ? <div className="w-6 h-6 border-2 border-white/30 border-t-white rounded-full animate-spin"></div> : <>{lang === 'bn' ? 'নিবন্ধন সম্পন্ন করুন' : 'Complete Registration'} <ArrowRight className="w-5 h-5" /></>}
+              {lang === 'bn' ? 'নিবন্ধন সম্পন্ন করুন' : 'Complete Registration'} <ArrowRight className="w-4 h-4" />
             </button>
           </form>
 
-          <div className="p-6 bg-gray-50 border-t text-center">
-            <p className="text-sm text-gray-500">
-              {lang === 'bn' ? 'ইতিমধ্যে অ্যাকাউন্ট আছে?' : 'Already have an account?'} <Link to="/login" className="text-green-700 font-bold hover:underline">{lang === 'bn' ? 'লগইন করুন' : 'Login Here'}</Link>
-            </p>
+          <div className="p-5 bg-slate-50 dark:bg-slate-800/70 border-t border-slate-100 dark:border-slate-800 text-center text-xs text-slate-500">
+            {lang === 'bn' ? 'ইতিমধ্যে অ্যাকাউন্ট আছে?' : 'Already have an account?'}{' '}
+            <Link to="/login" className="text-emerald-700 dark:text-emerald-400 font-bold hover:underline">
+              {lang === 'bn' ? 'লগইন করুন' : 'Login Here'}
+            </Link>
           </div>
         </div>
       </div>

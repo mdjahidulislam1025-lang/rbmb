@@ -1,5 +1,5 @@
 // Security Rules Verification Matrix for Ranir Bazar Secondary High School
-// Covers the 12 Dirty Dozen Payloads defined in security_spec.md
+// Covers the Dirty Dozen + Role-Specific Negative Cases defined in security_spec.md
 
 export interface DirtyDozenCase {
   id: number;
@@ -17,7 +17,7 @@ export const DIRTY_DOZEN_CASES: DirtyDozenCase[] = [
     collection: 'notices',
     operation: 'create',
     expected: 'PERMISSION_DENIED',
-    reason: 'isAdmin() requires verified Firebase Auth admin identity',
+    reason: 'isTeacher() requires verified Firebase Auth teacher or admin identity',
   },
   {
     id: 2,
@@ -41,7 +41,7 @@ export const DIRTY_DOZEN_CASES: DirtyDozenCase[] = [
     collection: 'users',
     operation: 'create',
     expected: 'PERMISSION_DENIED',
-    reason: 'Non-admin registration strictly requires incoming().role == "student"',
+    reason: 'Non-admin registration only allows student or parent role',
   },
   {
     id: 5,
@@ -106,5 +106,53 @@ export const DIRTY_DOZEN_CASES: DirtyDozenCase[] = [
     operation: 'update',
     expected: 'PERMISSION_DENIED',
     reason: 'incoming().uid == existing().uid and incoming().createdAt == existing().createdAt enforced',
+  },
+  {
+    id: 13,
+    name: 'Teacher Self-Approving Own Leave',
+    collection: 'teacherLeaves',
+    operation: 'update',
+    expected: 'PERMISSION_DENIED',
+    reason: 'Only isAdmin() may update teacherLeaves approval status',
+  },
+  {
+    id: 14,
+    name: 'Student Tampering Exam Marks',
+    collection: 'examMarks',
+    operation: 'update',
+    expected: 'PERMISSION_DENIED',
+    reason: 'Only isTeacher() may create, update, or delete examMarks',
+  },
+  {
+    id: 15,
+    name: 'Student Approving Own Leave',
+    collection: 'studentLeaves',
+    operation: 'update',
+    expected: 'PERMISSION_DENIED',
+    reason: 'Only isTeacher() may update studentLeaves approval status',
+  },
+  {
+    id: 16,
+    name: 'Student Self-Grading Assignment Submission',
+    collection: 'assignmentSubmissions',
+    operation: 'update',
+    expected: 'PERMISSION_DENIED',
+    reason: 'Only isTeacher() may update marks, feedback, and graded status',
+  },
+  {
+    id: 17,
+    name: 'Unapproved Alumni Self-Publishing',
+    collection: 'alumni',
+    operation: 'create',
+    expected: 'PERMISSION_DENIED',
+    reason: 'New alumni profiles must start with status == "pending" and isPublic == false',
+  },
+  {
+    id: 18,
+    name: 'Anonymous Exam Marks List',
+    collection: 'examMarks',
+    operation: 'list',
+    expected: 'PERMISSION_DENIED',
+    reason: 'Exam marks require isSignedIn() or isTeacher()',
   },
 ];

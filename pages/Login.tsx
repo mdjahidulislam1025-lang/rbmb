@@ -1,52 +1,157 @@
-
 import * as React from 'react';
 import * as RouterDom from 'react-router-dom';
-import { 
-  User as UserIcon, Lock, ArrowRight, ShieldCheck, GraduationCap, LayoutDashboard, 
-  FileText, Bell, Settings, LogOut, ShieldAlert, Camera, Trash2, Info, 
-  BookOpen, CheckCircle, ArrowLeft, PlusCircle, Save, AlertTriangle, Calendar, X, 
-  Database, RefreshCcw, Users, Image as ImageIcon, Home, Upload, Download, Sparkles, Mail, UserPlus, RotateCcw, Pencil, Cloud, CloudOff, MessageSquare, ClipboardList
+import {
+  User as UserIcon,
+  Lock,
+  ArrowRight,
+  ShieldCheck,
+  GraduationCap,
+  LayoutDashboard,
+  Bell,
+  Settings,
+  LogOut,
+  ShieldAlert,
+  Camera,
+  Trash2,
+  BookOpen,
+  CheckCircle,
+  PlusCircle,
+  Save,
+  Users,
+  Image as ImageIcon,
+  Upload,
+  Download,
+  UserPlus,
+  Pencil,
+  Cloud,
+  CloudOff,
+  MessageSquare,
+  Calendar,
+  Trophy,
+  X,
 } from 'lucide-react';
-import { TRANSLATIONS, CLASSES } from '../constants';
-import { useApp, AuthUser } from '../App';
-import { Notice, Teacher, GalleryItem } from '../types';
-import { EBook } from '../constants';
+import { TRANSLATIONS, EXAM_TERMS } from '../constants';
+import { useApp } from '../App';
+import { Notice, Teacher, GalleryItem, EBook, UserRole } from '../types';
 import { compressImageFile } from '../utils/imageUtils';
+import { TeacherPortal } from '../components/TeacherPortal';
+import { StudentPortal } from '../components/StudentPortal';
+import { ParentPortal } from '../components/ParentPortal';
 
 const { useState, useEffect, useRef } = React;
 const { useLocation, Link, useNavigate } = RouterDom;
+
+type ManagementTab =
+  | 'notices'
+  | 'teachers'
+  | 'ebooks'
+  | 'gallery'
+  | 'subjects'
+  | 'exam-routines'
+  | 'online-exams'
+  | 'admissions'
+  | 'alumni'
+  | 'parent-messages'
+  | 'messages'
+  | 'leaves'
+  | 'users'
+  | 'system';
 
 const Login: React.FC = () => {
   const location = useLocation();
   const navigate = useNavigate();
   const fileInputRef = useRef<HTMLInputElement>(null);
   const schoolPhotoInputRef = useRef<HTMLInputElement>(null);
-  const { 
-    lang, t, user, isCloudAdmin, signInWithGoogle, login, logout, getUsers, updateUser, deleteUser, dbStatus, register,
-    notices, addNotice, updateNotice, deleteNotice, 
-    teachers, addTeacher, updateTeacher, deleteTeacher, 
-    ebooks, addEbook, updateEbook, deleteEbook, 
-    gallery, addGalleryItem, updateGalleryItem, deleteGalleryItem, 
-    admissions, updateAdmissionStatus, deleteAdmission,
-    contactMessages, markContactMessageRead, deleteContactMessage,
-    settings, updateSettings, exportDatabase, importDatabase
+  const headPhotoInputRef = useRef<HTMLInputElement>(null);
+
+  const {
+    lang,
+    t,
+    user,
+    isCloudAdmin,
+    cloudUsers,
+    updateCloudUserRole,
+    signInWithGoogle,
+    login,
+    verifyLocalCredentials,
+    logout,
+    getUsers,
+    updateUser,
+    deleteUser,
+    register,
+    notices,
+    addNotice,
+    updateNotice,
+    deleteNotice,
+    teachers,
+    addTeacher,
+    updateTeacher,
+    deleteTeacher,
+    ebooks,
+    addEbook,
+    updateEbook,
+    deleteEbook,
+    gallery,
+    addGalleryItem,
+    updateGalleryItem,
+    deleteGalleryItem,
+    subjects,
+    addSubject,
+    deleteSubject,
+    examRoutines,
+    addExamRoutine,
+    deleteExamRoutine,
+    onlineExams,
+    deleteOnlineExam,
+    admissions,
+    updateAdmissionStatus,
+    deleteAdmission,
+    alumni,
+    updateAlumniStatus,
+    deleteAlumniProfile,
+    parentMessages,
+    replyParentMessage,
+    contactMessages,
+    markContactMessageRead,
+    deleteContactMessage,
+    teacherLeaves,
+    updateTeacherLeaveStatus,
+    deleteTeacherLeave,
+    settings,
+    updateSettings,
+    exportDatabase,
+    importDatabase,
   } = useApp();
-  
-  const [activeTab, setActiveTab] = useState<'student' | 'teacher' | 'admin'>('student');
+
+  const [activeTab, setActiveTab] = useState<'student' | 'teacher' | 'parent' | 'admin'>('student');
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [userId, setUserId] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
-  const [dashboardView, setDashboardView] = useState<'main' | 'admin-management'>('main');
-  const [managementTab, setManagementTab] = useState<'notices' | 'teachers' | 'ebooks' | 'gallery' | 'admissions' | 'messages' | 'users' | 'system'>('notices');
+
+  const [dashboardView, setDashboardView] = useState<'main' | 'admin-management' | 'teacher-portal'>('main');
+  const [managementTab, setManagementTab] = useState<ManagementTab>('notices');
+  const [leaveRemarks, setLeaveRemarks] = useState<Record<string, string>>({});
+  const [adminReplyDrafts, setAdminReplyDrafts] = useState<Record<string, string>>({});
+
   const [isAddModalOpen, setIsAddModalOpen] = useState(false);
+  const [modalError, setModalError] = useState('');
+  const [dbFeedback, setDbFeedback] = useState<{ ok: boolean; msg: string } | null>(null);
   const [tempImage, setTempImage] = useState('');
   const [showSaveSuccess, setShowSaveSuccess] = useState(false);
-  
-  // Editing state
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const [editingItem, setEditingItem] = useState<any>(null);
 
-  // System form state
+  const [newSubject, setNewSubject] = useState({ code: '101', nameBn: '', nameEn: '', classId: '9', totalMarks: 100 });
+  const [newExamRoutine, setNewExamRoutine] = useState({
+    examTerm: EXAM_TERMS[1].id,
+    classId: '9',
+    subject: 'Bangla',
+    date: new Date().toISOString().split('T')[0],
+    time: '10:00 AM - 01:00 PM',
+    room: 'Room 101',
+  });
+
   const [systemForm, setSystemForm] = useState({
     nameBn: settings.name.bn,
     nameEn: settings.name.en,
@@ -55,12 +160,20 @@ const Login: React.FC = () => {
     email: settings.email,
     locBn: settings.location.bn,
     locEn: settings.location.en,
-    schoolPhoto: settings.schoolPhoto || ''
+    schoolPhoto: settings.schoolPhoto || '',
+    headNameBn: settings.headTeacherName?.bn || '',
+    headNameEn: settings.headTeacherName?.en || '',
+    headMsgBn: settings.headTeacherMessage?.bn || '',
+    headMsgEn: settings.headTeacherMessage?.en || '',
+    headPhoto: settings.headTeacherPhoto || '',
+    latitude: String(settings.latitude ?? 23.2248),
+    longitude: String(settings.longitude ?? 91.3185),
   });
 
   useEffect(() => {
     const path = location.pathname.toLowerCase();
     if (path.includes('/teacher')) setActiveTab('teacher');
+    else if (path.includes('/parent')) setActiveTab('parent');
     else if (path.includes('/admin')) setActiveTab('admin');
     else setActiveTab('student');
   }, [location.pathname]);
@@ -74,55 +187,45 @@ const Login: React.FC = () => {
       email: settings.email,
       locBn: settings.location.bn,
       locEn: settings.location.en,
-      schoolPhoto: settings.schoolPhoto || ''
+      schoolPhoto: settings.schoolPhoto || '',
+      headNameBn: settings.headTeacherName?.bn || '',
+      headNameEn: settings.headTeacherName?.en || '',
+      headMsgBn: settings.headTeacherMessage?.bn || '',
+      headMsgEn: settings.headTeacherMessage?.en || '',
+      headPhoto: settings.headTeacherPhoto || '',
+      latitude: String(settings.latitude ?? 23.2248),
+      longitude: String(settings.longitude ?? 91.3185),
     });
   }, [settings]);
 
-  const handleQuickLogin = (role: 'admin' | 'teacher' | 'student') => {
+  const handleQuickLogin = (role: 'admin' | 'teacher' | 'parent' | 'student') => {
     setActiveTab(role);
-    if (role === 'admin') { setUserId('admin'); setPassword('admin123'); }
-    else { setUserId(role + '01'); setPassword('123456'); }
-  };
-
-  const handleSubmit = (e: React.FormEvent) => {
-    e.preventDefault();
-    setIsSubmitting(true);
     setError('');
-    
-    setTimeout(() => {
-      const allUsers = getUsers();
-      const inputId = userId.trim().toLowerCase();
-      const inputPass = password.trim();
-      
-      const foundUser = allUsers.find(u => u.userId.toLowerCase() === inputId && u.password === inputPass);
-
-      if (foundUser) {
-        if (foundUser.role === activeTab) {
-          login(foundUser);
-          navigate('/dashboard');
-        } else {
-          setError(lang === 'bn' ? `এই আইডিটি ${foundUser.role} হিসেবে নিবন্ধিত।` : `This ID is registered as ${foundUser.role.toUpperCase()}.`);
-        }
-      } else {
-        setError(lang === 'bn' ? 'ভুল আইডি বা পাসওয়ার্ড!' : 'Invalid credentials. Try admin/admin123');
-      }
-      setIsSubmitting(false);
-    }, 800);
-  };
-
-  const handlePhotoUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (file && user) {
-      const compressed = await compressImageFile(file, 500, 0.75);
-      updateUser({ ...user, photo: compressed });
+    if (role === 'admin') {
+      setUserId('admin');
+      setPassword('admin123');
+    } else {
+      setUserId(`${role}01`);
+      setPassword('123456');
     }
   };
 
-  const handleSchoolPhotoUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (file) {
-      const compressed = await compressImageFile(file, 1000, 0.72);
-      setSystemForm(prev => ({ ...prev, schoolPhoto: compressed }));
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setIsSubmitting(true);
+    setError('');
+    const matched = await verifyLocalCredentials(userId, password, activeTab);
+    setIsSubmitting(false);
+
+    if (matched) {
+      login(matched);
+      navigate('/dashboard');
+    } else {
+      setError(
+        lang === 'bn'
+          ? 'ভুল আইডি বা পাসওয়ার্ড অথবা ভুল রোল ট্যাব!'
+          : 'Invalid ID/password for the selected portal role.'
+      );
     }
   };
 
@@ -131,60 +234,122 @@ const Login: React.FC = () => {
     setIsSubmitting(true);
     const ok = await signInWithGoogle();
     setIsSubmitting(false);
-    if (ok) {
-      navigate('/dashboard');
-    } else {
-      setError(lang === 'bn' ? 'Google লগইন সম্পন্ন হয়নি। আবার চেষ্টা করুন।' : 'Google Sign-In was cancelled or failed.');
+    if (ok) navigate('/dashboard');
+    else setError(lang === 'bn' ? 'Google লগইন সম্পন্ন হয়নি।' : 'Google Sign-In failed or cancelled.');
+  };
+
+  const handlePhotoUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (file && user) {
+      const compressed = await compressImageFile(file, 500, 0.75);
+      await updateUser({ ...user, photo: compressed });
     }
   };
 
   const openAddModal = () => {
     setEditingItem(null);
+    setModalError('');
     setTempImage('');
     setIsAddModalOpen(true);
   };
 
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const openEditModal = (item: any) => {
     setEditingItem(item);
-    if (item.photo) setTempImage(item.photo);
-    else if (item.coverUrl) setTempImage(item.coverUrl);
-    else if (item.url) setTempImage(item.url);
-    else setTempImage('');
+    setModalError('');
+    setTempImage(item.photo || item.coverUrl || item.url || '');
     setIsAddModalOpen(true);
   };
 
-  const handleAddNew = (e: React.FormEvent) => {
+  const handleAddOrUpdateModal = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
-    const f = e.target as any;
+    setModalError('');
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const f = e.currentTarget as any;
     const isEdit = !!editingItem;
-    const id = isEdit ? editingItem.id : Date.now().toString();
+    const id = isEdit ? editingItem.id : `item-${Date.now()}`;
 
     try {
       if (managementTab === 'notices') {
-        const data: Notice = { id, title: { bn: f.titleBn.value, en: f.titleEn.value }, description: { bn: f.descBn.value, en: f.descEn.value }, category: f.category.value as any, date: f.date.value };
+        const data: Notice = {
+          id,
+          title: { bn: f.titleBn.value, en: f.titleEn.value },
+          description: { bn: f.descBn.value, en: f.descEn.value },
+          category: f.category.value,
+          date: f.date.value,
+          isPublic: true,
+        };
         isEdit ? updateNotice(data) : addNotice(data);
       } else if (managementTab === 'teachers') {
-        const data: Teacher = { id, name: { bn: f.nameBn.value, en: f.nameEn.value }, designation: { bn: f.desigBn.value, en: f.desigEn.value }, subject: { bn: f.subBn.value, en: f.subEn.value }, qualification: { bn: f.qualBn.value, en: f.qualEn.value }, photo: tempImage || editingItem?.photo || 'https://images.unsplash.com/photo-1560250097-0b93528c311a?auto=format&fit=crop&q=80&w=400&h=400' };
+        const data: Teacher = {
+          id,
+          name: { bn: f.nameBn.value, en: f.nameEn.value },
+          designation: { bn: f.desigBn.value, en: f.desigEn.value },
+          subject: { bn: f.subBn.value, en: f.subEn.value },
+          qualification: { bn: f.qualBn.value, en: f.qualEn.value },
+          photo: tempImage || editingItem?.photo || '',
+          isPublic: true,
+        };
         isEdit ? updateTeacher(data) : addTeacher(data);
       } else if (managementTab === 'ebooks') {
-        const data: EBook = { id, title: { bn: f.titleBn.value, en: f.titleEn.value }, classId: f.classId.value, className: { bn: `${f.classId.value}ম শ্রেণী`, en: `Class ${f.classId.value}` }, subject: f.subject.value, coverUrl: tempImage || editingItem?.coverUrl || 'https://picsum.photos/300/400', downloadUrl: '#' };
+        const data: EBook = {
+          id,
+          title: { bn: f.titleBn.value, en: f.titleEn.value },
+          classId: f.classId.value,
+          className: { bn: `${f.classId.value}ম শ্রেণী`, en: `Class ${f.classId.value}` },
+          subject: f.subject.value,
+          category: f.bookCat.value,
+          coverUrl: tempImage || editingItem?.coverUrl || '',
+          downloadUrl: f.downloadUrl.value.trim() || '#',
+          isPublic: true,
+        };
         isEdit ? updateEbook(data) : addEbook(data);
       } else if (managementTab === 'gallery') {
-        const data: GalleryItem = { id, caption: { bn: f.capBn.value, en: f.capEn.value }, url: tempImage || editingItem?.url || 'https://picsum.photos/800/600' };
+        const data: GalleryItem = {
+          id,
+          caption: { bn: f.capBn.value, en: f.capEn.value },
+          url: tempImage || editingItem?.url || '',
+          category: f.galCat.value,
+          mediaType: 'image',
+          isPublic: true,
+        };
+        if (!data.url) {
+          setModalError(lang === 'bn' ? 'দয়া করে একটি ছবি আপলোড করুন।' : 'Please upload an image.');
+          return;
+        }
         isEdit ? updateGalleryItem(data) : addGalleryItem(data);
       } else if (managementTab === 'users') {
+        const nextRole = f.userRole.value as UserRole;
+        const passVal = f.userPass.value.trim();
         if (isEdit) {
-           updateUser({ ...editingItem, name: f.userName.value, email: f.userEmail.value, password: f.userPass.value, role: f.userRole.value, photo: tempImage || editingItem.photo });
+          await updateUser({
+            ...editingItem,
+            name: f.userName.value,
+            email: f.userEmail.value,
+            role: nextRole,
+            ...(passVal ? { password: passVal } : {}),
+            photo: tempImage || editingItem.photo,
+          });
         } else {
-          const success = register({ name: f.userName.value, userId: f.userId.value, email: f.userEmail.value, password: f.userPass.value, role: f.userRole.value, photo: tempImage || '' });
-          if (!success) alert('User ID already exists!');
+          const ok = await register({
+            name: f.userName.value,
+            userId: f.userId.value.trim(),
+            email: f.userEmail.value,
+            password: passVal || '123456',
+            role: nextRole,
+            photo: tempImage || '',
+          });
+          if (!ok) {
+            setModalError(lang === 'bn' ? 'এই ইউজার আইডি ইতিমধ্যে ব্যবহৃত হয়েছে!' : 'User ID already exists!');
+            return;
+          }
         }
       }
-      setIsAddModalOpen(false); 
-      setTempImage('');
+      setIsAddModalOpen(false);
       setEditingItem(null);
-    } catch (err) {
-      console.error(err);
+      setTempImage('');
+    } catch {
+      setModalError(lang === 'bn' ? 'সংরক্ষণ ব্যর্থ হয়েছে!' : 'Failed to save record.');
     }
   };
 
@@ -196,346 +361,554 @@ const Login: React.FC = () => {
       phone: systemForm.phone,
       email: systemForm.email,
       location: { bn: systemForm.locBn, en: systemForm.locEn },
-      schoolPhoto: systemForm.schoolPhoto
+      schoolPhoto: systemForm.schoolPhoto,
+      headTeacherName: { bn: systemForm.headNameBn, en: systemForm.headNameEn },
+      headTeacherMessage: { bn: systemForm.headMsgBn, en: systemForm.headMsgEn },
+      headTeacherPhoto: systemForm.headPhoto,
+      latitude: Number(systemForm.latitude) || 23.2248,
+      longitude: Number(systemForm.longitude) || 91.3185,
     });
     setShowSaveSuccess(true);
     setTimeout(() => setShowSaveSuccess(false), 2000);
   };
 
-  const getThemeColor = () => {
-    if (activeTab === 'student') return 'text-blue-600 bg-blue-600';
-    if (activeTab === 'teacher') return 'text-purple-600 bg-purple-600';
-    return 'text-slate-900 bg-slate-900';
-  };
-
   if (user) {
-    const allRegisteredUsers = getUsers();
+    const allUsers = getUsers();
+    const adminTabs: { id: ManagementTab; label: string }[] = [
+      { id: 'notices', label: lang === 'bn' ? 'নোটিশ' : 'Notices' },
+      { id: 'teachers', label: lang === 'bn' ? 'শিক্ষক' : 'Teachers' },
+      { id: 'ebooks', label: lang === 'bn' ? 'লাইব্রেরি' : 'Library' },
+      { id: 'gallery', label: lang === 'bn' ? 'গ্যালারি' : 'Gallery' },
+      { id: 'subjects', label: lang === 'bn' ? 'বিষয়সমূহ' : 'Subjects' },
+      { id: 'exam-routines', label: lang === 'bn' ? 'পরীক্ষার রুটিন' : 'Exam Routine' },
+      { id: 'online-exams', label: lang === 'bn' ? 'MCQ পরীক্ষা' : 'MCQ Exams' },
+      { id: 'admissions', label: lang === 'bn' ? 'ভর্তি' : 'Admissions' },
+      { id: 'alumni', label: lang === 'bn' ? 'অ্যালামনাই' : 'Alumni' },
+      { id: 'parent-messages', label: lang === 'bn' ? 'অভিভাবক বার্তা' : 'Parent Msgs' },
+      { id: 'messages', label: lang === 'bn' ? 'যোগাযোগ' : 'Messages' },
+      { id: 'leaves', label: lang === 'bn' ? 'শিক্ষক ছুটি' : 'Leaves' },
+      { id: 'users', label: lang === 'bn' ? 'ইউজার' : 'Users' },
+      { id: 'system', label: lang === 'bn' ? 'সেটিংস' : 'System' },
+    ];
 
     return (
-      <div className="max-w-7xl mx-auto px-4 py-12 animate-in fade-in">
-        <div className="bg-white rounded-[2.5rem] shadow-2xl border border-gray-100 overflow-hidden min-h-[70vh]">
-          {/* Dashboard Header */}
-          <div className="bg-green-700 p-8 text-white flex flex-col md:flex-row justify-between items-center gap-6">
-            <div className="flex items-center gap-6">
-              <div className="relative group">
-                <div className="w-24 h-24 md:w-32 md:h-32 rounded-3xl overflow-hidden bg-white/20 border-4 border-white/30">
-                  {user.photo ? <img src={user.photo} className="w-full h-full object-cover" /> : <UserIcon className="w-full h-full p-6" />}
+      <div className="max-w-7xl mx-auto px-4 py-10">
+        <div className="bg-white dark:bg-slate-900 rounded-3xl shadow-xl border border-slate-200 dark:border-slate-800 overflow-hidden min-h-[70vh]">
+          {/* Header */}
+          <div className="bg-emerald-700 p-6 md:p-8 text-white flex flex-col md:flex-row justify-between items-center gap-6">
+            <div className="flex items-center gap-5">
+              <div className="relative">
+                <div className="w-20 h-20 md:w-24 md:h-24 rounded-2xl overflow-hidden bg-white/20 border-2 border-white/40 flex items-center justify-center">
+                  {user.photo ? <img src={user.photo} alt="" className="w-full h-full object-cover" /> : <UserIcon className="w-10 h-10" />}
                 </div>
-                <button onClick={() => fileInputRef.current?.click()} className="absolute -bottom-2 -right-2 bg-white text-green-700 p-2 rounded-xl shadow-lg hover:scale-110 transition-all"><Camera className="w-4 h-4" /></button>
+                <button
+                  onClick={() => fileInputRef.current?.click()}
+                  className="absolute -bottom-2 -right-2 bg-white text-emerald-700 p-1.5 rounded-xl shadow-lg"
+                >
+                  <Camera className="w-4 h-4" />
+                </button>
                 <input ref={fileInputRef} type="file" accept="image/*" onChange={handlePhotoUpload} className="hidden" />
               </div>
               <div className="text-center md:text-left">
-                <h1 className="text-3xl font-black">{user.name}</h1>
-                <p className="opacity-70 font-bold uppercase tracking-widest text-[10px]">{user.role} Portal | ID: {user.userId}</p>
+                <h1 className="text-2xl md:text-3xl font-black">{user.name}</h1>
+                <p className="opacity-80 font-bold uppercase tracking-widest text-xs mt-1">
+                  {user.role} Portal • ID: {user.userId}
+                </p>
               </div>
             </div>
-            <button onClick={logout} className="bg-red-500 hover:bg-red-600 px-6 py-3 rounded-2xl font-black text-xs uppercase tracking-widest flex items-center gap-2 transition-all active:scale-95"><LogOut className="w-4 h-4" /> Logout</button>
+
+            <button
+              onClick={logout}
+              className="bg-red-500 hover:bg-red-600 px-5 py-2.5 rounded-xl font-bold text-xs uppercase tracking-wider flex items-center gap-2"
+            >
+              <LogOut className="w-4 h-4" /> {lang === 'bn' ? 'লগআউট' : 'Logout'}
+            </button>
           </div>
 
-          <div className="p-8">
-            {dashboardView === 'main' ? (
-              <div className="space-y-8">
-                <div className="flex justify-between items-center border-b pb-6">
-                   <h2 className="text-xl font-black text-slate-800">Quick Actions</h2>
-                   <Link to="/" className="text-[10px] font-black uppercase text-green-700 flex items-center gap-2 hover:underline"><Home className="w-3 h-3" /> Website Home</Link>
-                </div>
-                <div className="grid grid-cols-1 md:grid-cols-3 lg:grid-cols-4 gap-6">
-                   {[
-                     { icon: FileText, label: 'Academic Routine', color: 'bg-blue-50 text-blue-600' },
-                     { icon: GraduationCap, label: 'Results & Grade', color: 'bg-purple-50 text-purple-600' },
-                     { icon: Bell, label: 'Latest Notices', color: 'bg-orange-50 text-orange-600' },
-                     { icon: UserPlus, label: lang === 'bn' ? 'ইউজার রেজিস্ট্রেশন' : 'Register New User', color: 'bg-green-50 text-green-700', hidden: user.role !== 'admin', onClick: () => { setDashboardView('admin-management'); setManagementTab('users'); } },
-                     { icon: ShieldAlert, label: 'Admin Tools', color: 'bg-slate-50 text-slate-900', hidden: user.role !== 'admin', onClick: () => setDashboardView('admin-management') },
-                   ].filter(x => !x.hidden).map((action, i) => (
-                     <button key={i} onClick={action.onClick} className="flex items-center gap-5 p-6 rounded-3xl border border-gray-100 hover:border-green-200 hover:bg-green-50/20 transition-all text-left group active:scale-95">
-                       <div className={`p-4 rounded-2xl ${action.color} group-hover:scale-110 transition-transform`}><action.icon /></div>
-                       <span className="font-black text-slate-700 text-sm">{action.label}</span>
-                     </button>
-                   ))}
+          <div className="p-6 md:p-8">
+            {user.role === 'teacher' ? (
+              <TeacherPortal />
+            ) : user.role === 'parent' ? (
+              <ParentPortal />
+            ) : user.role === 'student' ? (
+              <StudentPortal />
+            ) : dashboardView === 'teacher-portal' ? (
+              <div className="space-y-6">
+                <button
+                  onClick={() => setDashboardView('main')}
+                  className="px-4 py-2 rounded-xl bg-slate-100 dark:bg-slate-800 text-xs font-bold"
+                >
+                  ← {lang === 'bn' ? 'অ্যাডমিন হোমে ফিরুন' : 'Back to Admin Home'}
+                </button>
+                <TeacherPortal />
+              </div>
+            ) : dashboardView === 'main' ? (
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                <button
+                  onClick={() => setDashboardView('admin-management')}
+                  className="bg-slate-900 dark:bg-slate-800 text-white p-7 rounded-3xl shadow-lg hover:bg-emerald-800 transition-all text-left space-y-4"
+                >
+                  <Settings className="w-8 h-8 text-yellow-400" />
+                  <h3 className="text-xl font-black">{lang === 'bn' ? 'স্কুল ম্যানেজমেন্ট সিস্টেম' : 'School Management System'}</h3>
+                  <p className="text-slate-300 text-xs">
+                    {lang === 'bn' ? 'শিক্ষার্থী, শিক্ষক, বিষয়, ফলাফল, নোটিশ, লাইব্রেরি, ভর্তি ও অ্যালামনাই নিয়ন্ত্রণ।' : 'Manage students, teachers, subjects, routines, notices, library, admissions & alumni.'}
+                  </p>
+                </button>
+
+                <button
+                  onClick={() => setDashboardView('teacher-portal')}
+                  className="bg-purple-700 text-white p-7 rounded-3xl shadow-lg hover:bg-purple-800 transition-all text-left space-y-4"
+                >
+                  <GraduationCap className="w-8 h-8 text-yellow-300" />
+                  <h3 className="text-xl font-black">{lang === 'bn' ? 'টিচার ও একাডেমিক পোর্টাল' : 'Academic & Teacher Workspace'}</h3>
+                  <p className="text-purple-100 text-xs">
+                    {lang === 'bn' ? 'হাজিরা, হোমওয়ার্ক মূল্যায়ন, পরীক্ষার নম্বর এন্ট্রি ও MCQ কুইজ তৈরি।' : 'Manage attendance, homework grading, exam marks & online MCQ quizzes.'}
+                  </p>
+                </button>
+
+                <div className="bg-slate-50 dark:bg-slate-800/70 p-7 rounded-3xl border border-slate-200 dark:border-slate-700 space-y-4">
+                  <div className="flex items-center gap-2 text-xs font-extrabold uppercase text-emerald-700 dark:text-emerald-400">
+                    {isCloudAdmin ? <Cloud className="w-4 h-4" /> : <CloudOff className="w-4 h-4 text-amber-500" />}
+                    {isCloudAdmin ? 'Cloud Admin Synced' : 'Local Admin Session'}
+                  </div>
+                  <p className="text-xs text-slate-600 dark:text-slate-300">
+                    {isCloudAdmin
+                      ? lang === 'bn'
+                        ? 'আপনার Google অ্যাকাউন্ট সরাসরি Firestore ডাটাবেজের সাথে যুক্ত।'
+                        : 'Your verified Google account is synced with Firestore.'
+                      : lang === 'bn'
+                      ? 'ক্লাউড সিঙ্কের জন্য Google Sign-In ব্যবহার করুন।'
+                      : 'Sign in with Google Admin to sync across devices.'}
+                  </p>
+                  {!isCloudAdmin && (
+                    <button onClick={handleGoogleAuth} className="w-full py-2.5 rounded-xl bg-slate-900 text-white text-xs font-bold">
+                      Connect Google Admin
+                    </button>
+                  )}
+                  <div className="flex gap-2">
+                    <button onClick={exportDatabase} className="flex-1 py-2.5 rounded-xl bg-emerald-700 text-white text-xs font-bold flex items-center justify-center gap-1.5">
+                      <Download className="w-3.5 h-3.5" /> Backup
+                    </button>
+                    <label className="flex-1 py-2.5 rounded-xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 text-xs font-bold flex items-center justify-center gap-1.5 cursor-pointer">
+                      <Upload className="w-3.5 h-3.5" /> Restore
+                      <input
+                        type="file"
+                        accept=".json"
+                        className="hidden"
+                        onChange={(e) => {
+                          const file = e.target.files?.[0];
+                          if (!file) return;
+                          const reader = new FileReader();
+                          reader.onload = (ev) => {
+                            const ok = importDatabase(String(ev.target?.result || ''));
+                            setDbFeedback({ ok, msg: ok ? 'Database restored!' : 'Invalid backup file' });
+                          };
+                          reader.readAsText(file);
+                        }}
+                      />
+                    </label>
+                  </div>
+                  {dbFeedback && <p className="text-xs font-bold text-emerald-600">{dbFeedback.msg}</p>}
                 </div>
               </div>
             ) : (
-              <div className="space-y-8 animate-in slide-in-from-right duration-500">
-                <div className="flex justify-between items-center">
-                  <button 
-                    onClick={() => setDashboardView('main')} 
-                    className="flex items-center gap-3 text-green-700 font-black text-xs uppercase hover:bg-green-50 px-5 py-3 rounded-2xl transition-all group shadow-sm border border-green-100"
+              /* Admin Management Workspace */
+              <div className="space-y-6">
+                <div className="flex flex-wrap items-center justify-between gap-3">
+                  <button
+                    onClick={() => setDashboardView('main')}
+                    className="px-4 py-2 rounded-xl bg-slate-100 dark:bg-slate-800 text-xs font-bold"
                   >
-                    <ArrowLeft className="w-5 h-5 group-hover:-translate-x-1 transition-transform" /> 
-                    {lang === 'bn' ? 'ড্যাশবোর্ডে ফিরুন' : 'Back to Dashboard'}
+                    ← {lang === 'bn' ? 'অ্যাডমিন হোম' : 'Admin Home'}
                   </button>
-                  <h2 className="text-xl font-black text-slate-900">System Management</h2>
-                </div>
-                <div className={`p-5 rounded-2xl border flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 ${isCloudAdmin ? 'bg-green-50 border-green-200 text-green-900' : 'bg-amber-50 border-amber-200 text-amber-900'}`}>
-                  <div className="flex items-center gap-3">
-                    {isCloudAdmin ? <Cloud className="w-6 h-6 text-green-700 shrink-0" /> : <CloudOff className="w-6 h-6 text-amber-600 shrink-0" />}
-                    <div>
-                      <p className="font-black text-xs uppercase tracking-wider">
-                        {isCloudAdmin
-                          ? (lang === 'bn' ? 'ক্লাউড ডাটাবেস সিঙ্ক সক্রিয় আছে' : 'Cloud Firestore Sync Active')
-                          : (lang === 'bn' ? 'বর্তমানে শুধু এই ডিভাইসে সেভ হচ্ছে' : 'Saving Locally Only — Connect Google for Cloud Sync')}
-                      </p>
-                      <p className="text-xs opacity-80 font-medium">
-                        {isCloudAdmin
-                          ? (lang === 'bn' ? 'সব পরিবর্তন স্থায়ীভাবে ক্লাউড এবং অ্যান্ড্রয়েড অ্যাপে সেভ হচ্ছে।' : 'All changes are permanently saved to Cloud Firestore across devices.')
-                          : (lang === 'bn' ? 'সব ডিভাইস ও APK-তে তথ্য সেভ রাখতে Google দিয়ে অ্যাডমিন লগইন করুন।' : 'Sign in with your Google Admin account to persist changes across all devices.')}
-                      </p>
-                    </div>
-                  </div>
-                  {!isCloudAdmin && (
+                  {['notices', 'teachers', 'ebooks', 'gallery', 'users'].includes(managementTab) && (
                     <button
-                      onClick={handleGoogleAuth}
-                      className="bg-slate-900 text-white px-5 py-2.5 rounded-xl text-xs font-black uppercase tracking-wider hover:bg-green-700 transition-all shrink-0"
+                      onClick={openAddModal}
+                      className="px-4 py-2 rounded-xl bg-emerald-700 hover:bg-emerald-800 text-white text-xs font-bold flex items-center gap-1.5"
                     >
-                      {lang === 'bn' ? 'Google ক্লাউড সিঙ্ক' : 'Connect Google'}
+                      <PlusCircle className="w-4 h-4" />
+                      {lang === 'bn' ? 'নতুন যোগ করুন' : 'Add New'}
                     </button>
                   )}
                 </div>
 
-                <div className="flex bg-slate-100 p-1.5 rounded-[1.5rem] overflow-x-auto no-scrollbar border border-slate-200">
-                  {['notices', 'teachers', 'ebooks', 'gallery', 'admissions', 'messages', 'users', 'system'].map(tab => (
-                    <button key={tab} onClick={() => setManagementTab(tab as any)} className={`flex-1 py-3.5 px-5 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all whitespace-nowrap ${managementTab === tab ? 'bg-white text-green-700 shadow-xl' : 'text-slate-400 hover:text-slate-600'}`}>
-                      {tab}
+                {/* Tab strip */}
+                <div className="flex flex-wrap gap-1.5 bg-slate-100 dark:bg-slate-800 p-1.5 rounded-2xl">
+                  {adminTabs.map((tb) => (
+                    <button
+                      key={tb.id}
+                      onClick={() => setManagementTab(tb.id)}
+                      className={`px-3 py-2 rounded-xl text-xs font-bold transition-colors ${
+                        managementTab === tb.id
+                          ? 'bg-white dark:bg-slate-900 text-emerald-700 dark:text-emerald-300 shadow-sm'
+                          : 'text-slate-500 dark:text-slate-300 hover:text-slate-800'
+                      }`}
+                    >
+                      {tb.label}
                     </button>
                   ))}
                 </div>
-                
-                <div className="bg-slate-50 p-8 rounded-[2rem] border border-gray-100 min-h-[40vh]">
-                   <div className="flex justify-between items-center mb-8">
-                      <h3 className="font-black text-slate-700 uppercase text-xs tracking-widest">
-                        {managementTab === 'system' ? 'System Configuration' : `Active ${managementTab.toUpperCase()} List`}
-                      </h3>
-                      {managementTab !== 'system' && managementTab !== 'admissions' && managementTab !== 'messages' && (
-                        <button onClick={openAddModal} className="bg-green-700 text-white px-6 py-3 rounded-xl text-[10px] font-black uppercase flex items-center gap-2 hover:bg-green-800 transition-all shadow-lg">
-                          <PlusCircle className="w-4 h-4" /> 
-                          {managementTab === 'users' ? 'Register New User' : `Add New ${managementTab.slice(0, -1)}`}
-                        </button>
-                      )}
-                   </div>
-                   
-                   <div className="overflow-hidden rounded-2xl">
-                      {managementTab === 'system' ? (
-                        <div className="space-y-12">
-                          <form onSubmit={handleSaveSettings} className="bg-white p-8 rounded-[2rem] border border-gray-100 shadow-sm space-y-8">
-                            <div className="flex flex-col md:flex-row gap-8 items-center border-b pb-8">
-                              <div className="w-full md:w-1/2 space-y-4">
-                                <h4 className="text-xs font-black uppercase tracking-widest text-slate-400">School Main Building Photo</h4>
-                                <div className="aspect-video w-full rounded-[1.5rem] bg-slate-50 overflow-hidden border-2 border-dashed border-slate-200 flex items-center justify-center relative group shadow-inner">
-                                  {systemForm.schoolPhoto ? (
-                                    <img src={systemForm.schoolPhoto} className="w-full h-full object-cover" />
-                                  ) : (
-                                    <div className="flex flex-col items-center gap-2 opacity-30">
-                                      <ImageIcon className="w-12 h-12" />
-                                      <span className="text-[10px] font-black uppercase">No Image Uploaded</span>
-                                    </div>
-                                  )}
-                                  <div className="absolute inset-0 bg-slate-900/60 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center gap-3">
-                                    <button type="button" onClick={() => schoolPhotoInputRef.current?.click()} className="bg-white text-green-700 px-4 py-2 rounded-xl font-black text-[10px] uppercase tracking-widest flex items-center gap-2 shadow-xl hover:scale-105 transition-transform">
-                                      <Upload className="w-4 h-4" /> {systemForm.schoolPhoto ? 'Change' : 'Upload'}
-                                    </button>
-                                    {systemForm.schoolPhoto && (
-                                      <button type="button" onClick={() => setSystemForm(prev => ({...prev, schoolPhoto: ''}))} className="bg-red-500 text-white px-4 py-2 rounded-xl font-black text-[10px] uppercase tracking-widest flex items-center gap-2 shadow-xl hover:scale-105 transition-transform">
-                                        <RotateCcw className="w-4 h-4" /> Reset
-                                      </button>
-                                    )}
-                                  </div>
-                                  <input ref={schoolPhotoInputRef} type="file" className="hidden" accept="image/*" onChange={handleSchoolPhotoUpload} />
-                                </div>
-                              </div>
-                              <div className="w-full md:w-1/2 space-y-6">
-                                <div className="space-y-2">
-                                  <label className="text-[10px] font-black uppercase tracking-widest text-slate-400 ml-1">EIIN Number</label>
-                                  <input required value={systemForm.eiin} onChange={e => setSystemForm({...systemForm, eiin: e.target.value})} className="w-full px-5 py-3.5 rounded-xl bg-slate-50 border outline-none font-bold focus:ring-2 focus:ring-green-500 transition-all" />
-                                </div>
-                                <div className="space-y-2">
-                                  <label className="text-[10px] font-black uppercase tracking-widest text-slate-400 ml-1">Contact Email</label>
-                                  <input required type="email" value={systemForm.email} onChange={e => setSystemForm({...systemForm, email: e.target.value})} className="w-full px-5 py-3.5 rounded-xl bg-slate-50 border outline-none font-bold focus:ring-2 focus:ring-green-500 transition-all" />
-                                </div>
-                                <div className="space-y-2">
-                                  <label className="text-[10px] font-black uppercase tracking-widest text-slate-400 ml-1">Contact Mobile</label>
-                                  <input required value={systemForm.phone} onChange={e => setSystemForm({...systemForm, phone: e.target.value})} className="w-full px-5 py-3.5 rounded-xl bg-slate-50 border outline-none font-bold focus:ring-2 focus:ring-green-500 transition-all" />
-                                </div>
-                              </div>
-                            </div>
 
-                            <div className="grid md:grid-cols-2 gap-8">
-                               <div className="space-y-2">
-                                  <label className="text-[10px] font-black uppercase tracking-widest text-slate-400 ml-1">School Name (Bangla)</label>
-                                  <input required value={systemForm.nameBn} onChange={e => setSystemForm({...systemForm, nameBn: e.target.value})} className="w-full px-5 py-3.5 rounded-xl bg-slate-50 border outline-none font-bold focus:ring-2 focus:ring-green-500 transition-all" />
-                               </div>
-                               <div className="space-y-2">
-                                  <label className="text-[10px] font-black uppercase tracking-widest text-slate-400 ml-1">School Name (English)</label>
-                                  <input required value={systemForm.nameEn} onChange={e => setSystemForm({...systemForm, nameEn: e.target.value})} className="w-full px-5 py-3.5 rounded-xl bg-slate-50 border outline-none font-bold focus:ring-2 focus:ring-green-500 transition-all" />
-                               </div>
-                               <div className="space-y-2">
-                                  <label className="text-[10px] font-black uppercase tracking-widest text-slate-400 ml-1">Location (Bangla)</label>
-                                  <input required value={systemForm.locBn} onChange={e => setSystemForm({...systemForm, locBn: e.target.value})} className="w-full px-5 py-3.5 rounded-xl bg-slate-50 border outline-none font-bold focus:ring-2 focus:ring-green-500 transition-all" />
-                               </div>
-                               <div className="space-y-2">
-                                  <label className="text-[10px] font-black uppercase tracking-widest text-slate-400 ml-1">Location (English)</label>
-                                  <input required value={systemForm.locEn} onChange={e => setSystemForm({...systemForm, locEn: e.target.value})} className="w-full px-5 py-3.5 rounded-xl bg-slate-50 border outline-none font-bold focus:ring-2 focus:ring-green-500 transition-all" />
-                               </div>
-                            </div>
-                            
-                            <div className="flex flex-col items-center gap-4 pt-4">
-                               {showSaveSuccess && (
-                                 <div className="flex items-center gap-2 text-green-600 font-black text-xs animate-in zoom-in uppercase tracking-widest">
-                                   <CheckCircle className="w-4 h-4" /> Configuration Saved Successfully
-                                 </div>
-                               )}
-                               <button type="submit" className="w-full max-w-md bg-green-700 text-white py-5 rounded-3xl font-black uppercase tracking-widest shadow-xl flex items-center justify-center gap-3 hover:bg-green-800 transition-all active:scale-95 shadow-green-700/20">
-                                 <Save className="w-6 h-6" /> Save All Settings
-                               </button>
-                            </div>
-                          </form>
+                {managementTab === 'notices' && (
+                  <div className="space-y-2.5">
+                    {notices.map((n) => (
+                      <div key={n.id} className="p-4 rounded-2xl bg-slate-50 dark:bg-slate-800 flex items-center justify-between gap-3">
+                        <div>
+                          <span className="text-[10px] font-bold text-emerald-700 dark:text-emerald-400 uppercase">{n.category} • {n.date}</span>
+                          <p className="font-bold text-sm">{t(n.title)}</p>
+                        </div>
+                        <div className="flex gap-1">
+                          <button onClick={() => openEditModal(n)} className="p-2 text-blue-600"><Pencil className="w-4 h-4" /></button>
+                          <button onClick={() => deleteNotice(n.id)} className="p-2 text-red-600"><Trash2 className="w-4 h-4" /></button>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
 
-                          <div className="bg-slate-100 p-8 rounded-[2rem] border border-dashed border-slate-300">
-                            <h4 className="text-xs font-black uppercase text-slate-400 tracking-widest mb-6">Database Operations</h4>
-                            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                              <button onClick={exportDatabase} className="bg-slate-900 text-white py-4 rounded-xl text-[10px] font-black uppercase flex items-center justify-center gap-2 hover:bg-slate-800 transition-all"><Download className="w-4 h-4" /> Export All Data (.json)</button>
-                              <label className="bg-white border-2 border-slate-200 text-slate-700 py-4 rounded-xl text-[10px] font-black uppercase flex items-center justify-center gap-2 cursor-pointer hover:border-green-600 hover:text-green-700 transition-all">
-                                <Upload className="w-4 h-4" /> Restore All Data
-                                <input type="file" accept=".json" className="hidden" onChange={(e) => {
-                                  const file = e.target.files?.[0];
-                                  if (file) {
-                                    const reader = new FileReader();
-                                    reader.onload = (re) => {
-                                      const success = importDatabase(re.target?.result as string);
-                                      if (success) alert('Database restored successfully!');
-                                      else alert('Failed to restore. Invalid file format.');
-                                    };
-                                    reader.readAsText(file);
-                                  }
-                                }} />
-                              </label>
-                            </div>
+                {managementTab === 'teachers' && (
+                  <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-4">
+                    {teachers.map((tc) => (
+                      <div key={tc.id} className="p-4 rounded-2xl bg-slate-50 dark:bg-slate-800 flex items-center justify-between gap-3">
+                        <div className="flex items-center gap-3 min-w-0">
+                          <div className="w-11 h-11 rounded-xl bg-emerald-100 dark:bg-emerald-950 flex items-center justify-center overflow-hidden shrink-0">
+                            {tc.photo ? <img src={tc.photo} alt="" className="w-full h-full object-cover" /> : <UserIcon className="w-5 h-5 text-emerald-700" />}
+                          </div>
+                          <div className="min-w-0">
+                            <p className="font-bold text-sm truncate">{t(tc.name)}</p>
+                            <p className="text-xs text-slate-500 truncate">{t(tc.designation)}</p>
                           </div>
                         </div>
-                      ) : (
-                        <div className="overflow-hidden rounded-2xl border border-gray-100 bg-white">
-                          <table className="w-full text-left">
-                             <thead className="bg-slate-50 border-b">
-                                <tr className="text-[10px] font-black uppercase text-slate-400">
-                                   <th className="px-6 py-4">Title / Name</th>
-                                   <th className="px-6 py-4">Detail</th>
-                                   <th className="px-6 py-4 text-right">Actions</th>
-                                </tr>
-                             </thead>
-                             <tbody className="divide-y divide-gray-50">
-                                {managementTab === 'notices' && notices.map(n => (
-                                  <tr key={n.id} className="hover:bg-slate-50/50 transition-colors">
-                                    <td className="px-6 py-4 font-bold text-sm text-slate-900">{t(n.title)}</td>
-                                    <td className="px-6 py-4 text-xs text-slate-500 font-medium">{n.category} • {n.date}</td>
-                                    <td className="px-6 py-4 text-right flex justify-end gap-2">
-                                      <button onClick={() => openEditModal(n)} className="p-2 text-blue-500 hover:bg-blue-50 rounded-lg"><Pencil className="w-4 h-4" /></button>
-                                      <button onClick={() => deleteNotice(n.id)} className="p-2 text-red-500 hover:bg-red-50 rounded-lg"><Trash2 className="w-4 h-4" /></button>
-                                    </td>
-                                  </tr>
-                                ))}
-                                {managementTab === 'teachers' && teachers.map(teach => (
-                                  <tr key={teach.id} className="hover:bg-slate-50/50 transition-colors">
-                                    <td className="px-6 py-4 font-bold text-sm text-slate-900">{t(teach.name)}</td>
-                                    <td className="px-6 py-4 text-xs text-slate-500 font-medium">{t(teach.designation)} • {t(teach.subject)}</td>
-                                    <td className="px-6 py-4 text-right flex justify-end gap-2">
-                                      <button onClick={() => openEditModal(teach)} className="p-2 text-blue-500 hover:bg-blue-50 rounded-lg"><Pencil className="w-4 h-4" /></button>
-                                      <button onClick={() => deleteTeacher(teach.id)} className="p-2 text-red-500 hover:bg-red-50 rounded-lg"><Trash2 className="w-4 h-4" /></button>
-                                    </td>
-                                  </tr>
-                                ))}
-                                {managementTab === 'ebooks' && ebooks.map(eb => (
-                                  <tr key={eb.id} className="hover:bg-slate-50/50 transition-colors">
-                                    <td className="px-6 py-4 font-bold text-sm text-slate-900">{t(eb.title)}</td>
-                                    <td className="px-6 py-4 text-xs text-slate-500 font-medium">{t(eb.className)} • {eb.subject}</td>
-                                    <td className="px-6 py-4 text-right flex justify-end gap-2">
-                                      <button onClick={() => openEditModal(eb)} className="p-2 text-blue-500 hover:bg-blue-50 rounded-lg"><Pencil className="w-4 h-4" /></button>
-                                      <button onClick={() => deleteEbook(eb.id)} className="p-2 text-red-500 hover:bg-red-50 rounded-lg"><Trash2 className="w-4 h-4" /></button>
-                                    </td>
-                                  </tr>
-                                ))}
-                                {managementTab === 'gallery' && gallery.map(g => (
-                                  <tr key={g.id} className="hover:bg-slate-50/50 transition-colors">
-                                    <td className="px-6 py-4 font-bold text-sm text-slate-900">{t(g.caption)}</td>
-                                    <td className="px-6 py-4 text-xs text-slate-500 font-medium">Image Resource</td>
-                                    <td className="px-6 py-4 text-right flex justify-end gap-2">
-                                      <button onClick={() => openEditModal(g)} className="p-2 text-blue-500 hover:bg-blue-50 rounded-lg"><Pencil className="w-4 h-4" /></button>
-                                      <button onClick={() => deleteGalleryItem(g.id)} className="p-2 text-red-500 hover:bg-red-50 rounded-lg"><Trash2 className="w-4 h-4" /></button>
-                                    </td>
-                                  </tr>
-                                ))}
-                                {managementTab === 'admissions' && (
-                                  admissions.length === 0 ? (
-                                    <tr><td colSpan={3} className="px-6 py-10 text-center text-slate-400 font-bold text-sm">No admission applications saved yet.</td></tr>
-                                  ) : admissions.map(app => (
-                                    <tr key={app.appId} className="hover:bg-slate-50/50 transition-colors">
-                                      <td className="px-6 py-4">
-                                        <p className="font-bold text-sm text-slate-900">{app.studentName} <span className="text-[10px] text-green-700 font-black">({app.appId})</span></p>
-                                        <p className="text-xs text-slate-500">Father: {app.fatherName} • Mobile: {app.guardianMobile}</p>
-                                      </td>
-                                      <td className="px-6 py-4 text-xs text-slate-500 font-medium">
-                                        <span className="font-bold text-slate-700">{app.targetClass}</span> ({app.targetGroup}) • {app.submittedDate}
-                                        <div className="mt-1">
-                                          <span className={`px-2 py-0.5 rounded text-[9px] font-black uppercase ${app.status === 'approved' ? 'bg-green-100 text-green-700' : app.status === 'rejected' ? 'bg-red-100 text-red-700' : 'bg-amber-100 text-amber-700'}`}>
-                                            {app.status}
-                                          </span>
-                                        </div>
-                                      </td>
-                                      <td className="px-6 py-4 text-right flex justify-end gap-2">
-                                        <button onClick={() => updateAdmissionStatus(app.appId, 'approved')} className="px-2.5 py-1.5 text-[10px] font-black uppercase bg-green-50 text-green-700 rounded-lg hover:bg-green-100">Approve</button>
-                                        <button onClick={() => updateAdmissionStatus(app.appId, 'rejected')} className="px-2.5 py-1.5 text-[10px] font-black uppercase bg-amber-50 text-amber-700 rounded-lg hover:bg-amber-100">Reject</button>
-                                        <button onClick={() => deleteAdmission(app.appId)} className="p-2 text-red-500 hover:bg-red-50 rounded-lg"><Trash2 className="w-4 h-4" /></button>
-                                      </td>
-                                    </tr>
-                                  ))
-                                )}
-                                {managementTab === 'messages' && (
-                                  contactMessages.length === 0 ? (
-                                    <tr><td colSpan={3} className="px-6 py-10 text-center text-slate-400 font-bold text-sm">No contact messages saved yet.</td></tr>
-                                  ) : contactMessages.map(msg => (
-                                    <tr key={msg.id} className="hover:bg-slate-50/50 transition-colors">
-                                      <td className="px-6 py-4">
-                                        <p className="font-bold text-sm text-slate-900">{msg.name} <span className="text-xs text-slate-500">({msg.mobile})</span></p>
-                                        <p className="text-xs text-slate-600 mt-1">{msg.message}</p>
-                                      </td>
-                                      <td className="px-6 py-4 text-xs text-slate-500 font-medium">
-                                        <span className={`px-2 py-0.5 rounded text-[9px] font-black uppercase ${msg.status === 'read' ? 'bg-slate-100 text-slate-600' : 'bg-blue-100 text-blue-700'}`}>
-                                          {msg.status}
-                                        </span>
-                                      </td>
-                                      <td className="px-6 py-4 text-right flex justify-end gap-2">
-                                        {msg.status === 'unread' && (
-                                          <button onClick={() => markContactMessageRead(msg.id)} className="px-2.5 py-1.5 text-[10px] font-black uppercase bg-blue-50 text-blue-700 rounded-lg hover:bg-blue-100">Mark Read</button>
-                                        )}
-                                        <button onClick={() => deleteContactMessage(msg.id)} className="p-2 text-red-500 hover:bg-red-50 rounded-lg"><Trash2 className="w-4 h-4" /></button>
-                                      </td>
-                                    </tr>
-                                  ))
-                                )}
-                                {managementTab === 'users' && allRegisteredUsers.map(u => (
-                                  <tr key={u.userId} className="hover:bg-slate-50/50 transition-colors">
-                                    <td className="px-6 py-4 font-bold text-sm text-slate-900 flex items-center gap-3">
-                                      <div className="w-8 h-8 rounded-lg bg-slate-100 flex items-center justify-center overflow-hidden shrink-0 border border-white">
-                                        {u.photo ? <img src={u.photo} className="w-full h-full object-cover" /> : <UserIcon className="w-4 h-4 text-slate-300" />}
-                                      </div>
-                                      {u.name}
-                                    </td>
-                                    <td className="px-6 py-4 text-xs text-slate-500 font-medium">
-                                      <span className={`px-2 py-0.5 rounded-md uppercase font-black text-[9px] mr-2 ${u.role === 'admin' ? 'bg-red-50 text-red-600' : u.role === 'teacher' ? 'bg-purple-50 text-purple-600' : 'bg-blue-50 text-blue-600'}`}>{u.role}</span>
-                                      ID: {u.userId}
-                                    </td>
-                                    <td className="px-6 py-4 text-right flex justify-end gap-2">
-                                      <button onClick={() => openEditModal(u)} className="p-2 text-blue-500 hover:bg-blue-50 rounded-lg"><Pencil className="w-4 h-4" /></button>
-                                      {u.userId !== user.userId && (
-                                        <button onClick={() => deleteUser(u.userId)} className="p-2 text-red-500 hover:bg-red-50 rounded-lg"><Trash2 className="w-4 h-4" /></button>
-                                      )}
-                                    </td>
-                                  </tr>
-                                ))}
-                             </tbody>
-                          </table>
+                        <div className="flex gap-1 shrink-0">
+                          <button onClick={() => openEditModal(tc)} className="p-1.5 text-blue-600"><Pencil className="w-4 h-4" /></button>
+                          <button onClick={() => deleteTeacher(tc.id)} className="p-1.5 text-red-600"><Trash2 className="w-4 h-4" /></button>
                         </div>
-                      )}
-                   </div>
-                </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+
+                {managementTab === 'ebooks' && (
+                  <div className="space-y-2.5">
+                    {ebooks.map((eb) => (
+                      <div key={eb.id} className="p-4 rounded-2xl bg-slate-50 dark:bg-slate-800 flex items-center justify-between gap-3">
+                        <div>
+                          <span className="text-[10px] font-bold text-emerald-700 dark:text-emerald-400">Class {eb.classId} • {eb.category || eb.subject}</span>
+                          <p className="font-bold text-sm">{t(eb.title)}</p>
+                        </div>
+                        <div className="flex gap-1">
+                          <button onClick={() => openEditModal(eb)} className="p-2 text-blue-600"><Pencil className="w-4 h-4" /></button>
+                          <button onClick={() => deleteEbook(eb.id)} className="p-2 text-red-600"><Trash2 className="w-4 h-4" /></button>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+
+                {managementTab === 'gallery' && (
+                  <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-4">
+                    {gallery.map((g) => (
+                      <div key={g.id} className="p-3 rounded-2xl bg-slate-50 dark:bg-slate-800 space-y-2">
+                        <img src={g.url} alt="" className="w-full h-36 object-cover rounded-xl" />
+                        <div className="flex justify-between items-center gap-2">
+                          <p className="text-xs font-bold truncate">{t(g.caption)}</p>
+                          <div className="flex gap-1 shrink-0">
+                            <button onClick={() => openEditModal(g)} className="p-1 text-blue-600"><Pencil className="w-3.5 h-3.5" /></button>
+                            <button onClick={() => deleteGalleryItem(g.id)} className="p-1 text-red-600"><Trash2 className="w-3.5 h-3.5" /></button>
+                          </div>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+
+                {managementTab === 'subjects' && (
+                  <div className="space-y-4">
+                    <div className="grid grid-cols-2 sm:grid-cols-5 gap-2">
+                      <input value={newSubject.code} onChange={(e) => setNewSubject((p) => ({ ...p, code: e.target.value }))} placeholder="Code" className="px-3 py-2 rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-xs font-bold" />
+                      <input value={newSubject.nameBn} onChange={(e) => setNewSubject((p) => ({ ...p, nameBn: e.target.value }))} placeholder="বিষয়ের নাম (বাংলা)" className="px-3 py-2 rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-xs font-bold" />
+                      <input value={newSubject.nameEn} onChange={(e) => setNewSubject((p) => ({ ...p, nameEn: e.target.value }))} placeholder="Subject Name (EN)" className="px-3 py-2 rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-xs font-bold" />
+                      <select value={newSubject.classId} onChange={(e) => setNewSubject((p) => ({ ...p, classId: e.target.value }))} className="px-3 py-2 rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-xs font-bold">
+                        {['6', '7', '8', '9', '10'].map((c) => <option key={c} value={c}>Class {c}</option>)}
+                      </select>
+                      <button
+                        onClick={() => {
+                          if (!newSubject.nameEn.trim() && !newSubject.nameBn.trim()) return;
+                          addSubject({
+                            id: `sub-${Date.now()}`,
+                            code: newSubject.code,
+                            name: { bn: newSubject.nameBn || newSubject.nameEn, en: newSubject.nameEn || newSubject.nameBn },
+                            classId: newSubject.classId,
+                            totalMarks: Number(newSubject.totalMarks) || 100,
+                            isPublic: true,
+                          });
+                          setNewSubject((p) => ({ ...p, nameBn: '', nameEn: '' }));
+                        }}
+                        className="px-3 py-2 rounded-xl bg-emerald-700 text-white text-xs font-bold"
+                      >
+                        Add Subject
+                      </button>
+                    </div>
+                    <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-3">
+                      {subjects.map((s) => (
+                        <div key={s.id} className="p-3.5 rounded-2xl bg-slate-50 dark:bg-slate-800 flex justify-between items-center text-xs">
+                          <span><b>[{s.code}]</b> {t(s.name)} — Class {s.classId} ({s.totalMarks}m)</span>
+                          <button onClick={() => deleteSubject(s.id)} className="text-red-500"><Trash2 className="w-3.5 h-3.5" /></button>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                {managementTab === 'exam-routines' && (
+                  <div className="space-y-4">
+                    <div className="grid grid-cols-2 sm:grid-cols-6 gap-2">
+                      <select value={newExamRoutine.classId} onChange={(e) => setNewExamRoutine((p) => ({ ...p, classId: e.target.value }))} className="px-3 py-2 rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-xs font-bold">
+                        {['6', '7', '8', '9', '10'].map((c) => <option key={c} value={c}>Class {c}</option>)}
+                      </select>
+                      <input value={newExamRoutine.subject} onChange={(e) => setNewExamRoutine((p) => ({ ...p, subject: e.target.value }))} placeholder="Subject" className="px-3 py-2 rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-xs font-bold" />
+                      <input type="date" value={newExamRoutine.date} onChange={(e) => setNewExamRoutine((p) => ({ ...p, date: e.target.value }))} className="px-3 py-2 rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-xs font-bold" />
+                      <input value={newExamRoutine.time} onChange={(e) => setNewExamRoutine((p) => ({ ...p, time: e.target.value }))} placeholder="Time" className="px-3 py-2 rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-xs font-bold" />
+                      <input value={newExamRoutine.room} onChange={(e) => setNewExamRoutine((p) => ({ ...p, room: e.target.value }))} placeholder="Room" className="px-3 py-2 rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-xs font-bold" />
+                      <button onClick={() => addExamRoutine({ id: `er-${Date.now()}`, ...newExamRoutine, isPublic: true })} className="px-3 py-2 rounded-xl bg-emerald-700 text-white text-xs font-bold">Add Date</button>
+                    </div>
+                    <div className="space-y-2">
+                      {examRoutines.map((r) => (
+                        <div key={r.id} className="p-3.5 rounded-2xl bg-slate-50 dark:bg-slate-800 flex justify-between items-center text-xs">
+                          <span><b>Class {r.classId}</b> • {r.subject} • {r.date} ({r.time}) {r.room}</span>
+                          <button onClick={() => deleteExamRoutine(r.id)} className="text-red-500"><Trash2 className="w-4 h-4" /></button>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                {managementTab === 'online-exams' && (
+                  <div className="space-y-2.5">
+                    {onlineExams.map((ex) => (
+                      <div key={ex.id} className="p-4 rounded-2xl bg-slate-50 dark:bg-slate-800 flex justify-between items-center">
+                        <div>
+                          <span className="text-[10px] font-bold text-emerald-700 dark:text-emerald-400">Class {ex.classId} • {ex.subject} • {ex.questions.length} MCQ</span>
+                          <p className="font-bold text-sm">{t(ex.title)}</p>
+                        </div>
+                        <button onClick={() => deleteOnlineExam(ex.id)} className="p-2 text-red-500"><Trash2 className="w-4 h-4" /></button>
+                      </div>
+                    ))}
+                  </div>
+                )}
+
+                {managementTab === 'admissions' && (
+                  <div className="space-y-3">
+                    {admissions.length === 0 ? (
+                      <p className="text-sm text-slate-400 text-center py-8">No admission applications yet.</p>
+                    ) : admissions.map((a) => (
+                      <div key={a.appId} className="p-4 rounded-2xl bg-slate-50 dark:bg-slate-800 flex flex-wrap justify-between items-center gap-3 text-xs">
+                        <div>
+                          <p className="font-extrabold text-sm">{a.studentName} ({a.appId})</p>
+                          <p className="text-slate-500">Class {a.targetClass} • Guardian: {a.guardianMobile} • Status: <b className="uppercase">{a.status}</b></p>
+                        </div>
+                        <div className="flex gap-1.5">
+                          <button onClick={() => updateAdmissionStatus(a.appId, 'approved')} className="px-3 py-1.5 rounded-lg bg-emerald-600 text-white font-bold">Approve</button>
+                          <button onClick={() => updateAdmissionStatus(a.appId, 'rejected')} className="px-3 py-1.5 rounded-lg bg-red-600 text-white font-bold">Reject</button>
+                          <button onClick={() => deleteAdmission(a.appId)} className="p-1.5 text-slate-400 hover:text-red-500"><Trash2 className="w-4 h-4" /></button>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+
+                {managementTab === 'alumni' && (
+                  <div className="space-y-3">
+                    {alumni.map((al) => (
+                      <div key={al.id} className="p-4 rounded-2xl bg-slate-50 dark:bg-slate-800 flex flex-wrap justify-between items-center gap-3 text-xs">
+                        <div>
+                          <p className="font-extrabold text-sm">{al.name} (Batch {al.batchYear})</p>
+                          <p className="text-slate-500">{al.currentRole} • {al.organization} • Status: <b className="uppercase">{al.status}</b></p>
+                        </div>
+                        <div className="flex gap-1.5">
+                          {al.status === 'pending' && (
+                            <button onClick={() => updateAlumniStatus(al.id, 'approved')} className="px-3 py-1.5 rounded-lg bg-emerald-600 text-white font-bold">Approve</button>
+                          )}
+                          <button onClick={() => deleteAlumniProfile(al.id)} className="p-1.5 text-red-500"><Trash2 className="w-4 h-4" /></button>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+
+                {managementTab === 'parent-messages' && (
+                  <div className="space-y-3">
+                    {parentMessages.length === 0 ? (
+                      <p className="text-sm text-slate-400 text-center py-8">No guardian messages yet.</p>
+                    ) : parentMessages.map((pm) => (
+                      <div key={pm.id} className="p-4 rounded-2xl bg-slate-50 dark:bg-slate-800 space-y-2 text-xs">
+                        <div className="flex justify-between font-bold">
+                          <span>{pm.parentName} (Class {pm.classId}, Roll {pm.roll}) → {pm.teacherName}</span>
+                          <span className="uppercase text-emerald-700 dark:text-emerald-400">{pm.status}</span>
+                        </div>
+                        <p className="text-sm">{pm.message}</p>
+                        {!pm.reply && (
+                          <div className="flex gap-2">
+                            <input
+                              value={adminReplyDrafts[pm.id] || ''}
+                              onChange={(e) => setAdminReplyDrafts((p) => ({ ...p, [pm.id]: e.target.value }))}
+                              placeholder="Reply..."
+                              className="flex-1 px-3 py-1.5 rounded-lg bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700"
+                            />
+                            <button
+                              onClick={() => replyParentMessage(pm.id, adminReplyDrafts[pm.id] || '', user.name)}
+                              className="px-3 py-1.5 rounded-lg bg-emerald-700 text-white font-bold"
+                            >
+                              Reply
+                            </button>
+                          </div>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                )}
+
+                {managementTab === 'messages' && (
+                  <div className="space-y-3">
+                    {contactMessages.length === 0 ? (
+                      <p className="text-sm text-slate-400 text-center py-8">No contact messages yet.</p>
+                    ) : contactMessages.map((m) => (
+                      <div key={m.id} className="p-4 rounded-2xl bg-slate-50 dark:bg-slate-800 flex justify-between items-start gap-3 text-xs">
+                        <div>
+                          <p className="font-bold text-sm">{m.name} ({m.mobile}) — {m.date || ''}</p>
+                          <p className="text-slate-600 dark:text-slate-300 mt-1">{m.message}</p>
+                        </div>
+                        <div className="flex gap-1">
+                          {m.status === 'unread' && (
+                            <button onClick={() => markContactMessageRead(m.id)} className="px-2.5 py-1 rounded bg-emerald-600 text-white font-bold">Read</button>
+                          )}
+                          <button onClick={() => deleteContactMessage(m.id)} className="p-1 text-red-500"><Trash2 className="w-4 h-4" /></button>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+
+                {managementTab === 'leaves' && (
+                  <div className="space-y-3">
+                    {teacherLeaves.map((tl) => (
+                      <div key={tl.id} className="p-4 rounded-2xl bg-slate-50 dark:bg-slate-800 space-y-2 text-xs">
+                        <div className="flex justify-between font-bold">
+                          <span>{tl.teacherName} • {tl.leaveType} ({tl.startDate} → {tl.endDate})</span>
+                          <span className="uppercase">{tl.status}</span>
+                        </div>
+                        <p className="text-sm">{tl.reason}</p>
+                        <div className="flex gap-2">
+                          <input value={leaveRemarks[tl.id] || ''} onChange={(e) => setLeaveRemarks((p) => ({ ...p, [tl.id]: e.target.value }))} placeholder="Remark..." className="flex-1 px-3 py-1.5 rounded-lg bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700" />
+                          <button onClick={() => updateTeacherLeaveStatus(tl.id, 'approved', leaveRemarks[tl.id])} className="px-3 py-1.5 rounded-lg bg-emerald-600 text-white font-bold">Approve</button>
+                          <button onClick={() => updateTeacherLeaveStatus(tl.id, 'rejected', leaveRemarks[tl.id])} className="px-3 py-1.5 rounded-lg bg-red-600 text-white font-bold">Reject</button>
+                          <button onClick={() => deleteTeacherLeave(tl.id)} className="p-1.5 text-red-500"><Trash2 className="w-4 h-4" /></button>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+
+                {managementTab === 'users' && (
+                  <div className="space-y-6">
+                    <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-3">
+                      {allUsers.map((u) => (
+                        <div key={u.userId} className="p-4 rounded-2xl bg-slate-50 dark:bg-slate-800 flex items-center justify-between gap-2 text-xs">
+                          <div>
+                            <p className="font-extrabold text-sm">{u.name}</p>
+                            <p className="text-slate-500">ID: {u.userId} • Role: <b className="uppercase">{u.role}</b></p>
+                          </div>
+                          <div className="flex gap-1">
+                            <button onClick={() => openEditModal(u)} className="p-1.5 text-blue-600"><Pencil className="w-4 h-4" /></button>
+                            {u.userId !== 'admin' && <button onClick={() => deleteUser(u.userId)} className="p-1.5 text-red-600"><Trash2 className="w-4 h-4" /></button>}
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                    {isCloudAdmin && cloudUsers.length > 0 && (
+                      <div className="space-y-2 pt-4 border-t border-slate-200 dark:border-slate-700">
+                        <p className="text-xs font-extrabold uppercase text-slate-400">Cloud Firebase Users</p>
+                        {cloudUsers.map((cu) => (
+                          <div key={cu.uid} className="p-3 rounded-xl bg-slate-50 dark:bg-slate-800 flex items-center justify-between text-xs">
+                            <span><b>{cu.name}</b> ({cu.email})</span>
+                            <select
+                              value={cu.role}
+                              onChange={(e) => updateCloudUserRole(cu.uid, e.target.value as 'student' | 'teacher' | 'parent' | 'admin')}
+                              className="px-2.5 py-1 rounded-lg bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 font-bold"
+                            >
+                              <option value="student">student</option>
+                              <option value="parent">parent</option>
+                              <option value="teacher">teacher</option>
+                              <option value="admin">admin</option>
+                            </select>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                )}
+
+                {managementTab === 'system' && (
+                  <form onSubmit={handleSaveSettings} className="grid sm:grid-cols-2 gap-4 bg-slate-50 dark:bg-slate-800 p-6 rounded-3xl">
+                    <input value={systemForm.nameBn} onChange={(e) => setSystemForm((p) => ({ ...p, nameBn: e.target.value }))} placeholder="School Name (BN)" className="px-4 py-2.5 rounded-xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 text-sm" />
+                    <input value={systemForm.nameEn} onChange={(e) => setSystemForm((p) => ({ ...p, nameEn: e.target.value }))} placeholder="School Name (EN)" className="px-4 py-2.5 rounded-xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 text-sm" />
+                    <input value={systemForm.eiin} onChange={(e) => setSystemForm((p) => ({ ...p, eiin: e.target.value }))} placeholder="EIIN" className="px-4 py-2.5 rounded-xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 text-sm" />
+                    <input value={systemForm.phone} onChange={(e) => setSystemForm((p) => ({ ...p, phone: e.target.value }))} placeholder="Phone" className="px-4 py-2.5 rounded-xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 text-sm" />
+                    <input value={systemForm.email} onChange={(e) => setSystemForm((p) => ({ ...p, email: e.target.value }))} placeholder="Email" className="px-4 py-2.5 rounded-xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 text-sm" />
+                    <input value={systemForm.locBn} onChange={(e) => setSystemForm((p) => ({ ...p, locBn: e.target.value }))} placeholder="Location (BN)" className="px-4 py-2.5 rounded-xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 text-sm" />
+                    <input value={systemForm.locEn} onChange={(e) => setSystemForm((p) => ({ ...p, locEn: e.target.value }))} placeholder="Location (EN)" className="px-4 py-2.5 rounded-xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 text-sm" />
+                    <div className="grid grid-cols-2 gap-2">
+                      <input value={systemForm.latitude} onChange={(e) => setSystemForm((p) => ({ ...p, latitude: e.target.value }))} placeholder="Latitude" className="px-3 py-2.5 rounded-xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 text-sm" />
+                      <input value={systemForm.longitude} onChange={(e) => setSystemForm((p) => ({ ...p, longitude: e.target.value }))} placeholder="Longitude" className="px-3 py-2.5 rounded-xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 text-sm" />
+                    </div>
+                    <input value={systemForm.headNameBn} onChange={(e) => setSystemForm((p) => ({ ...p, headNameBn: e.target.value }))} placeholder="Head Teacher Name (BN)" className="px-4 py-2.5 rounded-xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 text-sm" />
+                    <input value={systemForm.headNameEn} onChange={(e) => setSystemForm((p) => ({ ...p, headNameEn: e.target.value }))} placeholder="Head Teacher Name (EN)" className="px-4 py-2.5 rounded-xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 text-sm" />
+                    <textarea rows={2} value={systemForm.headMsgBn} onChange={(e) => setSystemForm((p) => ({ ...p, headMsgBn: e.target.value }))} placeholder="Head Teacher Message (BN)" className="px-4 py-2.5 rounded-xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 text-sm" />
+                    <textarea rows={2} value={systemForm.headMsgEn} onChange={(e) => setSystemForm((p) => ({ ...p, headMsgEn: e.target.value }))} placeholder="Head Teacher Message (EN)" className="px-4 py-2.5 rounded-xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 text-sm" />
+
+                    <div className="flex items-center gap-3">
+                      <button type="button" onClick={() => schoolPhotoInputRef.current?.click()} className="px-4 py-2.5 rounded-xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 text-xs font-bold">
+                        {lang === 'bn' ? 'ক্যাম্পাস ছবি বদলান' : 'Change Campus Photo'}
+                      </button>
+                      <button type="button" onClick={() => headPhotoInputRef.current?.click()} className="px-4 py-2.5 rounded-xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 text-xs font-bold">
+                        {lang === 'bn' ? 'প্রধান শিক্ষকের ছবি' : 'Head Teacher Photo'}
+                      </button>
+                      <input
+                        ref={schoolPhotoInputRef}
+                        type="file"
+                        accept="image/*"
+                        className="hidden"
+                        onChange={async (e) => {
+                          const f = e.target.files?.[0];
+                          if (f) {
+                            const compressed = await compressImageFile(f, 1000, 0.75);
+                            setSystemForm((p) => ({ ...p, schoolPhoto: compressed }));
+                          }
+                        }}
+                      />
+                      <input
+                        ref={headPhotoInputRef}
+                        type="file"
+                        accept="image/*"
+                        className="hidden"
+                        onChange={async (e) => {
+                          const f = e.target.files?.[0];
+                          if (f) {
+                            const compressed = await compressImageFile(f, 600, 0.75);
+                            setSystemForm((p) => ({ ...p, headPhoto: compressed }));
+                          }
+                        }}
+                      />
+                    </div>
+
+                    <div className="flex items-center gap-3">
+                      <button type="submit" className="px-6 py-3 rounded-xl bg-emerald-700 text-white text-xs font-bold flex items-center gap-2">
+                        <Save className="w-4 h-4" /> Save Settings
+                      </button>
+                      {showSaveSuccess && <span className="text-xs font-bold text-emerald-600 flex items-center gap-1"><CheckCircle className="w-4 h-4" /> Saved!</span>}
+                    </div>
+                  </form>
+                )}
               </div>
             )}
           </div>
@@ -543,121 +916,91 @@ const Login: React.FC = () => {
 
         {/* Add/Edit Modal */}
         {isAddModalOpen && (
-          <div className="fixed inset-0 z-[100] flex items-center justify-center p-4">
-            <div className="absolute inset-0 bg-slate-900/60 backdrop-blur-sm" onClick={() => setIsAddModalOpen(false)} />
-            <div className="relative bg-white w-full max-w-2xl rounded-[3rem] shadow-2xl overflow-hidden animate-in zoom-in max-h-[90vh] flex flex-col">
-              <div className="bg-green-700 p-8 text-white flex justify-between items-center shrink-0">
-                <h2 className="text-2xl font-black">
-                  {editingItem ? 'Edit ' : 'Add New '}
-                  {managementTab === 'users' ? 'Account' : managementTab.slice(0, -1)}
-                </h2>
-                <button onClick={() => setIsAddModalOpen(false)}><X /></button>
+          <div className="fixed inset-0 z-[200] flex items-center justify-center p-4">
+            <div className="fixed inset-0 bg-slate-950/60 backdrop-blur-sm" onClick={() => setIsAddModalOpen(false)} />
+            <form onSubmit={handleAddOrUpdateModal} className="relative bg-white dark:bg-slate-900 w-full max-w-lg rounded-3xl p-6 space-y-4 shadow-2xl border border-slate-200 dark:border-slate-800 max-h-[90vh] overflow-y-auto">
+              <div className="flex justify-between items-center">
+                <h3 className="font-extrabold text-lg">{editingItem ? 'Edit Item' : 'Add New Item'}</h3>
+                <button type="button" onClick={() => setIsAddModalOpen(false)}><X className="w-5 h-5" /></button>
               </div>
-              
-              <form onSubmit={handleAddNew} className="p-8 space-y-6 overflow-y-auto">
-                <div className="flex flex-col items-center gap-4">
-                  <div className="w-24 h-24 rounded-2xl bg-slate-100 border-2 border-dashed border-gray-200 flex items-center justify-center overflow-hidden shadow-inner">
-                    {tempImage ? <img src={tempImage} className="w-full h-full object-cover" /> : <ImageIcon className="text-gray-200" />}
-                  </div>
-                  <label className="bg-slate-100 px-5 py-2.5 rounded-xl text-xs font-black uppercase tracking-widest cursor-pointer hover:bg-slate-200 transition-colors">
-                    Upload Resource Photo
-                    <input type="file" className="hidden" accept="image/*" onChange={async (e) => {
-                      const file = e.target.files?.[0];
-                      if (file) {
-                        const compressed = await compressImageFile(file, 800, 0.72);
-                        setTempImage(compressed);
-                      }
-                    }} />
-                  </label>
-                </div>
+              {modalError && <p className="text-xs font-bold text-red-600">{modalError}</p>}
 
-                {managementTab === 'users' && (
-                  <div className="space-y-4">
-                    <div className="grid grid-cols-2 gap-4">
-                      <div className="space-y-2">
-                        <label className="text-[10px] font-black uppercase text-slate-400 tracking-widest ml-1">Full Name</label>
-                        <input required name="userName" defaultValue={editingItem?.name} className="w-full px-5 py-3.5 rounded-xl bg-slate-50 border outline-none font-bold" />
-                      </div>
-                      <div className="space-y-2">
-                        <label className="text-[10px] font-black uppercase text-slate-400 tracking-widest ml-1">Role</label>
-                        <select name="userRole" defaultValue={editingItem?.role || 'student'} className="w-full px-5 py-3.5 rounded-xl bg-slate-50 border outline-none font-bold">
-                          <option value="student">Student</option>
-                          <option value="teacher">Teacher</option>
-                          <option value="admin">Admin</option>
-                        </select>
-                      </div>
-                    </div>
-                    <div className="grid grid-cols-2 gap-4">
-                      <div className="space-y-2">
-                        <label className="text-[10px] font-black uppercase text-slate-400 tracking-widest ml-1">User ID / Roll</label>
-                        <input required name="userId" disabled={!!editingItem} defaultValue={editingItem?.userId} placeholder="e.g. 2026001" className="w-full px-5 py-3.5 rounded-xl bg-slate-50 border outline-none font-bold disabled:opacity-50" />
-                      </div>
-                      <div className="space-y-2">
-                        <label className="text-[10px] font-black uppercase text-slate-400 tracking-widest ml-1">Email (Optional)</label>
-                        <input name="userEmail" type="email" defaultValue={editingItem?.email} className="w-full px-5 py-3.5 rounded-xl bg-slate-50 border outline-none font-bold" />
-                      </div>
-                    </div>
-                    <div className="space-y-2">
-                      <label className="text-[10px] font-black uppercase text-slate-400 tracking-widest ml-1">Password</label>
-                      <input required name="userPass" defaultValue={editingItem?.password || "123456"} className="w-full px-5 py-3.5 rounded-xl bg-slate-50 border outline-none font-bold" />
-                    </div>
-                  </div>
-                )}
-
-                {managementTab === 'notices' && (
-                  <div className="space-y-4">
-                    <input required name="titleBn" defaultValue={editingItem?.title?.bn} placeholder="Title (BN)" className="w-full px-5 py-3.5 rounded-xl bg-slate-50 border font-bold" />
-                    <input required name="titleEn" defaultValue={editingItem?.title?.en} placeholder="Title (EN)" className="w-full px-5 py-3.5 rounded-xl bg-slate-50 border font-bold" />
-                    <textarea required name="descBn" defaultValue={editingItem?.description?.bn} placeholder="Description (BN)" className="w-full px-5 py-3.5 rounded-xl bg-slate-50 border font-bold h-24" />
-                    <textarea required name="descEn" defaultValue={editingItem?.description?.en} placeholder="Description (EN)" className="w-full px-5 py-3.5 rounded-xl bg-slate-50 border font-bold h-24" />
-                    <div className="grid grid-cols-2 gap-4">
-                      <select name="category" defaultValue={editingItem?.category || 'General'} className="w-full px-5 py-3.5 rounded-xl bg-slate-50 border font-bold">
-                        <option value="General">General</option>
-                        <option value="Admission">Admission</option>
-                        <option value="Exam">Exam</option>
-                        <option value="Holiday">Holiday</option>
-                      </select>
-                      <input required type="date" name="date" defaultValue={editingItem?.date || new Date().toISOString().split('T')[0]} className="w-full px-5 py-3.5 rounded-xl bg-slate-50 border font-bold" />
-                    </div>
-                  </div>
-                )}
-
-                {managementTab === 'teachers' && (
-                  <div className="grid grid-cols-2 gap-4">
-                    <input required name="nameBn" defaultValue={editingItem?.name?.bn} placeholder="Name (BN)" className="w-full px-5 py-3.5 rounded-xl bg-slate-50 border font-bold" />
-                    <input required name="nameEn" defaultValue={editingItem?.name?.en} placeholder="Name (EN)" className="w-full px-5 py-3.5 rounded-xl bg-slate-50 border font-bold" />
-                    <input required name="desigBn" defaultValue={editingItem?.designation?.bn} placeholder="Designation (BN)" className="w-full px-5 py-3.5 rounded-xl bg-slate-50 border font-bold" />
-                    <input required name="desigEn" defaultValue={editingItem?.designation?.en} placeholder="Designation (EN)" className="w-full px-5 py-3.5 rounded-xl bg-slate-50 border font-bold" />
-                    <input required name="subBn" defaultValue={editingItem?.subject?.bn} placeholder="Subject (BN)" className="w-full px-5 py-3.5 rounded-xl bg-slate-50 border font-bold" />
-                    <input required name="subEn" defaultValue={editingItem?.subject?.en} placeholder="Subject (EN)" className="w-full px-5 py-3.5 rounded-xl bg-slate-50 border font-bold" />
-                    <input required name="qualBn" defaultValue={editingItem?.qualification?.bn} placeholder="Qualification (BN)" className="w-full px-5 py-3.5 rounded-xl bg-slate-50 border font-bold col-span-2" />
-                    <input required name="qualEn" defaultValue={editingItem?.qualification?.en} placeholder="Qualification (EN)" className="w-full px-5 py-3.5 rounded-xl bg-slate-50 border font-bold col-span-2" />
-                  </div>
-                )}
-                
-                {managementTab === 'ebooks' && (
-                  <div className="grid grid-cols-2 gap-4">
-                    <input required name="titleBn" defaultValue={editingItem?.title?.bn} placeholder="Book Title (BN)" className="w-full px-5 py-3.5 rounded-xl bg-slate-50 border font-bold" />
-                    <input required name="titleEn" defaultValue={editingItem?.title?.en} placeholder="Book Title (EN)" className="w-full px-5 py-3.5 rounded-xl bg-slate-50 border font-bold" />
-                    <select name="classId" defaultValue={editingItem?.classId || '6'} className="w-full px-5 py-3.5 rounded-xl bg-slate-50 border font-bold">
-                       {['6', '7', '8', '9', '10'].map(c => <option key={c} value={c}>Class {c}</option>)}
+              {managementTab === 'notices' && (
+                <>
+                  <input required name="titleBn" defaultValue={editingItem?.title?.bn || ''} placeholder="Title (BN)" className="w-full px-3.5 py-2.5 rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-sm" />
+                  <input required name="titleEn" defaultValue={editingItem?.title?.en || ''} placeholder="Title (EN)" className="w-full px-3.5 py-2.5 rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-sm" />
+                  <div className="grid grid-cols-2 gap-2">
+                    <select name="category" defaultValue={editingItem?.category || 'General'} className="px-3 py-2.5 rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-xs font-bold">
+                      <option value="General">General</option><option value="Admission">Admission</option><option value="Exam">Exam</option><option value="Holiday">Holiday</option>
                     </select>
-                    <input required name="subject" defaultValue={editingItem?.subject} placeholder="Subject (e.g. Science)" className="w-full px-5 py-3.5 rounded-xl bg-slate-50 border font-bold" />
+                    <input required type="date" name="date" defaultValue={editingItem?.date || new Date().toISOString().split('T')[0]} className="px-3 py-2.5 rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-xs font-bold" />
                   </div>
-                )}
+                  <textarea required rows={3} name="descBn" defaultValue={editingItem?.description?.bn || ''} placeholder="Description (BN)" className="w-full px-3.5 py-2.5 rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-sm" />
+                  <textarea required rows={3} name="descEn" defaultValue={editingItem?.description?.en || ''} placeholder="Description (EN)" className="w-full px-3.5 py-2.5 rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-sm" />
+                </>
+              )}
 
-                {managementTab === 'gallery' && (
-                  <div className="space-y-4">
-                    <input required name="capBn" defaultValue={editingItem?.caption?.bn} placeholder="Caption (BN)" className="w-full px-5 py-3.5 rounded-xl bg-slate-50 border font-bold" />
-                    <input required name="capEn" defaultValue={editingItem?.caption?.en} placeholder="Caption (EN)" className="w-full px-5 py-3.5 rounded-xl bg-slate-50 border font-bold" />
+              {managementTab === 'teachers' && (
+                <>
+                  <input required name="nameBn" defaultValue={editingItem?.name?.bn || ''} placeholder="Name (BN)" className="w-full px-3.5 py-2.5 rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-sm" />
+                  <input required name="nameEn" defaultValue={editingItem?.name?.en || ''} placeholder="Name (EN)" className="w-full px-3.5 py-2.5 rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-sm" />
+                  <input required name="desigBn" defaultValue={editingItem?.designation?.bn || ''} placeholder="Designation (BN)" className="w-full px-3.5 py-2.5 rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-sm" />
+                  <input required name="desigEn" defaultValue={editingItem?.designation?.en || ''} placeholder="Designation (EN)" className="w-full px-3.5 py-2.5 rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-sm" />
+                  <input required name="subBn" defaultValue={editingItem?.subject?.bn || ''} placeholder="Subject (BN)" className="w-full px-3.5 py-2.5 rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-sm" />
+                  <input required name="subEn" defaultValue={editingItem?.subject?.en || ''} placeholder="Subject (EN)" className="w-full px-3.5 py-2.5 rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-sm" />
+                  <input required name="qualBn" defaultValue={editingItem?.qualification?.bn || ''} placeholder="Qualification (BN)" className="w-full px-3.5 py-2.5 rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-sm" />
+                  <input required name="qualEn" defaultValue={editingItem?.qualification?.en || ''} placeholder="Qualification (EN)" className="w-full px-3.5 py-2.5 rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-sm" />
+                  <input type="file" accept="image/*" onChange={async (e) => { const f = e.target.files?.[0]; if (f) setTempImage(await compressImageFile(f, 500, 0.75)); }} className="text-xs" />
+                </>
+              )}
+
+              {managementTab === 'ebooks' && (
+                <>
+                  <input required name="titleBn" defaultValue={editingItem?.title?.bn || ''} placeholder="Title (BN)" className="w-full px-3.5 py-2.5 rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-sm" />
+                  <input required name="titleEn" defaultValue={editingItem?.title?.en || ''} placeholder="Title (EN)" className="w-full px-3.5 py-2.5 rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-sm" />
+                  <div className="grid grid-cols-2 gap-2">
+                    <select name="classId" defaultValue={editingItem?.classId || '9'} className="px-3 py-2.5 rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-xs font-bold">
+                      {['6', '7', '8', '9', '10'].map((c) => <option key={c} value={c}>Class {c}</option>)}
+                    </select>
+                    <select name="bookCat" defaultValue={editingItem?.category || 'Textbook'} className="px-3 py-2.5 rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-xs font-bold">
+                      {['Textbook', 'StudyMaterial', 'Notes', 'ChapterPDF', 'BoardQuestion', 'ModelTest', 'Practical', 'MathSolution', 'EnglishGrammar', 'ICT'].map((cat) => (
+                        <option key={cat} value={cat}>{cat}</option>
+                      ))}
+                    </select>
                   </div>
-                )}
+                  <input required name="subject" defaultValue={editingItem?.subject || 'Mathematics'} placeholder="Subject" className="w-full px-3.5 py-2.5 rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-sm" />
+                  <input name="downloadUrl" defaultValue={editingItem?.downloadUrl || '#'} placeholder="Resource / PDF URL" className="w-full px-3.5 py-2.5 rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-sm" />
+                </>
+              )}
 
-                <button type="submit" className="w-full bg-green-700 text-white py-5 rounded-3xl font-black uppercase tracking-widest shadow-xl flex items-center justify-center gap-3 hover:bg-green-800 transition-all active:scale-95 shadow-green-700/20">
-                  <Save className="w-6 h-6" /> {editingItem ? 'Update Information' : 'Save Information'}
-                </button>
-              </form>
-            </div>
+              {managementTab === 'gallery' && (
+                <>
+                  <input required name="capBn" defaultValue={editingItem?.caption?.bn || ''} placeholder="Caption (BN)" className="w-full px-3.5 py-2.5 rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-sm" />
+                  <input required name="capEn" defaultValue={editingItem?.caption?.en || ''} placeholder="Caption (EN)" className="w-full px-3.5 py-2.5 rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-sm" />
+                  <select name="galCat" defaultValue={editingItem?.category || 'Campus'} className="w-full px-3 py-2.5 rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-xs font-bold">
+                    {['Campus', 'Sports', 'Cultural', 'Lab', 'Tour'].map((c) => <option key={c} value={c}>{c}</option>)}
+                  </select>
+                  <input type="file" accept="image/*" onChange={async (e) => { const f = e.target.files?.[0]; if (f) setTempImage(await compressImageFile(f, 900, 0.78)); }} className="text-xs" />
+                </>
+              )}
+
+              {managementTab === 'users' && (
+                <>
+                  <input required name="userName" defaultValue={editingItem?.name || ''} placeholder="Full Name" className="w-full px-3.5 py-2.5 rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-sm" />
+                  {!editingItem && <input required name="userId" placeholder="User ID" className="w-full px-3.5 py-2.5 rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-sm" />}
+                  <input name="userEmail" defaultValue={editingItem?.email || ''} placeholder="Email" className="w-full px-3.5 py-2.5 rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-sm" />
+                  <input name="userPass" type="password" placeholder={editingItem ? 'New Password (optional)' : 'Password'} className="w-full px-3.5 py-2.5 rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-sm" />
+                  <select name="userRole" defaultValue={editingItem?.role || 'student'} className="w-full px-3 py-2.5 rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-xs font-bold">
+                    <option value="student">Student</option>
+                    <option value="parent">Parent</option>
+                    <option value="teacher">Teacher</option>
+                    <option value="admin">Admin</option>
+                  </select>
+                </>
+              )}
+
+              <button type="submit" className="w-full py-3 rounded-xl bg-emerald-700 text-white text-xs font-bold">Save</button>
+            </form>
           </div>
         )}
       </div>
@@ -665,72 +1008,127 @@ const Login: React.FC = () => {
   }
 
   return (
-    <div className="min-h-[85vh] flex items-center justify-center px-4 py-12 bg-slate-50/50">
-      <div className="w-full max-w-md">
-        <div className="bg-white rounded-[3rem] shadow-2xl border border-gray-100 overflow-hidden relative">
-          <div className={`h-2 w-full transition-colors duration-500 ${getThemeColor()}`} />
-          
-          <div className="flex bg-gray-50/50 p-1.5 m-6 rounded-2xl border border-gray-100">
-            {(['student', 'teacher', 'admin'] as const).map(tab => (
-              <button key={tab} onClick={() => { setActiveTab(tab); setError(''); }} className={`flex-1 flex items-center justify-center gap-2 py-4 rounded-xl font-black text-[10px] uppercase transition-all ${activeTab === tab ? 'bg-white text-green-700 shadow-xl' : 'text-slate-400 hover:text-slate-600'}`}>
-                {tab === 'student' ? <GraduationCap className="w-4 h-4" /> : tab === 'teacher' ? <ShieldCheck className="w-4 h-4" /> : <ShieldAlert className="w-4 h-4" />}
-                {tab}
-              </button>
-            ))}
+    <div className="min-h-[80vh] flex items-center justify-center px-4 py-12 bg-slate-50 dark:bg-slate-950">
+      <div className="w-full max-w-md bg-white dark:bg-slate-900 rounded-3xl shadow-2xl border border-slate-200 dark:border-slate-800 overflow-hidden">
+        <div className="p-8 pb-4 text-center">
+          <div className="inline-flex p-3.5 rounded-2xl bg-emerald-700 text-white shadow-lg mb-3">
+            <GraduationCap className="w-8 h-8" />
           </div>
+          <h1 className="text-2xl font-black text-slate-900 dark:text-white">
+            {lang === 'bn' ? 'পোর্টাল লগইন' : 'School Portal Login'}
+          </h1>
+          <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">
+            {lang === 'bn' ? 'আপনার পোর্টাল নির্বাচন করে প্রবেশ করুন' : 'Choose your portal role to continue'}
+          </p>
+        </div>
 
-          <div className="text-center px-8 mb-4">
-             <div className={`w-20 h-20 rounded-3xl flex items-center justify-center mx-auto mb-4 text-white shadow-xl transition-all duration-500 ${getThemeColor()}`}>
-                {activeTab === 'student' ? <UserIcon className="w-10 h-10" /> : activeTab === 'teacher' ? <ShieldCheck className="w-10 h-10" /> : <ShieldAlert className="w-10 h-10" />}
-             </div>
-             <h1 className="text-2xl font-black text-slate-900 tracking-tight capitalize">{activeTab} Portal</h1>
-             <p className="text-[10px] text-slate-400 font-black uppercase tracking-[0.2em] mt-1">{t(settings.name)}</p>
-          </div>
-
-          <form onSubmit={handleSubmit} className="p-8 pt-4 space-y-4">
-            <div className="space-y-4">
-              <input required type="text" value={userId} onChange={e => setUserId(e.target.value)} placeholder="User ID / Roll" className="w-full px-6 py-4.5 rounded-2xl border-2 border-gray-100 bg-gray-50 outline-none focus:border-green-500 focus:bg-white transition-all font-bold placeholder:text-slate-300 shadow-sm" />
-              <input required type="password" value={password} onChange={e => setPassword(e.target.value)} placeholder="Password" className="w-full px-6 py-4.5 rounded-2xl border-2 border-gray-100 bg-gray-50 outline-none focus:border-green-500 focus:bg-white transition-all font-bold placeholder:text-slate-300 shadow-sm" />
-            </div>
-
-            {error && <div className="p-4 bg-red-50 text-red-600 rounded-2xl text-[10px] font-black text-center border border-red-100 animate-bounce">{error}</div>}
-
-            <button disabled={isSubmitting} className="w-full bg-green-700 text-white py-5 rounded-2xl font-black text-lg shadow-xl shadow-green-700/20 active:scale-95 transition-all flex items-center justify-center gap-3 hover:bg-green-800">
-              {isSubmitting ? <RefreshCcw className="w-6 h-6 animate-spin" /> : <>Login Portal <ArrowRight className="w-5 h-5" /></>}
+        {/* 4 Role Tabs: Student, Parent, Teacher, Admin */}
+        <div className="grid grid-cols-4 gap-1 bg-slate-100 dark:bg-slate-800 p-1 mx-6 rounded-2xl">
+          {(['student', 'parent', 'teacher', 'admin'] as const).map((role) => (
+            <button
+              key={role}
+              type="button"
+              onClick={() => {
+                setActiveTab(role);
+                setError('');
+              }}
+              className={`py-2.5 rounded-xl text-[11px] font-extrabold transition-all ${
+                activeTab === role
+                  ? 'bg-white dark:bg-slate-900 text-emerald-700 dark:text-emerald-300 shadow-sm'
+                  : 'text-slate-500 dark:text-slate-300'
+              }`}
+            >
+              {role === 'student'
+                ? t(TRANSLATIONS.login.studentTab)
+                : role === 'parent'
+                ? t(TRANSLATIONS.login.parentTab)
+                : role === 'teacher'
+                ? t(TRANSLATIONS.login.teacherTab)
+                : t(TRANSLATIONS.login.adminTab)}
             </button>
-          </form>
+          ))}
+        </div>
 
-          {activeTab !== 'admin' && (
-            <div className="px-8 pb-6 text-center">
-              <div className="flex items-center gap-3 mb-6">
-                <div className="flex-grow h-px bg-slate-100"></div>
-                <span className="text-[9px] font-black text-slate-300 uppercase tracking-widest">{lang === 'bn' ? 'অথবা' : 'OR'}</span>
-                <div className="flex-grow h-px bg-slate-100"></div>
-              </div>
-              <Link to="/register" className="inline-flex items-center gap-2 text-green-700 font-black text-xs uppercase tracking-widest border-2 border-green-700/10 px-6 py-3 rounded-xl hover:bg-green-50 transition-all active:scale-95">
-                <UserPlus className="w-4 h-4" /> {lang === 'bn' ? 'একাউন্ট খুলুন' : 'Create Account'}
-              </Link>
+        <form onSubmit={handleSubmit} className="p-8 pt-6 space-y-4">
+          {error && (
+            <div className="p-3.5 rounded-xl bg-red-50 dark:bg-red-950/60 border border-red-200 dark:border-red-800 text-red-700 dark:text-red-300 text-xs font-bold">
+              {error}
             </div>
           )}
 
-          <div className="px-8 pb-8 pt-2 space-y-4">
-            <button
-              type="button"
-              onClick={handleGoogleAuth}
-              disabled={isSubmitting}
-              className="w-full py-3.5 px-5 rounded-2xl border-2 border-slate-200 bg-white hover:bg-slate-50 text-slate-800 font-black text-xs uppercase tracking-wider flex items-center justify-center gap-3 shadow-sm transition-all active:scale-95"
-            >
-              <Cloud className="w-4 h-4 text-green-700" />
-              {lang === 'bn' ? 'Google দিয়ে ক্লাউড লগইন করুন' : 'Sign in with Google (Cloud Sync)'}
-            </button>
-            <div className="flex items-center gap-4"><div className="flex-grow h-px bg-slate-100"></div><span className="text-[9px] font-black text-slate-300 uppercase tracking-widest">Quick Access</span><div className="flex-grow h-px bg-slate-100"></div></div>
-            <div className="grid grid-cols-3 gap-3">
-              <button onClick={() => handleQuickLogin('student')} className="p-3 bg-blue-50 text-blue-600 rounded-xl text-[9px] font-black uppercase border border-blue-100 hover:bg-blue-600 hover:text-white transition-all shadow-sm">Student</button>
-              <button onClick={() => handleQuickLogin('teacher')} className="p-3 bg-purple-50 text-purple-600 rounded-xl text-[9px] font-black uppercase border border-purple-100 hover:bg-purple-600 hover:text-white transition-all shadow-sm">Teacher</button>
-              <button onClick={() => handleQuickLogin('admin')} className="p-3 bg-slate-900 text-white rounded-xl text-[9px] font-black uppercase border border-slate-800 hover:bg-green-700 transition-all shadow-sm">Admin</button>
+          <div>
+            <label className="text-xs font-bold text-slate-500">{lang === 'bn' ? 'ইউজার আইডি' : 'User ID'}</label>
+            <div className="relative mt-1">
+              <UserIcon className="w-4 h-4 text-slate-400 absolute left-3.5 top-1/2 -translate-y-1/2" />
+              <input
+                required
+                type="text"
+                value={userId}
+                onChange={(e) => setUserId(e.target.value)}
+                placeholder={activeTab === 'admin' ? 'admin' : `${activeTab}01`}
+                className="w-full pl-10 pr-4 py-3 rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-sm font-semibold outline-none focus:ring-2 focus:ring-emerald-500"
+              />
             </div>
           </div>
-        </div>
+
+          <div>
+            <label className="text-xs font-bold text-slate-500">{lang === 'bn' ? 'পাসওয়ার্ড' : 'Password'}</label>
+            <div className="relative mt-1">
+              <Lock className="w-4 h-4 text-slate-400 absolute left-3.5 top-1/2 -translate-y-1/2" />
+              <input
+                required
+                type="password"
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                placeholder="••••••"
+                className="w-full pl-10 pr-4 py-3 rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-sm font-semibold outline-none focus:ring-2 focus:ring-emerald-500"
+              />
+            </div>
+          </div>
+
+          <button
+            disabled={isSubmitting}
+            type="submit"
+            className="w-full bg-emerald-700 hover:bg-emerald-800 text-white py-3.5 rounded-xl font-bold text-sm shadow-lg flex items-center justify-center gap-2 transition-all"
+          >
+            {lang === 'bn' ? 'প্রবেশ করুন' : 'Sign In'} <ArrowRight className="w-4 h-4" />
+          </button>
+
+          <button
+            type="button"
+            onClick={handleGoogleAuth}
+            className="w-full py-3 rounded-xl border border-slate-200 dark:border-slate-700 hover:bg-slate-50 dark:hover:bg-slate-800 text-xs font-bold flex items-center justify-center gap-2"
+          >
+            <ShieldCheck className="w-4 h-4 text-emerald-600" />
+            {lang === 'bn' ? 'Google দিয়ে ক্লাউড লগইন' : 'Continue with Google Cloud'}
+          </button>
+
+          {/* Quick Demo Buttons */}
+          <div className="pt-3 border-t border-slate-100 dark:border-slate-800 space-y-2">
+            <p className="text-[10px] font-bold uppercase text-center text-slate-400">
+              {lang === 'bn' ? 'দ্রুত ডেমো অ্যাক্সেস' : 'Quick Demo Access'}
+            </p>
+            <div className="grid grid-cols-4 gap-1.5">
+              {(['student', 'parent', 'teacher', 'admin'] as const).map((r) => (
+                <button
+                  key={r}
+                  type="button"
+                  onClick={() => handleQuickLogin(r)}
+                  className="py-1.5 rounded-lg bg-slate-100 dark:bg-slate-800 hover:bg-emerald-50 dark:hover:bg-emerald-950 text-[10px] font-extrabold capitalize text-slate-700 dark:text-slate-300"
+                >
+                  {r}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          <p className="text-center text-xs text-slate-500 pt-2">
+            {lang === 'bn' ? 'নতুন অ্যাকাউন্ট খুলতে চান?' : 'Need an account?'}{' '}
+            <Link to="/register" className="text-emerald-700 dark:text-emerald-400 font-bold hover:underline">
+              {lang === 'bn' ? 'নিবন্ধন করুন' : 'Register Here'}
+            </Link>
+          </p>
+        </form>
       </div>
     </div>
   );

@@ -1,6 +1,15 @@
-
 import * as React from 'react';
-import { Calendar as CalendarIcon, ChevronLeft, ChevronRight, Bell, GraduationCap, Award, MapPin, ArrowLeft, Filter, PlusCircle, X, Save, Clock, Info, Pencil, Trash2, Printer, FileDown, ShieldCheck } from 'lucide-react';
+import {
+  Calendar as CalendarIcon,
+  GraduationCap,
+  ArrowLeft,
+  PlusCircle,
+  X,
+  Save,
+  Pencil,
+  Trash2,
+  FileDown,
+} from 'lucide-react';
 import { useApp } from '../App';
 import * as RouterDom from 'react-router-dom';
 import { Notice, Holiday } from '../types';
@@ -10,12 +19,12 @@ const { Link } = RouterDom;
 
 interface CalendarEvent {
   id: string;
-  originalId: string; // The real ID in holidays or notices
+  originalId: string;
   title: string;
   date: Date;
   type: 'Holiday' | 'Exam' | 'Admission' | 'General';
   description?: string;
-  raw?: any; // The original object
+  raw?: Notice | Holiday;
 }
 
 const AcademicCalendar: React.FC = () => {
@@ -24,66 +33,79 @@ const AcademicCalendar: React.FC = () => {
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [formType, setFormType] = useState<'Exam' | 'Admission' | 'Holiday'>('Exam');
   const [editingEvent, setEditingEvent] = useState<CalendarEvent | null>(null);
+  const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
 
   const isAdmin = user?.role === 'admin';
 
   const months = [
-    { bn: 'জানুয়ারি', en: 'January' }, { bn: 'ফেব্রুয়ারি', en: 'February' },
-    { bn: 'মার্চ', en: 'March' }, { bn: 'এপ্রিল', en: 'April' },
-    { bn: 'মে', en: 'May' }, { bn: 'জুন', en: 'June' },
-    { bn: 'জুলাই', en: 'July' }, { bn: 'আগস্ট', en: 'August' },
-    { bn: 'সেপ্টেম্বর', en: 'September' }, { bn: 'অক্টোবর', en: 'October' },
-    { bn: 'নভেম্বর', en: 'November' }, { bn: 'ডিসেম্বর', en: 'December' }
+    { bn: 'জানুয়ারি', en: 'January' },
+    { bn: 'ফেব্রুয়ারি', en: 'February' },
+    { bn: 'মার্চ', en: 'March' },
+    { bn: 'এপ্রিল', en: 'April' },
+    { bn: 'মে', en: 'May' },
+    { bn: 'জুন', en: 'June' },
+    { bn: 'জুলাই', en: 'July' },
+    { bn: 'আগস্ট', en: 'August' },
+    { bn: 'সেপ্টেম্বর', en: 'September' },
+    { bn: 'অক্টোবর', en: 'October' },
+    { bn: 'নভেম্বর', en: 'November' },
+    { bn: 'ডিসেম্বর', en: 'December' },
   ];
 
   const allEvents = useMemo(() => {
     const events: CalendarEvent[] = [];
 
-    // Add Holidays
-    holidays.forEach(h => {
-      events.push({
-        id: `h-${h.id}`,
-        originalId: h.id,
-        title: t(h.title),
-        date: new Date(h.date),
-        type: 'Holiday',
-        description: t(h.duration),
-        raw: h
-      });
+    holidays.forEach((h) => {
+      const parsed = new Date(h.date);
+      if (!isNaN(parsed.getTime())) {
+        events.push({
+          id: `h-${h.id}`,
+          originalId: h.id,
+          title: t(h.title),
+          date: parsed,
+          type: 'Holiday',
+          description: t(h.duration),
+          raw: h,
+        });
+      }
     });
 
-    // Add Notices (Exams and Admissions)
-    notices.forEach(n => {
+    notices.forEach((n) => {
       if (n.category === 'Exam' || n.category === 'Admission') {
-        events.push({
-          id: `n-${n.id}`,
-          originalId: n.id,
-          title: t(n.title),
-          date: new Date(n.date),
-          type: n.category as any,
-          description: t(n.description),
-          raw: n
-        });
+        const parsed = new Date(n.date);
+        if (!isNaN(parsed.getTime())) {
+          events.push({
+            id: `n-${n.id}`,
+            originalId: n.id,
+            title: t(n.title),
+            date: parsed,
+            type: n.category,
+            description: t(n.description),
+            raw: n,
+          });
+        }
       }
     });
 
     return events.sort((a, b) => a.date.getTime() - b.date.getTime());
   }, [holidays, notices, t]);
 
-  const filteredEvents = selectedType === 'All' 
-    ? allEvents 
-    : allEvents.filter(e => e.type === selectedType);
+  const filteredEvents =
+    selectedType === 'All' ? allEvents : allEvents.filter((e) => e.type === selectedType);
 
-  const getEventsForMonth = (monthIdx: number) => {
-    return filteredEvents.filter(e => e.date.getMonth() === monthIdx && e.date.getFullYear() === 2026);
-  };
+  const getEventsForMonth = (monthIdx: number) =>
+    filteredEvents.filter((e) => e.date.getMonth() === monthIdx);
 
   const getBadgeStyle = (type: string) => {
     switch (type) {
-      case 'Holiday': return 'bg-red-100 text-red-700 border-red-200';
-      case 'Exam': return 'bg-blue-100 text-blue-700 border-blue-200';
-      case 'Admission': return 'bg-green-100 text-green-700 border-green-200';
-      default: return 'bg-slate-100 text-slate-700 border-slate-200';
+      case 'Holiday':
+        return 'bg-red-100 dark:bg-red-950/60 text-red-700 dark:text-red-300 border-red-200 dark:border-red-900';
+      case 'Exam':
+        return 'bg-blue-100 dark:bg-blue-950/60 text-blue-700 dark:text-blue-300 border-blue-200 dark:border-blue-900';
+      case 'Admission':
+        return 'bg-green-100 dark:bg-green-950/60 text-green-700 dark:text-green-300 border-green-200 dark:border-green-900';
+      default:
+        return 'bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 border-slate-200 dark:border-slate-700';
     }
   };
 
@@ -95,93 +117,90 @@ const AcademicCalendar: React.FC = () => {
 
   const handleOpenEdit = (event: CalendarEvent) => {
     setEditingEvent(event);
-    setFormType(event.type === 'Holiday' ? 'Holiday' : (event.type as any));
+    setFormType(event.type === 'Holiday' ? 'Holiday' : event.type === 'Admission' ? 'Admission' : 'Exam');
     setIsModalOpen(true);
   };
 
-  const handleSaveEvent = (e: React.FormEvent) => {
+  const handleSaveEvent = (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
-    const f = e.target as any;
+    const f = e.currentTarget as unknown as {
+      titleBn: HTMLInputElement;
+      titleEn: HTMLInputElement;
+      date: HTMLInputElement;
+      durBn?: HTMLInputElement;
+      durEn?: HTMLInputElement;
+      holidayType?: HTMLSelectElement;
+      descBn?: HTMLTextAreaElement;
+      descEn?: HTMLTextAreaElement;
+    };
     const isEdit = !!editingEvent;
-    const originalId = isEdit ? editingEvent.originalId : Date.now().toString();
-    
+    const originalId = isEdit ? editingEvent.originalId : `ev-${Date.now()}`;
+
     if (formType === 'Holiday') {
       const holiday: Holiday = {
         id: originalId,
-        title: { bn: f.titleBn.value, en: f.titleEn.value },
+        title: { bn: f.titleBn.value.trim(), en: f.titleEn.value.trim() },
         date: f.date.value,
-        duration: { bn: f.durBn.value, en: f.durEn.value },
-        type: f.holidayType.value
+        duration: { bn: f.durBn?.value.trim() || '১ দিন', en: f.durEn?.value.trim() || '1 Day' },
+        type: (f.holidayType?.value as Holiday['type']) || 'National',
+        isPublic: true,
       };
-      isEdit ? updateHoliday(holiday) : addHoliday(holiday);
+      if (isEdit) updateHoliday(holiday);
+      else addHoliday(holiday);
     } else {
       const notice: Notice = {
         id: originalId,
-        title: { bn: f.titleBn.value, en: f.titleEn.value },
-        description: { bn: f.descBn.value, en: f.descEn.value },
+        title: { bn: f.titleBn.value.trim(), en: f.titleEn.value.trim() },
+        description: { bn: f.descBn?.value.trim() || '', en: f.descEn?.value.trim() || '' },
         category: formType,
-        date: f.date.value
+        date: f.date.value,
+        isPublic: true,
       };
-      isEdit ? updateNotice(notice) : addNotice(notice);
+      if (isEdit) updateNotice(notice);
+      else addNotice(notice);
     }
-    
+
     setIsModalOpen(false);
   };
 
   const handleDelete = (event: CalendarEvent) => {
-    if(!window.confirm('Are you sure?')) return;
     if (event.type === 'Holiday') deleteHoliday(event.originalId);
     else deleteNotice(event.originalId);
-  };
-
-  const handleDownloadPDF = () => {
-    window.print();
+    setConfirmDeleteId(null);
   };
 
   const PrintableCalendar = () => (
     <div id="printable-calendar" className="hidden print:block bg-white text-black p-0">
-      <div className="border-[12px] border-double border-green-900 p-10 min-h-[1100px]">
-        <div className="text-center space-y-2 border-b-4 border-green-900 pb-6 mb-8">
-          <div className="flex justify-center mb-2">
-             <div className="bg-green-800 p-3 rounded-full shadow-lg"><GraduationCap className="text-white w-10 h-10" /></div>
-          </div>
-          <h1 className="text-4xl font-black uppercase text-green-900">{t(settings.name)}</h1>
-          <p className="text-lg font-bold">EIIN: {settings.eiin} | স্থাপিত: ১৯৫৮</p>
-          <div className="mt-4">
-            <span className="inline-block px-10 py-2 border-2 border-green-900 font-black text-xl uppercase bg-green-50 rounded-lg">
-              {lang === 'bn' ? 'একাডেমিক ক্যালেন্ডার ও ছুটির তালিকা - ২০২৬' : 'Academic Calendar & Holidays - 2026'}
-            </span>
-          </div>
+      <div className="border-[10px] border-double border-green-900 p-8 min-h-[1050px]">
+        <div className="text-center space-y-2 border-b-4 border-green-900 pb-5 mb-6">
+          <GraduationCap className="text-green-800 w-10 h-10 mx-auto" />
+          <h1 className="text-3xl font-black uppercase text-green-900">{t(settings.name)}</h1>
+          <p className="text-base font-bold">EIIN: {settings.eiin} | স্থাপিত: ১৯৫৮</p>
+          <span className="inline-block px-8 py-1.5 border-2 border-green-900 font-black text-lg uppercase bg-green-50 rounded-lg">
+            {lang === 'bn' ? 'একাডেমিক ক্যালেন্ডার - ২০২৬' : 'Academic Calendar - 2026'}
+          </span>
         </div>
 
-        <div className="space-y-8">
+        <div className="space-y-6">
           {months.map((month, mIdx) => {
-            const monthEvents = allEvents.filter(e => e.date.getMonth() === mIdx && e.date.getFullYear() === 2026);
+            const monthEvents = allEvents.filter((e) => e.date.getMonth() === mIdx);
             if (monthEvents.length === 0) return null;
-            
+
             return (
               <div key={mIdx} className="break-inside-avoid">
-                <h3 className="text-xl font-black bg-slate-100 px-4 py-2 border-l-8 border-green-700 mb-4">{t(month)}</h3>
-                <table className="w-full border-collapse">
-                  <thead>
-                    <tr className="bg-slate-50 text-[10px] font-black uppercase border-b-2 border-slate-200">
-                      <th className="px-4 py-2 text-left w-24">Date</th>
-                      <th className="px-4 py-2 text-left">Event Name</th>
-                      <th className="px-4 py-2 text-left w-32">Type</th>
-                      <th className="px-4 py-2 text-left">Details</th>
-                    </tr>
-                  </thead>
+                <h3 className="text-lg font-black bg-slate-100 px-4 py-1.5 border-l-4 border-green-700 mb-2">
+                  {t(month)}
+                </h3>
+                <table className="w-full border-collapse text-sm">
                   <tbody>
                     {monthEvents.map((event, eIdx) => (
-                      <tr key={eIdx} className="border-b border-slate-100 text-sm">
-                        <td className="px-4 py-3 font-bold">{event.date.getDate()} {t(month)}</td>
-                        <td className="px-4 py-3 font-black text-slate-800">{event.title}</td>
-                        <td className="px-4 py-3">
-                           <span className={`px-2 py-0.5 rounded text-[9px] font-black uppercase border ${getBadgeStyle(event.type)}`}>
-                             {event.type}
-                           </span>
+                      <tr key={eIdx} className="border-b border-slate-200">
+                        <td className="px-3 py-2 font-bold w-28">
+                          {event.date.getDate()} {t(month)}
                         </td>
-                        <td className="px-4 py-3 text-slate-500 italic">{event.description || '---'}</td>
+                        <td className="px-3 py-2 font-black">{event.title}</td>
+                        <td className="px-3 py-2 w-24 uppercase text-xs font-bold">{event.type}</td>
+                        <td className="px-3 py-2 text-slate-600">{event.description || '---'}</td>
                       </tr>
                     ))}
                   </tbody>
@@ -190,60 +209,63 @@ const AcademicCalendar: React.FC = () => {
             );
           })}
         </div>
-
-        <div className="mt-12 pt-8 border-t border-slate-200 flex justify-between items-end">
-          <div className="text-[9px] text-gray-400 font-bold italic">
-            * কর্তৃপক্ষের সিদ্ধান্ত অনুযায়ী যে কোনো ইভেন্ট বা ছুটির তারিখ পরিবর্তিত হতে পারে।<br/>
-            এটি একটি কম্পিউটার জেনারেটেড কপি।
-          </div>
-          <div className="text-center w-48">
-             <div className="w-full border-t border-black mb-1"></div>
-             <p className="text-[10px] font-black uppercase">প্রধান শিক্ষকের স্বাক্ষর</p>
-          </div>
-        </div>
       </div>
     </div>
   );
 
   return (
-    <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-12 space-y-12">
+    <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-12 space-y-10">
       <PrintableCalendar />
+
       <div className="flex flex-col gap-4 no-print">
-        <Link to="/" className="flex items-center gap-2 text-green-700 font-bold text-sm hover:gap-3 transition-all">
+        <Link
+          to="/"
+          className="inline-flex items-center gap-2 text-green-700 dark:text-green-400 font-bold text-sm hover:gap-3 transition-all w-fit"
+        >
           <ArrowLeft className="w-4 h-4" /> {lang === 'bn' ? 'মূল পাতায় ফিরে যান' : 'Back to Home'}
         </Link>
-        <div className="flex flex-col md:flex-row justify-between items-end gap-8">
-          <div className="space-y-4">
-            <h1 className="text-4xl md:text-5xl font-black text-green-900 tracking-tight">
+        <div className="flex flex-col md:flex-row justify-between items-start md:items-end gap-6">
+          <div className="space-y-2">
+            <h1 className="text-3xl md:text-5xl font-black text-green-900 dark:text-white tracking-tight">
               {lang === 'bn' ? 'একাডেমিক ক্যালেন্ডার' : 'Academic Calendar'} <span className="text-slate-400">২০২৬</span>
             </h1>
-            <p className="text-gray-500 max-w-xl font-medium">
-              {lang === 'bn' 
-                ? '২০২৬ শিক্ষাবর্ষের সকল গুরুত্বপূর্ণ তারিখ, পরীক্ষা এবং ছুটির বিস্তারিত তালিকা।' 
-                : 'Detailed schedule of all important dates, exams, and holidays for the 2026 academic session.'}
+            <p className="text-slate-600 dark:text-slate-300 max-w-xl font-medium">
+              {lang === 'bn'
+                ? '২০২৬ শিক্ষাবর্ষের গুরুত্বপূর্ণ তারিখ, পরীক্ষা, ভর্তি এবং ছুটির তালিকা।'
+                : 'Detailed monthly schedule of exams, admissions, and holidays for 2026.'}
             </p>
           </div>
-          <div className="flex flex-wrap items-center gap-4">
-             {isAdmin && (
-               <button 
-                 onClick={handleOpenAdd}
-                 className="bg-green-700 text-white px-8 py-4 rounded-2xl font-black uppercase tracking-widest text-xs hover:bg-green-800 shadow-xl transition-all active:scale-95 flex items-center gap-2"
-               >
-                 <PlusCircle className="w-5 h-5" /> {lang === 'bn' ? 'নতুন ইভেন্ট' : 'Add New Event'}
-               </button>
-             )}
+          <div className="flex flex-wrap items-center gap-3">
+            {isAdmin && (
+              <button
+                onClick={handleOpenAdd}
+                className="bg-green-700 text-white px-5 py-3 rounded-2xl font-black uppercase tracking-wider text-xs hover:bg-green-800 shadow-lg flex items-center gap-2"
+              >
+                <PlusCircle className="w-4 h-4" /> {lang === 'bn' ? 'নতুন ইভেন্ট' : 'Add Event'}
+              </button>
+            )}
             <div className="flex flex-wrap gap-2">
-              {(['All', 'Holiday', 'Exam', 'Admission'] as const).map(type => (
-                <button 
+              {(['All', 'Holiday', 'Exam', 'Admission'] as const).map((type) => (
+                <button
                   key={type}
                   onClick={() => setSelectedType(type)}
-                  className={`px-6 py-2.5 rounded-xl text-xs font-black uppercase tracking-widest transition-all border-2 ${
-                    selectedType === type 
-                      ? 'bg-white border-green-700 text-green-700 shadow-sm' 
-                      : 'bg-white border-gray-100 text-gray-400 hover:border-green-200 hover:text-green-700'
+                  className={`px-4 py-2 rounded-xl text-xs font-black uppercase transition-all border ${
+                    selectedType === type
+                      ? 'bg-green-700 border-green-700 text-white shadow'
+                      : 'bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-300'
                   }`}
                 >
-                  {type === 'All' ? (lang === 'bn' ? 'সব' : 'All') : (lang === 'bn' ? (type === 'Holiday' ? 'ছুটি' : type === 'Exam' ? 'পরীক্ষা' : 'ভর্তি') : type)}
+                  {type === 'All'
+                    ? lang === 'bn'
+                      ? 'সব'
+                      : 'All'
+                    : lang === 'bn'
+                    ? type === 'Holiday'
+                      ? 'ছুটি'
+                      : type === 'Exam'
+                      ? 'পরীক্ষা'
+                      : 'ভর্তি'
+                    : type}
                 </button>
               ))}
             </div>
@@ -251,41 +273,82 @@ const AcademicCalendar: React.FC = () => {
         </div>
       </div>
 
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8 no-print">
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 no-print">
         {months.map((month, idx) => {
           const monthEvents = getEventsForMonth(idx);
           if (monthEvents.length === 0 && selectedType !== 'All') return null;
 
           return (
-            <div key={idx} className="bg-white rounded-[2.5rem] shadow-sm border border-gray-50 overflow-hidden flex flex-col hover:shadow-xl transition-all group">
-              <div className="bg-slate-50 p-6 border-b flex justify-between items-center group-hover:bg-green-50 transition-colors">
-                <h3 className="text-xl font-black text-gray-900">{t(month)}</h3>
-                <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest">{monthEvents.length} Events</span>
+            <div
+              key={idx}
+              className="bg-white dark:bg-slate-900 rounded-3xl shadow-sm border border-slate-100 dark:border-slate-800 overflow-hidden flex flex-col"
+            >
+              <div className="bg-slate-50 dark:bg-slate-800/80 p-5 border-b border-slate-100 dark:border-slate-700 flex justify-between items-center">
+                <h3 className="text-lg font-black text-slate-900 dark:text-white">{t(month)}</h3>
+                <span className="text-[11px] font-black text-slate-500 dark:text-slate-400 uppercase">
+                  {monthEvents.length} Events
+                </span>
               </div>
-              <div className="p-6 space-y-4 flex-grow">
-                {monthEvents.length > 0 ? monthEvents.map(event => (
-                  <div key={event.id} className="p-4 rounded-2xl border border-gray-50 bg-slate-50/30 space-y-2 hover:border-green-100 hover:bg-white transition-all relative group/event">
-                    {isAdmin && (
-                      <div className="absolute top-2 right-2 flex gap-1 opacity-0 group-hover/event:opacity-100 transition-all">
-                        <button onClick={() => handleOpenEdit(event)} className="p-1.5 text-blue-600 bg-white rounded-lg shadow-sm border border-gray-100 hover:bg-blue-50"><Pencil className="w-3.5 h-3.5" /></button>
-                        <button onClick={() => handleDelete(event)} className="p-1.5 text-red-500 bg-white rounded-lg shadow-sm border border-gray-100 hover:bg-red-50"><Trash2 className="w-3.5 h-3.5" /></button>
+              <div className="p-5 space-y-3 flex-grow">
+                {monthEvents.length > 0 ? (
+                  monthEvents.map((event) => (
+                    <div
+                      key={event.id}
+                      className="p-3.5 rounded-2xl border border-slate-100 dark:border-slate-800 bg-slate-50/70 dark:bg-slate-800/40 space-y-1.5 relative group"
+                    >
+                      {isAdmin && (
+                        <div className="flex justify-end gap-1 mb-1">
+                          {confirmDeleteId === event.id ? (
+                            <>
+                              <button
+                                onClick={() => handleDelete(event)}
+                                className="px-2 py-0.5 text-[10px] font-black text-white bg-red-600 rounded"
+                              >
+                                {lang === 'bn' ? 'নিশ্চিত' : 'Confirm'}
+                              </button>
+                              <button
+                                onClick={() => setConfirmDeleteId(null)}
+                                className="px-2 py-0.5 text-[10px] font-black text-slate-600 bg-white rounded border"
+                              >
+                                {lang === 'bn' ? 'বাতিল' : 'Cancel'}
+                              </button>
+                            </>
+                          ) : (
+                            <>
+                              <button
+                                onClick={() => handleOpenEdit(event)}
+                                className="p-1 text-blue-600 dark:text-blue-400 hover:bg-blue-50 dark:hover:bg-blue-950 rounded"
+                              >
+                                <Pencil className="w-3.5 h-3.5" />
+                              </button>
+                              <button
+                                onClick={() => setConfirmDeleteId(event.id)}
+                                className="p-1 text-red-500 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-950 rounded"
+                              >
+                                <Trash2 className="w-3.5 h-3.5" />
+                              </button>
+                            </>
+                          )}
+                        </div>
+                      )}
+                      <div className="flex justify-between items-center gap-2">
+                        <span className={`px-2 py-0.5 rounded-md text-[10px] font-black uppercase border ${getBadgeStyle(event.type)}`}>
+                          {event.type}
+                        </span>
+                        <span className="text-[11px] font-bold text-slate-500 dark:text-slate-400">
+                          {event.date.getDate()} {t(month)}
+                        </span>
                       </div>
-                    )}
-                    <div className="flex justify-between items-start gap-2">
-                      <span className={`px-2.5 py-1 rounded-lg text-[9px] font-black uppercase tracking-widest border ${getBadgeStyle(event.type)}`}>
-                        {event.type}
-                      </span>
-                      <span className="text-[10px] font-black text-slate-400">{event.date.getDate()} {t(month)}</span>
+                      <h4 className="font-black text-slate-900 dark:text-white text-sm leading-snug">{event.title}</h4>
+                      {event.description && (
+                        <p className="text-xs text-slate-500 dark:text-slate-400 line-clamp-2">{event.description}</p>
+                      )}
                     </div>
-                    <h4 className="font-black text-gray-800 text-sm leading-tight">{event.title}</h4>
-                    {event.description && <p className="text-[11px] text-gray-500 font-medium line-clamp-2">{event.description}</p>}
-                  </div>
-                )) : (
-                  <div className="h-full flex items-center py-8 text-center">
-                    <p className="text-xs text-slate-300 font-bold italic w-full">
-                      {lang === 'bn' ? 'কোন ইভেন্ট নেই' : 'No events scheduled'}
-                    </p>
-                  </div>
+                  ))
+                ) : (
+                  <p className="text-xs text-slate-400 font-bold text-center py-6">
+                    {lang === 'bn' ? 'কোনো ইভেন্ট নেই' : 'No events scheduled'}
+                  </p>
                 )}
               </div>
             </div>
@@ -295,115 +358,138 @@ const AcademicCalendar: React.FC = () => {
 
       {/* Add/Edit Event Modal */}
       {isModalOpen && (
-        <div className="fixed inset-0 z-[100] flex items-center justify-center p-4">
-          <div className="absolute inset-0 bg-slate-900/60 backdrop-blur-sm" onClick={() => setIsModalOpen(false)} />
-          <div className="relative bg-white w-full max-w-2xl rounded-[3rem] shadow-2xl overflow-hidden animate-in zoom-in max-h-[90vh] flex flex-col">
-            <div className="bg-green-700 p-8 text-white flex justify-between items-center shrink-0">
-              <h2 className="text-2xl font-black">{editingEvent ? 'Edit Event' : 'Add New Event'}</h2>
-              <button onClick={() => setIsModalOpen(false)} className="p-2 hover:bg-white/20 rounded-full transition-colors"><X /></button>
+        <div className="fixed inset-0 z-[200] flex items-center justify-center p-4">
+          <div className="absolute inset-0 bg-slate-950/70 backdrop-blur-sm" onClick={() => setIsModalOpen(false)} />
+          <div className="relative bg-white dark:bg-slate-900 w-full max-w-2xl rounded-3xl shadow-2xl border border-slate-200 dark:border-slate-800 overflow-hidden max-h-[90vh] flex flex-col">
+            <div className="bg-green-700 p-6 text-white flex justify-between items-center shrink-0">
+              <h2 className="text-xl font-black">{editingEvent ? 'Edit Event' : 'Add Calendar Event'}</h2>
+              <button onClick={() => setIsModalOpen(false)}>
+                <X className="w-5 h-5" />
+              </button>
             </div>
-            
-            <form onSubmit={handleSaveEvent} className="p-8 space-y-6 overflow-y-auto">
+
+            <form onSubmit={handleSaveEvent} className="p-6 space-y-5 overflow-y-auto">
               {!editingEvent && (
-                <div className="space-y-4">
-                  <label className="text-[10px] font-black uppercase tracking-widest text-gray-400 ml-1">Event Category</label>
-                  <div className="flex gap-2">
-                    {(['Exam', 'Admission', 'Holiday'] as const).map(type => (
-                      <button 
-                        key={type}
-                        type="button"
-                        onClick={() => setFormType(type)}
-                        className={`flex-1 py-3 rounded-xl text-xs font-black uppercase tracking-widest border-2 transition-all ${
-                          formType === type ? 'bg-green-50 border-green-600 text-green-700' : 'bg-slate-50 border-gray-100 text-gray-400'
-                        }`}
-                      >
-                        {type}
-                      </button>
-                    ))}
-                  </div>
+                <div className="flex gap-2">
+                  {(['Exam', 'Admission', 'Holiday'] as const).map((type) => (
+                    <button
+                      key={type}
+                      type="button"
+                      onClick={() => setFormType(type)}
+                      className={`flex-1 py-2.5 rounded-xl text-xs font-black uppercase border ${
+                        formType === type
+                          ? 'bg-green-50 dark:bg-green-950 border-green-600 text-green-700 dark:text-green-300'
+                          : 'bg-slate-50 dark:bg-slate-800 border-slate-200 dark:border-slate-700 text-slate-500 dark:text-slate-400'
+                      }`}
+                    >
+                      {type}
+                    </button>
+                  ))}
                 </div>
               )}
 
-              <div className="grid grid-cols-2 gap-6">
-                <div className="space-y-2">
-                  <label className="text-[10px] font-black uppercase tracking-widest text-gray-400 ml-1">Title (Bangla)</label>
-                  <input required name="titleBn" defaultValue={editingEvent?.raw?.title?.bn} placeholder="যেমন: বার্ষিক পরীক্ষা" className="w-full px-5 py-3.5 rounded-xl bg-slate-50 border border-gray-100 outline-none focus:ring-2 focus:ring-green-500 font-bold" />
-                </div>
-                <div className="space-y-2">
-                  <label className="text-[10px] font-black uppercase tracking-widest text-gray-400 ml-1">Title (English)</label>
-                  <input required name="titleEn" defaultValue={editingEvent?.raw?.title?.en} placeholder="e.g. Annual Exam" className="w-full px-5 py-3.5 rounded-xl bg-slate-50 border border-gray-100 outline-none focus:ring-2 focus:ring-green-500 font-bold" />
-                </div>
-                <div className="space-y-2 col-span-2">
-                  <label className="text-[10px] font-black uppercase tracking-widest text-gray-400 ml-1">Event Date</label>
-                  <input required type="date" name="date" defaultValue={editingEvent?.raw?.date} className="w-full px-5 py-3.5 rounded-xl bg-slate-50 border border-gray-100 outline-none focus:ring-2 focus:ring-green-500 font-bold" />
-                </div>
+              <div className="grid sm:grid-cols-2 gap-4">
+                <input
+                  required
+                  name="titleBn"
+                  defaultValue={editingEvent?.raw?.title?.bn}
+                  placeholder="Title (Bangla)"
+                  className="px-4 py-3 rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-white font-bold text-sm"
+                />
+                <input
+                  required
+                  name="titleEn"
+                  defaultValue={editingEvent?.raw?.title?.en}
+                  placeholder="Title (English)"
+                  className="px-4 py-3 rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-white font-bold text-sm"
+                />
+                <input
+                  required
+                  type="date"
+                  name="date"
+                  defaultValue={editingEvent?.raw?.date}
+                  className="sm:col-span-2 px-4 py-3 rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-white font-bold text-sm"
+                />
               </div>
 
               {formType === 'Holiday' ? (
-                <div className="grid grid-cols-2 gap-6 p-6 bg-red-50/50 rounded-3xl border border-red-100">
-                  <div className="space-y-2">
-                    <label className="text-[10px] font-black uppercase tracking-widest text-red-400 ml-1">Duration (BN)</label>
-                    <input required name="durBn" defaultValue={editingEvent?.raw?.duration?.bn} placeholder="যেমন: ১ দিন" className="w-full px-5 py-3.5 rounded-xl bg-white border border-red-100 outline-none focus:ring-2 focus:ring-red-500 font-bold" />
-                  </div>
-                  <div className="space-y-2">
-                    <label className="text-[10px] font-black uppercase tracking-widest text-red-400 ml-1">Duration (EN)</label>
-                    <input required name="durEn" defaultValue={editingEvent?.raw?.duration?.en} placeholder="e.g. 1 Day" className="w-full px-5 py-3.5 rounded-xl bg-white border border-red-100 outline-none focus:ring-2 focus:ring-red-500 font-bold" />
-                  </div>
-                  <div className="space-y-2 col-span-2">
-                    <label className="text-[10px] font-black uppercase tracking-widest text-red-400 ml-1">Holiday Type</label>
-                    <select name="holidayType" defaultValue={editingEvent?.raw?.type || 'National'} className="w-full px-5 py-3.5 rounded-xl bg-white border border-red-100 outline-none focus:ring-2 focus:ring-red-500 font-bold">
-                      <option value="National">National</option>
-                      <option value="Religious">Religious</option>
-                      <option value="Seasonal">Seasonal</option>
-                      <option value="Other">Other</option>
-                    </select>
-                  </div>
+                <div className="grid sm:grid-cols-2 gap-4">
+                  <input
+                    required
+                    name="durBn"
+                    defaultValue={(editingEvent?.raw as Holiday)?.duration?.bn}
+                    placeholder="Duration (BN) e.g. ১ দিন"
+                    className="px-4 py-3 rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-white font-bold text-sm"
+                  />
+                  <input
+                    required
+                    name="durEn"
+                    defaultValue={(editingEvent?.raw as Holiday)?.duration?.en}
+                    placeholder="Duration (EN) e.g. 1 Day"
+                    className="px-4 py-3 rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-white font-bold text-sm"
+                  />
+                  <select
+                    name="holidayType"
+                    defaultValue={(editingEvent?.raw as Holiday)?.type || 'National'}
+                    className="sm:col-span-2 px-4 py-3 rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-white font-bold text-sm"
+                  >
+                    <option value="National">National</option>
+                    <option value="Religious">Religious</option>
+                    <option value="Seasonal">Seasonal</option>
+                    <option value="Other">Other</option>
+                  </select>
                 </div>
               ) : (
-                <div className="space-y-4 p-6 bg-blue-50/50 rounded-3xl border border-blue-100">
-                  <div className="space-y-2">
-                    <label className="text-[10px] font-black uppercase tracking-widest text-blue-400 ml-1">Description (Bangla)</label>
-                    <textarea required name="descBn" defaultValue={editingEvent?.raw?.description?.bn} placeholder="ইভেন্টের বিস্তারিত..." className="w-full px-5 py-3.5 rounded-xl bg-white border border-blue-100 outline-none focus:ring-2 focus:ring-blue-500 font-bold h-24" />
-                  </div>
-                  <div className="space-y-2">
-                    <label className="text-[10px] font-black uppercase tracking-widest text-blue-400 ml-1">Description (English)</label>
-                    <textarea required name="descEn" defaultValue={editingEvent?.raw?.description?.en} placeholder="Event details..." className="w-full px-5 py-3.5 rounded-xl bg-white border border-blue-100 outline-none focus:ring-2 focus:ring-blue-500 font-bold h-24" />
-                  </div>
+                <div className="space-y-3">
+                  <textarea
+                    required
+                    name="descBn"
+                    defaultValue={(editingEvent?.raw as Notice)?.description?.bn}
+                    placeholder="Description (Bangla)"
+                    rows={2}
+                    className="w-full px-4 py-3 rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-white font-bold text-sm resize-none"
+                  />
+                  <textarea
+                    required
+                    name="descEn"
+                    defaultValue={(editingEvent?.raw as Notice)?.description?.en}
+                    placeholder="Description (English)"
+                    rows={2}
+                    className="w-full px-4 py-3 rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-white font-bold text-sm resize-none"
+                  />
                 </div>
               )}
 
-              <button 
-                type="submit" 
-                className="w-full bg-green-700 text-white py-5 rounded-[1.5rem] font-black uppercase tracking-widest shadow-xl flex items-center justify-center gap-3 hover:bg-green-800 transition-all active:scale-95"
+              <button
+                type="submit"
+                className="w-full bg-green-700 text-white py-3.5 rounded-2xl font-black uppercase tracking-wider flex items-center justify-center gap-2 hover:bg-green-800"
               >
-                <Save className="w-6 h-6" /> {editingEvent ? 'Update Calendar' : 'Save to Calendar'}
+                <Save className="w-5 h-5" /> {editingEvent ? 'Update Calendar' : 'Save to Calendar'}
               </button>
             </form>
           </div>
         </div>
       )}
 
-      <div className="bg-slate-900 rounded-[3rem] p-12 text-white relative overflow-hidden no-print">
-        <div className="absolute top-0 right-0 p-12 opacity-5 pointer-events-none">
-          <CalendarIcon className="w-64 h-64" />
+      <div className="bg-slate-900 rounded-3xl p-8 md:p-10 text-white flex flex-col md:flex-row items-center justify-between gap-6 no-print">
+        <div className="space-y-2 text-center md:text-left">
+          <h2 className="text-2xl font-black flex items-center justify-center md:justify-start gap-2">
+            <CalendarIcon className="w-6 h-6 text-green-400" />
+            {lang === 'bn' ? 'ক্যালেন্ডার ডাউনলোড করতে চান?' : 'Need a Printable Calendar?'}
+          </h2>
+          <p className="text-slate-300 text-sm max-w-lg">
+            {lang === 'bn'
+              ? 'পুরো বছরের একাডেমিক ক্যালেন্ডার প্রিন্ট বা PDF ফরম্যাটে সেভ করুন।'
+              : 'Print or save the full 2026 academic calendar as a clean PDF document.'}
+          </p>
         </div>
-        <div className="relative z-10 flex flex-col md:flex-row items-center justify-between gap-8 text-center md:text-left">
-          <div className="space-y-4">
-            <h2 className="text-3xl font-black">{lang === 'bn' ? 'ক্যালেন্ডার ডাউনলোড করতে চান?' : 'Need a Printed Copy?'}</h2>
-            <p className="text-slate-400 max-w-lg font-medium">
-              {lang === 'bn' 
-                ? 'পুরো বছরের একাডেমিক ক্যালেন্ডার ও ছুটির তালিকা পিডিএফ ফরম্যাটে ডাউনলোড করুন।' 
-                : 'Download the full academic calendar and holiday list in PDF format for offline use.'}
-            </p>
-          </div>
-          <button 
-            onClick={handleDownloadPDF}
-            className="bg-green-600 hover:bg-green-700 text-white px-10 py-5 rounded-2xl font-black uppercase tracking-widest text-xs transition-all shadow-2xl shadow-green-600/20 active:scale-95 flex items-center gap-3"
-          >
-            <FileDown className="w-5 h-5" />
-            {lang === 'bn' ? 'পিডিএফ ডাউনলোড করুন' : 'Download PDF Calendar'}
-          </button>
-        </div>
+        <button
+          onClick={() => window.print()}
+          className="bg-green-600 hover:bg-green-700 text-white px-7 py-3.5 rounded-2xl font-black uppercase tracking-wider text-xs flex items-center gap-2 shrink-0"
+        >
+          <FileDown className="w-4 h-4" />
+          {lang === 'bn' ? 'পিডিএফ / প্রিন্ট করুন' : 'Print / Save PDF'}
+        </button>
       </div>
     </div>
   );

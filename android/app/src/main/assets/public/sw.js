@@ -1,1 +1,179 @@
-if(!self.define){let e,s={};const a=(a,i)=>(a=new URL(a+".js",i).href,s[a]||new Promise(s=>{if("document"in self){const e=document.createElement("script");e.src=a,e.onload=s,document.head.appendChild(e)}else e=a,importScripts(a),s()}).then(()=>{let e=s[a];if(!e)throw new Error(`Module ${a} didn’t register its module`);return e}));self.define=(i,n)=>{const o=e||("document"in self?document.currentScript.src:"")||location.href;if(s[o])return;let r={};const c=e=>a(e,o),b={module:{uri:o},exports:r,require:c};s[o]=Promise.all(i.map(e=>b[e]||c(e))).then(e=>(n(...e),r))}}define(["./workbox-835c8c05"],function(e){"use strict";self.skipWaiting(),e.clientsClaim(),e.precacheAndRoute([{url:"pwa-maskable-512x512.png",revision:"a97ba18f10bbd101ab44257a4503c178"},{url:"pwa-512x512.png",revision:"119fb253eb1a28027b50e2b292b74503"},{url:"pwa-192x192.png",revision:"8a954c8ff0db5bc904702eaac9aab1d6"},{url:"index.html",revision:"914d6e86d7f899ce9b479a428abb7824"},{url:"icon.svg",revision:"be800af3fadedac6906f21ebda15b6b5"},{url:"icon-maskable.svg",revision:"e7b55a0d9525a8ea34740b8dd3458944"},{url:"favicon.ico",revision:"c003099e40e0994a8dd6edfc4b1a7d7a"},{url:"apple-touch-icon.png",revision:"7ec8e7b5b89a89bd1fdbb31c2fafee42"},{url:"assets/workbox-window.prod.es5-BAA1jQbh.js",revision:null},{url:"assets/react-k7xHRe2V.js",revision:null},{url:"assets/index-CMBWTqLJ.js",revision:null},{url:"assets/firebase-CcntOwai.js",revision:null},{url:"apple-touch-icon.png",revision:"7ec8e7b5b89a89bd1fdbb31c2fafee42"},{url:"favicon.ico",revision:"c003099e40e0994a8dd6edfc4b1a7d7a"},{url:"icon.svg",revision:"be800af3fadedac6906f21ebda15b6b5"},{url:"pwa-192x192.png",revision:"8a954c8ff0db5bc904702eaac9aab1d6"},{url:"pwa-512x512.png",revision:"119fb253eb1a28027b50e2b292b74503"},{url:"pwa-maskable-512x512.png",revision:"a97ba18f10bbd101ab44257a4503c178"},{url:"manifest.webmanifest",revision:"22e296cebd0397a9120268fc431dd5d0"}],{}),e.cleanupOutdatedCaches(),e.registerRoute(new e.NavigationRoute(e.createHandlerBoundToURL("index.html"))),e.registerRoute(/^https:\/\/fonts\.googleapis\.com\/.*/i,new e.CacheFirst({cacheName:"google-fonts-cache",plugins:[new e.ExpirationPlugin({maxEntries:10,maxAgeSeconds:31536e3}),new e.CacheableResponsePlugin({statuses:[0,200]})]}),"GET"),e.registerRoute(/^https:\/\/fonts\.gstatic\.com\/.*/i,new e.CacheFirst({cacheName:"gstatic-fonts-cache",plugins:[new e.ExpirationPlugin({maxEntries:10,maxAgeSeconds:31536e3}),new e.CacheableResponsePlugin({statuses:[0,200]})]}),"GET")});
+/**
+ * Copyright 2018 Google Inc. All Rights Reserved.
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+
+// If the loader is already loaded, just stop.
+if (!self.define) {
+  let registry = {};
+
+  // Used for `eval` and `importScripts` where we can't get script URL by other means.
+  // In both cases, it's safe to use a global var because those functions are synchronous.
+  let nextDefineUri;
+
+  const singleRequire = (uri, parentUri) => {
+    uri = new URL(uri + ".js", parentUri).href;
+    return registry[uri] || (
+      
+        new Promise(resolve => {
+          if ("document" in self) {
+            const script = document.createElement("script");
+            script.src = uri;
+            script.onload = resolve;
+            document.head.appendChild(script);
+          } else {
+            nextDefineUri = uri;
+            importScripts(uri);
+            resolve();
+          }
+        })
+      
+      .then(() => {
+        let promise = registry[uri];
+        if (!promise) {
+          throw new Error(`Module ${uri} didn’t register its module`);
+        }
+        return promise;
+      })
+    );
+  };
+
+  self.define = (depsNames, factory) => {
+    const uri = nextDefineUri || ("document" in self ? document.currentScript.src : "") || location.href;
+    if (registry[uri]) {
+      // Module is already loading or loaded.
+      return;
+    }
+    let exports = {};
+    const require = depUri => singleRequire(depUri, uri);
+    const specialDeps = {
+      module: { uri },
+      exports,
+      require
+    };
+    registry[uri] = Promise.all(depsNames.map(
+      depName => specialDeps[depName] || require(depName)
+    )).then(deps => {
+      factory(...deps);
+      return exports;
+    });
+  };
+}
+define(['./workbox-afac4cd2'], (function (workbox) { 'use strict';
+
+  self.skipWaiting();
+  workbox.clientsClaim();
+  /**
+   * The precacheAndRoute() method efficiently caches and responds to
+   * requests for URLs in the manifest.
+   * See https://goo.gl/S9QRab
+   */
+  workbox.precacheAndRoute([{
+    "url": "pwa-maskable-512x512.png",
+    "revision": "a97ba18f10bbd101ab44257a4503c178"
+  }, {
+    "url": "pwa-512x512.png",
+    "revision": "119fb253eb1a28027b50e2b292b74503"
+  }, {
+    "url": "pwa-192x192.png",
+    "revision": "8a954c8ff0db5bc904702eaac9aab1d6"
+  }, {
+    "url": "index.html",
+    "revision": "338ad64d53c29a725fefcdd40574f82c"
+  }, {
+    "url": "icon.svg",
+    "revision": "be800af3fadedac6906f21ebda15b6b5"
+  }, {
+    "url": "icon-maskable.svg",
+    "revision": "e7b55a0d9525a8ea34740b8dd3458944"
+  }, {
+    "url": "favicon.ico",
+    "revision": "c003099e40e0994a8dd6edfc4b1a7d7a"
+  }, {
+    "url": "apple-touch-icon.png",
+    "revision": "7ec8e7b5b89a89bd1fdbb31c2fafee42"
+  }, {
+    "url": "assets/workbox-window.prod.es5-BBnX5xw4.js",
+    "revision": null
+  }, {
+    "url": "assets/school_sports_event_1795249139851-HA8hA32k.jpg",
+    "revision": null
+  }, {
+    "url": "assets/school_science_lab_1795249139703-XS-8brU9.jpg",
+    "revision": null
+  }, {
+    "url": "assets/school_computer_lab_1795249139475-CS-dtUbv.jpg",
+    "revision": null
+  }, {
+    "url": "assets/react-BBcbjK4e.js",
+    "revision": null
+  }, {
+    "url": "assets/index-C_CrRLWb.js",
+    "revision": null
+  }, {
+    "url": "assets/index-CPgMBujZ.css",
+    "revision": null
+  }, {
+    "url": "assets/hero_school_campus_1795249139717-ZseLXjk7.jpg",
+    "revision": null
+  }, {
+    "url": "assets/head_teacher_portrait_1795249139021-CsKhgLlK.jpg",
+    "revision": null
+  }, {
+    "url": "assets/firebase-3MFbwfca.js",
+    "revision": null
+  }, {
+    "url": "assets/aistudio/Screenshot_2026-11-14_232651_e2dfdac2.png",
+    "revision": null
+  }, {
+    "url": "apple-touch-icon.png",
+    "revision": "7ec8e7b5b89a89bd1fdbb31c2fafee42"
+  }, {
+    "url": "favicon.ico",
+    "revision": "c003099e40e0994a8dd6edfc4b1a7d7a"
+  }, {
+    "url": "icon.svg",
+    "revision": "be800af3fadedac6906f21ebda15b6b5"
+  }, {
+    "url": "pwa-192x192.png",
+    "revision": "8a954c8ff0db5bc904702eaac9aab1d6"
+  }, {
+    "url": "pwa-512x512.png",
+    "revision": "119fb253eb1a28027b50e2b292b74503"
+  }, {
+    "url": "pwa-maskable-512x512.png",
+    "revision": "a97ba18f10bbd101ab44257a4503c178"
+  }, {
+    "url": "manifest.webmanifest",
+    "revision": "b60d5757d3cc9da6251cd22b76fc40cc"
+  }], {});
+  workbox.cleanupOutdatedCaches();
+  workbox.registerRoute(new workbox.NavigationRoute(workbox.createHandlerBoundToURL("index.html")));
+  workbox.registerRoute(/^https:\/\/fonts\.googleapis\.com\/.*/i, new workbox.CacheFirst({
+    "cacheName": "google-fonts-cache",
+    plugins: [new workbox.ExpirationPlugin({
+      maxEntries: 10,
+      maxAgeSeconds: 31536000
+    }), new workbox.CacheableResponsePlugin({
+      statuses: [0, 200]
+    })]
+  }), 'GET');
+  workbox.registerRoute(/^https:\/\/fonts\.gstatic\.com\/.*/i, new workbox.CacheFirst({
+    "cacheName": "gstatic-fonts-cache",
+    plugins: [new workbox.ExpirationPlugin({
+      maxEntries: 10,
+      maxAgeSeconds: 31536000
+    }), new workbox.CacheableResponsePlugin({
+      statuses: [0, 200]
+    })]
+  }), 'GET');
+
+}));

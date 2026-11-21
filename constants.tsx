@@ -1,414 +1,887 @@
+import {
+  Notice,
+  Teacher,
+  ClassRoutine,
+  SyllabusItem,
+  EBook,
+  GalleryItem,
+  Holiday,
+  SchoolSettings,
+  SchoolStudent,
+  HomeworkItem,
+  OnlineExam,
+  ExamRoutineItem,
+  SchoolSubject,
+  AlumniProfile,
+} from './types';
+import {
+  heroCampusImg,
+  headTeacherImg,
+  scienceLabImg,
+  computerLabImg,
+  sportsEventImg,
+} from './src/assets/media';
 
-import { Notice, Teacher, GalleryItem, AcademicClass, LocalizedString, Holiday, Syllabus, ClassRoutine } from './types';
-
-export const SCHOOL_NAME: LocalizedString = {
-  bn: "রাণীর বাজার মাধ্যমিক বিদ্যালয়",
-  en: "Ranir Bazar Secondary High School"
+export const SCHOOL_NAME = {
+  bn: 'রাণীর বাজার মাধ্যমিক বিদ্যালয়',
+  en: 'Ranir Bazar Secondary High School',
 };
 
-export const EIIN = "105342";
-
-export const CONTACT_INFO = {
-  mobile: "01516528497",
-  email: "mdjahidulislam1025@gmail.com",
+export const INITIAL_SETTINGS: SchoolSettings = {
+  name: SCHOOL_NAME,
+  eiin: '105842',
+  phone: '+880 1711-000000',
+  email: 'info@ranirbazarhighschool.edu.bd',
   location: {
-    bn: "রানির বাজার, চৌদ্দগ্রাম, কুমিল্লা",
-    en: "Ranir Bazar, Chauddagram, Cumilla"
-  }
+    bn: 'রাণীর বাজার, চৌদ্দগ্রাম, কুমিল্লা-৩৫৫০, বাংলাদেশ',
+    en: 'Ranir Bazar, Chauddagram, Cumilla-3550, Bangladesh',
+  },
+  schoolPhoto: heroCampusImg,
+  headTeacherName: {
+    bn: 'মোঃ আব্দুল করিম',
+    en: 'Md. Abdul Karim',
+  },
+  headTeacherMessage: {
+    bn: 'সুপ্রিয় শিক্ষার্থী ও অভিভাবকবৃন্দ, রাণীর বাজার মাধ্যমিক বিদ্যালয়ের ডিজিটাল পোর্টালে আপনাদের স্বাগতম। ১৯৫৮ সাল থেকে আমাদের প্রতিষ্ঠান নৈতিক শিক্ষা, বিজ্ঞানমনস্কতা ও সহশিক্ষা কার্যক্রমে অগ্রণী ভূমিকা পালন করে আসছে। আধুনিক স্মার্ট শিক্ষা ব্যবস্থার মাধ্যমে প্রতিটি শিক্ষার্থীকে যোগ্য নাগরিক হিসেবে গড়ে তোলাই আমাদের মূল লক্ষ্য।',
+    en: 'Dear Students and Guardians, welcome to the digital portal of Ranir Bazar Secondary High School. Since 1958, our institution has championed moral values, scientific inquiry, and co-curricular excellence. Our mission is to prepare every learner as a confident, compassionate citizen through modern digital education.',
+  },
+  headTeacherPhoto: headTeacherImg,
+  latitude: 23.2248,
+  longitude: 91.3185,
 };
 
-export interface EBook {
-  id: string;
-  title: LocalizedString;
-  classId: string;
-  className: LocalizedString;
-  coverUrl: string;
-  downloadUrl: string;
-  subject: string;
-}
-
-export const E_BOOKS_2026: EBook[] = [
-  // Class 6 - NCTB 2026
-  {
-    id: 'c6-bn',
-    title: { bn: 'বাংলা (৬ষ্ঠ)', en: 'Bangla (Class 6)' },
-    classId: '6',
-    className: { bn: '৬ষ্ঠ শ্রেণী', en: 'Class 6' },
-    subject: 'Bangla',
-    coverUrl: 'https://images.unsplash.com/photo-1544947950-fa07a98d237f?auto=format&fit=crop&q=80&w=300&h=400',
-    downloadUrl: '#'
-  },
-  {
-    id: 'c6-en',
-    title: { bn: 'English (Class 6)', en: 'English (Class 6)' },
-    classId: '6',
-    className: { bn: '৬ষ্ঠ শ্রেণী', en: 'Class 6' },
-    subject: 'English',
-    coverUrl: 'https://images.unsplash.com/photo-1589998059171-988d887df646?auto=format&fit=crop&q=80&w=300&h=400',
-    downloadUrl: '#'
-  },
-  {
-    id: 'c6-math',
-    title: { bn: 'গণিত (৬ষ্ঠ)', en: 'Mathematics (Class 6)' },
-    classId: '6',
-    className: { bn: '৬ষ্ঠ শ্রেণী', en: 'Class 6' },
-    subject: 'Math',
-    coverUrl: 'https://images.unsplash.com/photo-1509228468518-180dd4864904?auto=format&fit=crop&q=80&w=300&h=400',
-    downloadUrl: '#'
-  },
-  {
-    id: 'c6-sci-inq',
-    title: { bn: 'বিজ্ঞান: অনুসন্ধানী পাঠ', en: 'Science: Inquiry Path' },
-    classId: '6',
-    className: { bn: '৬ষ্ঠ শ্রেণী', en: 'Class 6' },
-    subject: 'Science',
-    coverUrl: 'https://images.unsplash.com/photo-1532094349884-543bc11b234d?auto=format&fit=crop&q=80&w=300&h=400',
-    downloadUrl: '#'
-  },
-  {
-    id: 'c6-sci-prac',
-    title: { bn: 'বিজ্ঞান: অনুশীলন বই', en: 'Science: Practice Book' },
-    classId: '6',
-    className: { bn: '৬ষ্ঠ শ্রেণী', en: 'Class 6' },
-    subject: 'Science',
-    coverUrl: 'https://images.unsplash.com/photo-1636466484292-711224159c5a?auto=format&fit=crop&q=80&w=300&h=400',
-    downloadUrl: '#'
-  },
-  {
-    id: 'c6-digi',
-    title: { bn: 'ডিজিটাল প্রযুক্তি', en: 'Digital Technology' },
-    classId: '6',
-    className: { bn: '৬ষ্ঠ শ্রেণী', en: 'Class 6' },
-    subject: 'Tech',
-    coverUrl: 'https://images.unsplash.com/photo-1518770660439-4636190af475?auto=format&fit=crop&q=80&w=300&h=400',
-    downloadUrl: '#'
-  },
-
-  // Class 7 - NCTB 2026
-  {
-    id: 'c7-bn',
-    title: { bn: 'বাংলা (৭ম)', en: 'Bangla (Class 7)' },
-    classId: '7',
-    className: { bn: '৭ম শ্রেণী', en: 'Class 7' },
-    subject: 'Bangla',
-    coverUrl: 'https://images.unsplash.com/photo-1544947950-fa07a98d237f?auto=format&fit=crop&q=80&w=300&h=400',
-    downloadUrl: '#'
-  },
-  {
-    id: 'c7-math',
-    title: { bn: 'গণিত (৭ম)', en: 'Mathematics (Class 7)' },
-    classId: '7',
-    className: { bn: '৭ম শ্রেণী', en: 'Class 7' },
-    subject: 'Math',
-    coverUrl: 'https://images.unsplash.com/photo-1509228468518-180dd4864904?auto=format&fit=crop&q=80&w=300&h=400',
-    downloadUrl: '#'
-  },
-  {
-    id: 'c7-his',
-    title: { bn: 'ইতিহাস ও সামাজিক বিজ্ঞান', en: 'History & Social Science' },
-    classId: '7',
-    className: { bn: '৭ম শ্রেণী', en: 'Class 7' },
-    subject: 'Social',
-    coverUrl: 'https://images.unsplash.com/photo-1447069387593-a5de0862481e?auto=format&fit=crop&q=80&w=300&h=400',
-    downloadUrl: '#'
-  },
-
-  // Class 8 - NCTB 2026
-  {
-    id: 'c8-bn',
-    title: { bn: 'বাংলা (৮ম)', en: 'Bangla (Class 8)' },
-    classId: '8',
-    className: { bn: '৮ম শ্রেণী', en: 'Class 8' },
-    subject: 'Bangla',
-    coverUrl: 'https://images.unsplash.com/photo-1544947950-fa07a98d237f?auto=format&fit=crop&q=80&w=300&h=400',
-    downloadUrl: '#'
-  },
-  {
-    id: 'c8-math',
-    title: { bn: 'গণিত (৮ম)', en: 'Mathematics (Class 8)' },
-    classId: '8',
-    className: { bn: '৮ম শ্রেণী', en: 'Class 8' },
-    subject: 'Math',
-    coverUrl: 'https://images.unsplash.com/photo-1509228468518-180dd4864904?auto=format&fit=crop&q=80&w=300&h=400',
-    downloadUrl: '#'
-  },
-
-  // Class 9-10 - NCTB 2026
-  {
-    id: 'c9-phy',
-    title: { bn: 'পদার্থবিজ্ঞান (৯ম)', en: 'Physics (Class 9)' },
-    classId: '9',
-    className: { bn: '৯ম শ্রেণী', en: 'Class 9' },
-    subject: 'Science',
-    coverUrl: 'https://images.unsplash.com/photo-1636466484292-711224159c5a?auto=format&fit=crop&q=80&w=300&h=400',
-    downloadUrl: '#'
-  },
-  {
-    id: 'c9-chem',
-    title: { bn: 'রসায়ন (৯ম)', en: 'Chemistry (Class 9)' },
-    classId: '9',
-    className: { bn: '৯ম শ্রেণী', en: 'Class 9' },
-    subject: 'Science',
-    coverUrl: 'https://images.unsplash.com/photo-1603126857599-f6e157fa2fe6?auto=format&fit=crop&q=80&w=300&h=400',
-    downloadUrl: '#'
-  },
-  {
-    id: 'c10-bio',
-    title: { bn: 'জীববিজ্ঞান (১০ম)', en: 'Biology (Class 10)' },
-    classId: '10',
-    className: { bn: '১০ম শ্রেণী', en: 'Class 10' },
-    subject: 'Science',
-    coverUrl: 'https://images.unsplash.com/photo-1530210124550-912dc1381cb8?auto=format&fit=crop&q=80&w=300&h=400',
-    downloadUrl: '#'
-  }
-];
-
-export const SYLLABUS_2026: Syllabus[] = [
-  {
-    classId: '6',
-    className: { bn: '৬ষ্ঠ শ্রেণী', en: 'Class 6' },
-    subjects: [
-      { name: { bn: 'বাংলা', en: 'Bangla' }, code: '101' },
-      { name: { bn: 'ইংরেজি', en: 'English' }, code: '107' },
-      { name: { bn: 'গণিত', en: 'Mathematics' }, code: '109' },
-    ]
-  },
-  {
-    classId: '9',
-    className: { bn: '৯ম শ্রেণী', en: 'Class 9' },
-    subjects: [
-      { name: { bn: 'বাংলা', en: 'Bangla' }, code: '101' },
-      { name: { bn: 'ইংরেজি', en: 'English' }, code: '107' },
-      { name: { bn: 'গণিত', en: 'Mathematics' }, code: '109' },
-    ]
-  },
-  {
-    classId: '10',
-    className: { bn: '১০ম শ্রেণী', en: 'Class 10' },
-    subjects: [
-      { name: { bn: 'বাংলা', en: 'Bangla' }, code: '101' },
-      { name: { bn: 'ইংরেজি', en: 'English' }, code: '107' },
-      { name: { bn: 'গণিত', en: 'Mathematics' }, code: '109' },
-      { name: { bn: 'পদার্থবিজ্ঞান', en: 'Physics' }, code: '071' },
-    ]
-  }
-];
-
-const DAYS = [
-  { bn: 'শনিবার', en: 'Saturday' },
-  { bn: 'রবিবার', en: 'Sunday' },
-  { bn: 'সোমবার', en: 'Monday' },
-  { bn: 'মঙ্গলবার', en: 'Tuesday' },
-  { bn: 'বুধবার', en: 'Wednesday' },
-  { bn: 'বৃহস্পতিবার', en: 'Thursday' },
-];
-
-export const CLASS_ROUTINES: ClassRoutine[] = [
-  {
-    classId: '6',
-    className: { bn: '৬ষ্ঠ শ্রেণী', en: 'Class 6' },
-    schedule: DAYS.map(day => ({
-      day,
-      periods: [
-        { time: '10:00 - 10:45', subject: { bn: 'বাংলা', en: 'Bangla' } },
-        { time: '10:45 - 11:30', subject: { bn: 'ইংরেজি', en: 'English' } },
-        { time: '11:30 - 12:15', subject: { bn: 'গণিত', en: 'Math' } },
-      ]
-    }))
-  }
-];
-
-export const HOLIDAYS_2026: Holiday[] = [
-  {
-    id: 'h1',
-    title: { bn: 'শহীদ দিবস', en: 'Martyrs Day' },
-    date: '2026-02-21',
-    duration: { bn: '১ দিন', en: '1 Day' },
-    type: 'National'
-  },
-  {
-    id: 'h2',
-    title: { bn: 'স্বাধীনতা দিবস', en: 'Independence Day' },
-    date: '2026-03-26',
-    duration: { bn: '১ দিন', en: '1 Day' },
-    type: 'National'
-  }
-];
-
-export const NOTICES: Notice[] = [
-  {
-    id: 'n1',
-    title: { bn: 'ভর্তি বিজ্ঞপ্তি ২০২৬', en: 'Admission Notice 2026' },
-    date: '2026-01-05',
-    category: 'Admission',
-    description: { 
-      bn: '২০২৬ শিক্ষাবর্ষে ৬ষ্ঠ থেকে ৯ম শ্রেণীতে অনলাইনে ভর্তি আবেদন শুরু হয়েছে।', 
-      en: 'Online admission applications for classes 6 to 9 for the 2026 academic year have started.' 
-    }
-  },
-  {
-    id: 'n2',
-    title: { bn: 'অর্ধ-বার্ষিক পরীক্ষা ২০২৬', en: 'Half-Yearly Exam 2026' },
-    date: '2026-06-15',
-    category: 'Exam',
-    description: { 
-      bn: 'সকল শ্রেণীর অর্ধ-বার্ষিক পরীক্ষা আগামী ১৫ই জুন থেকে শুরু হবে।', 
-      en: 'Half-yearly examination for all classes will start from June 15.' 
-    }
-  },
-  {
-    id: 'n3',
-    title: { bn: 'বার্ষিক পরীক্ষা ২০২৬', en: 'Annual Exam 2026' },
-    date: '2026-11-20',
-    category: 'Exam',
-    description: { 
-      bn: 'সকল শ্রেণীর বার্ষিক পরীক্ষা আগামী ২০শে নভেম্বর থেকে শুরু হবে।', 
-      en: 'Annual examination for all classes will start from November 20.' 
-    }
-  }
-];
-
-export const TEACHERS: Teacher[] = [
-  {
-    id: 'head-teacher',
-    name: { bn: 'মোঃ আব্দুল কুদ্দুস', en: 'Md. Abdul Kuddus' },
-    designation: { bn: 'প্রধান শিক্ষক', en: 'Head Teacher' },
-    subject: { bn: 'প্রশাসন', en: 'Administration' },
-    qualification: { bn: 'এম.এ, বি.এড', en: 'MA, BEd' },
-    photo: 'https://images.unsplash.com/photo-1560250097-0b93528c311a?auto=format&fit=crop&q=80&w=400&h=400'
-  },
-  {
-    id: 't2',
-    name: { bn: 'মোসাম্মাৎ জেসমিন আক্তার', en: 'Mst. Jasmine Akter' },
-    designation: { bn: 'सहকারী শিক্ষক', en: 'Assistant Teacher' },
-    subject: { bn: 'ইংরেজি', en: 'English' },
-    qualification: { bn: 'বি.এ (সম্মান), এম.এ', en: 'BA (Hons), MA' },
-    photo: 'https://images.unsplash.com/photo-1544005313-94ddf0286df2?auto=format&fit=crop&q=80&w=400&h=400'
-  }
-];
-
-export const GALLERY: GalleryItem[] = [
-  {
-    id: 'g1',
-    url: 'https://images.unsplash.com/photo-1523050853064-8504f2f40fd5?auto=format&fit=crop&q=80&w=800&h=600',
-    caption: { bn: 'বিদ্যালয় প্রাঙ্গণ', en: 'School Campus' }
-  },
-  {
-    id: 'g2',
-    url: 'https://images.unsplash.com/photo-1509062522246-3755977927d7?auto=format&fit=crop&q=80&w=800&h=600',
-    caption: { bn: 'শ্রেণীকক্ষের কার্যক্রম', en: 'Classroom Activities' }
-  }
-];
-
-export const CLASSES: AcademicClass[] = [
-  { className: { bn: '৬ষ্ঠ শ্রেণী', en: 'Class 6' }, sections: ['A'], totalStudents: 120 },
-  { className: { bn: '৭ম শ্রেণী', en: 'Class 7' }, sections: ['A'], totalStudents: 115 },
-  { className: { bn: '৮ম শ্রেণী', en: 'Class 8' }, sections: ['A'], totalStudents: 110 },
-  { className: { bn: '৯ম শ্রেণী', en: 'Class 9' }, sections: ['Science', 'Arts', 'Commerce'], totalStudents: 105 },
-  { className: { bn: '১০ম শ্রেণী', en: 'Class 10' }, sections: ['Science', 'Arts', 'Commerce'], totalStudents: 100 },
-];
+export const DEVELOPER_CREDIT = {
+  text: 'Developed by Jahidul Islam • IIT, University of Dhaka',
+  short: 'Jahidul Islam (IIT, DU)',
+};
 
 export const TRANSLATIONS = {
   nav: {
     home: { bn: 'মূল পাতা', en: 'Home' },
-    about: { bn: 'বিদ্যালয় পরিচিতি', en: 'About' },
-    notices: { bn: 'নোটিশ বোর্ড', en: 'Notice Board' },
-    teachers: { bn: 'শিক্ষক মন্ডলী', en: 'Teachers' },
-    admission: { bn: 'ভর্তি তথ্য', en: 'Admission' },
+    about: { bn: 'পরিচিতি', en: 'About' },
+    notices: { bn: 'নোটিশ', en: 'Notices' },
+    teachers: { bn: 'শিক্ষকমণ্ডলী', en: 'Teachers' },
+    routine: { bn: 'রুটিন', en: 'Routine' },
+    syllabus: { bn: 'সিলেবাস', en: 'Syllabus' },
+    ebooks: { bn: 'ডিজিটাল লাইব্রেরি', en: 'Digital Library' },
+    exams: { bn: 'অনলাইন পরীক্ষা', en: 'Online Exam' },
+    holidays: { bn: 'ছুটির তালিকা', en: 'Holidays' },
+    calendar: { bn: 'ক্যালেন্ডার', en: 'Calendar' },
+    admission: { bn: 'ভর্তি আবেদন', en: 'Admission' },
     gallery: { bn: 'গ্যালারি', en: 'Gallery' },
+    alumni: { bn: 'অ্যালামনাই', en: 'Alumni' },
     contact: { bn: 'যোগাযোগ', en: 'Contact' },
-    login: { bn: 'লগইন', en: 'Login' },
+    login: { bn: 'লগইন / পোর্টাল', en: 'Portal Login' },
     studentLogin: { bn: 'শিক্ষার্থী লগইন', en: 'Student Login' },
     teacherLogin: { bn: 'শিক্ষক লগইন', en: 'Teacher Login' },
+    parentLogin: { bn: 'অভিভাবক লগইন', en: 'Parent Login' },
     adminLogin: { bn: 'অ্যাডমিন লগইন', en: 'Admin Login' },
-    syllabus: { bn: 'সিলেবাস', en: 'Syllabus' },
-    routine: { bn: 'ক্লাস রুটিন', en: 'Class Routine' },
-    ebooks: { bn: 'ই-বুক লাইব্রেরি', en: 'E-book Library' },
-  },
-  // ... rest of translations
-  hero: {
-    subtitle: { bn: 'জ্ঞানের আলোয় আলোকিত হোক আগামীর ভবিষ্যৎ।', en: 'Let the light of knowledge illuminate the future.' },
-    apply: { bn: 'ভর্তি সংক্রান্ত তথ্য', en: 'Admission Info' },
-    learnMore: { bn: 'বিস্তারিত জানুন', en: 'Learn More' },
-  },
-  stats: {
-    students: { bn: 'ছাত্র-ছাত্রী', en: 'Students' },
-    teachers: { bn: 'শিক্ষক মন্ডলী', en: 'Teachers' },
-    passRate: { bn: 'পাশের হার', en: 'Pass Rate' },
-    library: { bn: 'পাঠাগার', en: 'Library' },
-  },
-  headMessage: {
-    title: { bn: 'প্রধান শিক্ষকের বাণী', en: "Head Teacher's Message" },
-    greeting: { bn: 'শুভেচ্ছা বার্তা', en: 'Greeting Message' },
-    body: { bn: '"আমরা শিক্ষার্থীকে সুনাগরিক হিসেবে গড়ে তোলাই আমাদের লক্ষ্য। জ্ঞানের মশাল বহন করে এগিয়ে যাক আমাদের প্রতিটি শিক্ষার্থী।"', en: '"Our goal is to build students as good citizens. Let every student move forward carrying the torch of knowledge."' }
-  },
-  admission: {
-    title: { bn: 'ভর্তি সংক্রান্ত তথ্য', en: 'Admission Information' },
-    desc: { bn: 'ভর্তি সংক্রান্ত সকল তথ্য এখানে পাওয়া যাবে।', en: 'All admission related information can be found here.' },
-    process: { bn: 'ভর্তি প্রক্রিয়া', en: 'Admission Process' },
-    onlineApply: { bn: 'অনলাইন আবেদন', en: 'Online Application' },
-    applyBtn: { bn: 'আবেদন ফরম পূরণ করুন', en: 'Fill Application' },
-    back: { bn: 'তথ্য পাতায় ফিরে যান', en: 'Back' },
-    formTitle: { bn: 'অনলাইন ভর্তি ফরম', en: 'Online Admission Form' },
-    successTitle: { bn: 'আবেদন সফল হয়েছে!', en: 'Successful!' },
-    successDesc: { bn: 'আমরা শীঘ্রই আপনার সাথে যোগাযোগ করব।', en: 'We will contact you soon.' },
-    appId: { bn: 'আবেদন আইডি:', en: 'App ID:' },
-    backHome: { bn: 'মূল পাতায় ফিরে যান', en: 'Home' },
   },
   login: {
-    studentTitle: { bn: 'শিক্ষার্থী লগইন পোর্টাল', en: 'Student Login Portal' },
-    teacherTitle: { bn: 'শিক্ষক লগইন পোর্টাল', en: 'Teacher Login Portal' },
-    adminTitle: { bn: 'অ্যাডমিন লগইন পোর্টাল', en: 'Admin Login Portal' },
-    username: { bn: 'ইউজার আইডি / রোল নম্বর', en: 'User ID' },
-    password: { bn: 'পাসওয়ার্ড', en: 'Password' },
-    signIn: { bn: 'লগইন করুন', en: 'Sign In' },
-    rememberMe: { bn: 'মনে রাখুন', en: 'Remember Me' },
-    forgotPassword: { bn: 'পাসওয়ার্ড ভুলে গেছেন?', en: 'Forgot?' },
     studentTab: { bn: 'শিক্ষার্থী', en: 'Student' },
     teacherTab: { bn: 'শিক্ষক', en: 'Teacher' },
+    parentTab: { bn: 'অভিভাবক', en: 'Parent' },
     adminTab: { bn: 'অ্যাডমিন', en: 'Admin' },
   },
-  holiday: {
-    title: { bn: 'ছুটির তালিকা', en: 'Academic Holiday List' },
-    subtitle: { bn: 'ছুটির তালিকা নিচে দেওয়া হলো।', en: 'Holiday list is below.' },
-    date: { bn: 'তারিখ', en: 'Date' },
-    holidayName: { bn: 'ছুটির নাম', en: 'Holiday Name' },
-    duration: { bn: 'সময়কাল', en: 'Duration' },
-    type: { bn: 'ধরণ', en: 'Type' },
-    note: { bn: '*চাঁদ দেখার উপর নির্ভরশীল', en: '*Subject to Moon' }
-  },
-  form: {
-    studentName: { bn: 'শিক্ষার্থীর নাম', en: "Student Name" },
-    fatherName: { bn: 'পিতার নাম', en: "Father's Name" },
-    motherName: { bn: 'মাতার নাম', en: "Mother's Name" },
-    guardianName: { bn: 'অভিভাবকের নাম', en: "Guardian Name" },
-    guardianMobile: { bn: 'অভিভাবকের মোবাইল', en: "Guardian Mobile" },
-    mobile: { bn: 'শিক্ষার্থীর মোবাইল (যদি থাকে)', en: "Student Mobile" },
-    class: { bn: 'শ্রেণী', en: 'Class' },
-    birthDate: { bn: 'জন্ম তারিখ', en: 'Date of Birth' },
-    submit: { bn: 'দাখিল করুন', en: 'Submit' },
-    submitting: { bn: 'পাঠানো হচ্ছে...', en: 'Submitting...' },
-    selectClass: { bn: 'নির্বাচন করুন', en: 'Select' },
-  },
-  footer: {
-    tagline: { bn: 'একটি মানসম্মত শিক্ষা প্রতিষ্ঠান যা দীর্ঘ দিন ধরে জ্ঞানের আলো ছড়িয়ে যাচ্ছে।', en: 'Spreading light of knowledge for a long time.' },
-    links: { bn: 'দ্রুত লিংক', en: 'Quick Links' },
-    academic: { bn: 'একাডেমিক', en: 'Academic' },
-    social: { bn: 'সোশ্যাল মিডিয়া', en: 'Social' },
-    copyright: { bn: 'সর্বস্বত্ব সংরক্ষিত।', en: 'All rights reserved.' },
-    result: { bn: 'ফলাফল', en: 'Result' },
-    holidays: { bn: 'ছুটির তালিকা', en: 'Holidays' },
-    library: { bn: 'পাঠাগার', en: 'Library' },
+  hero: {
+    tagline: {
+      bn: 'সুশিক্ষা ও নৈতিক মূল্যবোধের বাতিঘর — ১৯৫৮ থেকে আলোকিত প্রজন্ম গড়ার প্রত্যয়ে।',
+      en: 'A beacon of quality education & moral values — shaping bright generations since 1958.',
+    },
+    subtitle: {
+      bn: 'স্মার্ট শিক্ষা, অনলাইন পরীক্ষা, ডিজিটাল লাইব্রেরি ও আধুনিক ক্যাম্পাস ব্যবস্থাপনা।',
+      en: 'Smart classrooms, online examinations, digital library, and integrated campus management.',
+    },
+    admissionBtn: { bn: 'অনলাইন ভর্তি আবেদন', en: 'Online Admission' },
+    exploreBtn: { bn: 'বিদ্যালয় পরিচিতি', en: 'Explore School' },
+    learnMore: { bn: 'বিদ্যালয় পরিচিতি', en: 'Learn More' },
+    portalBtn: { bn: 'স্টুডেন্ট ও টিচার পোর্টাল', en: 'Academic Portals' },
   },
   ui: {
-    seeAll: { bn: 'সব দেখুন', en: 'See All' },
-    latestNews: { bn: 'সর্বশেষ সংবাদ:', en: 'Latest News:' },
-    welcome: { bn: '-এ আপনাকে স্বাগতম!', en: ' Welcome!' },
-    importantLinks: { bn: 'গুরুত্বপূর্ণ লিংক', en: 'Links' },
-    help: { bn: 'সহায়তা চান?', en: 'Help?' },
-    aiAssistant: { bn: 'শিক্ষার্থী সহায়ক (AI)', en: 'Assistant (AI)' },
-    placeholder: { bn: 'আপনার প্রশ্ন লিখুন...', en: 'Type question...' },
-    details: { bn: 'বিস্তারিত', en: 'Details' },
-    downloadPdf: { bn: 'PDF ডাউনলোড', en: 'Download PDF' },
-  }
+    latestNews: { bn: 'সর্বশেষ সংবাদ:', en: 'Latest:' },
+    welcome: { bn: ' -এ স্বাগতম। ভর্তি ও একাডেমিক আপডেটের জন্য নোটিশ বোর্ড দেখুন।', en: ' portal. Check notices for admissions and academic updates.' },
+    readMore: { bn: 'বিস্তারিত', en: 'Details' },
+    seeAll: { bn: 'সবগুলো দেখুন', en: 'See All' },
+    importantLinks: { bn: 'গুরুত্বপূর্ণ লিংকসমূহ', en: 'Important Links' },
+    downloadPdf: { bn: 'পিডিএফ দেখুন', en: 'View Resource' },
+    readOnline: { bn: 'অনলাইনে পড়ুন', en: 'Read Online' },
+    submit: { bn: 'আবেদন জমা দিন', en: 'Submit Application' },
+    search: { bn: 'যেকোনো তথ্য খুঁজুন...', en: 'Search anything...' },
+    noData: { bn: 'কোনো তথ্য পাওয়া যায়নি।', en: 'No matching records found.' },
+  },
+  stats: {
+    students: { bn: 'মোট শিক্ষার্থী', en: 'Total Students' },
+    teachers: { bn: 'অভিজ্ঞ শিক্ষক', en: 'Expert Faculty' },
+    passRate: { bn: 'এসএসসি পাশের হার', en: 'SSC Pass Rate' },
+    established: { bn: 'প্রতিষ্ঠিত', en: 'Established' },
+    library: { bn: 'ডিজিটাল লাইব্রেরি', en: 'Digital Resources' },
+  },
+  gallery: {
+    title: { bn: 'ফটো ও ভিডিও গ্যালারি', en: 'Photo & Video Gallery' },
+    subtitle: {
+      bn: 'বিদ্যালয়ের বার্ষিক ক্রীড়া, বিজ্ঞান মেলা, সাংস্কৃতিক অনুষ্ঠান ও শ্রেণিকক্ষের স্মরণীয় মুহূর্ত।',
+      en: 'Memorable campus highlights from sports days, science fairs, cultural events, and smart classrooms.',
+    },
+  },
+  holiday: {
+    title: { bn: 'বার্ষিক ছুটির তালিকা ২০২৬', en: 'Annual Holiday List 2026' },
+    subtitle: {
+      bn: 'সরকারি প্রজ্ঞাপন অনুযায়ী ২০২৬ শিক্ষাবর্ষের জাতীয়, ধর্মীয় ও মৌসুমি ছুটির তালিকা।',
+      en: 'Official national, religious, and seasonal school holidays for the 2026 academic session.',
+    },
+  },
+  admission: {
+    title: { bn: 'অনলাইন ভর্তি আবেদন ফরম ২০২৬', en: 'Online Admission Application 2026' },
+    onlineApply: { bn: 'অনলাইন ভর্তি আবেদন', en: 'Apply Online' },
+    subtitle: {
+      bn: 'সঠিক তথ্য দিয়ে নিচের ফরমটি পূরণ করুন। জমা দেওয়ার পর প্রাপ্ত আবেদন আইডি (App ID) সংরক্ষণ করুন।',
+      en: 'Fill out the application carefully and keep your tracking App ID for admission status checks.',
+    },
+    studentName: { bn: 'শিক্ষার্থীর পূর্ণ নাম', en: 'Student Full Name' },
+    fatherName: { bn: 'পিতার নাম', en: 'Father Name' },
+    motherName: { bn: 'মাতার নাম', en: 'Mother Name' },
+    guardianMobile: { bn: 'অভিভাবকের মোবাইল নম্বর', en: 'Guardian Mobile' },
+    targetClass: { bn: 'আবেদনকৃত শ্রেণী', en: 'Applying for Class' },
+    targetGroup: { bn: 'বিভাগ (প্রযোজ্য ক্ষেত্রে)', en: 'Academic Group' },
+    birthDate: { bn: 'জন্ম তারিখ', en: 'Date of Birth' },
+    address: { bn: 'বর্তমান ঠিকানা', en: 'Present Address' },
+    prevSchool: { bn: 'পূর্ববর্তী বিদ্যালয়ের নাম', en: 'Previous School Name' },
+    bloodGroup: { bn: 'রক্তের গ্রুপ', en: 'Blood Group' },
+  },
+  ebook: {
+    title: { bn: 'ডিজিটাল লাইব্রেরি ও স্টাডি হাব', en: 'Digital Library & Study Hub' },
+    subtitle: {
+      bn: '৬ষ্ঠ–১০ম শ্রেণীর NCTB পাঠ্যবই, অধ্যায়ভিত্তিক নোট, বিগত বোর্ড প্রশ্ন, মডেল টেস্ট ও ব্যবহারিক গাইড।',
+      en: 'NCTB textbooks, chapter-wise PDFs, previous board questions, model tests, science practicals, math & ICT guides.',
+    },
+  },
 };
+
+export const INITIAL_NOTICES: Notice[] = [
+  {
+    id: 'n-2026-1',
+    title: {
+      bn: '২০২৬ শিক্ষাবর্ষে ৬ষ্ঠ থেকে ৯ম শ্রেণীতে অনলাইন ভর্তি বিজ্ঞপ্তি',
+      en: 'Online Admission Notice for Classes 6–9 (Session 2026)',
+    },
+    date: '2026-01-10',
+    category: 'Admission',
+    description: {
+      bn: 'রাণীর বাজার মাধ্যমিক বিদ্যালয়ে ২০২৬ শিক্ষাবর্ষে ৬ষ্ঠ থেকে ৯ম শ্রেণীতে শূন্য আসনে ভর্তি চলছে। আগ্রহী শিক্ষার্থীদের অনলাইনে Admission পেজ থেকে আবেদন করার জন্য অনুরোধ করা হলো।',
+      en: 'Online applications are now open for vacant seats in Classes 6 to 9 for the 2026 session. Applicants can submit forms and check live status from the Admission page.',
+    },
+    pdfUrl: '#',
+    isPublic: true,
+  },
+  {
+    id: 'n-2026-2',
+    title: {
+      bn: 'অর্ধবার্ষিক ও প্রাক-নির্বাচনী পরীক্ষার সময়সূচি প্রকাশ ২০২৬',
+      en: 'Half-Yearly & Pre-Test Examination Schedule 2026 Published',
+    },
+    date: '2026-06-01',
+    category: 'Exam',
+    description: {
+      bn: 'আগামী জুনের তৃতীয় সপ্তাহ থেকে অর্ধবার্ষিক পরীক্ষা শুরু হবে। সকল শিক্ষার্থীকে স্টুডেন্ট পোর্টাল থেকে পরীক্ষার রুটিন সংগ্রহ করার নির্দেশ দেওয়া হলো।',
+      en: 'Half-Yearly examinations commence in the third week of June. All students are instructed to review the full Exam Routine from their portal.',
+    },
+    pdfUrl: '#',
+    isPublic: true,
+  },
+  {
+    id: 'n-2026-3',
+    title: {
+      bn: 'বার্ষিক বিজ্ঞান মেলা ও ডিজিটাল কুইজ প্রতিযোগিতা',
+      en: 'Annual Science Fair & Digital MCQ Olympiad Notice',
+    },
+    date: '2026-03-18',
+    category: 'General',
+    description: {
+      bn: 'বিদ্যালয় অডিটোরিয়ামে আগামী সপ্তাহে বার্ষিক বিজ্ঞান মেলা ও অনলাইন MCQ অলিম্পিয়াড অনুষ্ঠিত হবে। অনুশীলনের জন্য অনলাইন এক্সাম পোর্টাল ব্যবহার করুন।',
+      en: 'The Annual Science Fair & Online MCQ Olympiad will take place next week. Students may practice anytime using the Online Exam portal.',
+    },
+    pdfUrl: '#',
+    isPublic: true,
+  },
+  {
+    id: 'n-2026-4',
+    title: {
+      bn: 'পবিত্র ঈদ-উল-ফিতর ও গ্রীষ্মকালীন ছুটির বিজ্ঞপ্তি',
+      en: 'Eid-ul-Fitr & Summer Vacation Schedule Notice',
+    },
+    date: '2026-03-22',
+    category: 'Holiday',
+    description: {
+      bn: 'সরকারি ছুটির তালিকা অনুযায়ী ঈদ-উল-ফিতর উপলক্ষে নির্ধারিত তারিখসমূহে শ্রেণি কার্যক্রম বন্ধ থাকবে।',
+      en: 'Regular classes will remain closed during the scheduled Eid-ul-Fitr holidays as per the academic calendar.',
+    },
+    pdfUrl: '#',
+    isPublic: true,
+  },
+];
+
+export const TEACHERS: Teacher[] = [
+  {
+    id: 't-1',
+    name: { bn: 'মোঃ আব্দুল করিম', en: 'Md. Abdul Karim' },
+    designation: { bn: 'প্রধান শিক্ষক', en: 'Head Teacher' },
+    subject: { bn: 'ইংরেজি ও প্রশাসন', en: 'English & Administration' },
+    qualification: { bn: 'এম.এ, বি.এড (ঢাকা বিশ্ববিদ্যালয়)', en: 'M.A, B.Ed (University of Dhaka)' },
+    photo: headTeacherImg,
+    isPublic: true,
+  },
+  {
+    id: 't-2',
+    name: { bn: 'মোসাঃ ফাতেমা বেগম', en: 'Mst. Fatema Begum' },
+    designation: { bn: 'সহকারী প্রধান শিক্ষক', en: 'Assistant Head Teacher' },
+    subject: { bn: 'বাংলা সাহিত্য', en: 'Bangla Literature' },
+    qualification: { bn: 'এম.এ (বাংলা), এম.এড', en: 'M.A (Bangla), M.Ed' },
+    photo: '',
+    isPublic: true,
+  },
+  {
+    id: 't-3',
+    name: { bn: 'বাবু সুব্রত দাস', en: 'Subrata Das' },
+    designation: { bn: 'সিনিয়র শিক্ষক (গণিত)', en: 'Senior Teacher (Mathematics)' },
+    subject: { bn: 'গণিত ও উচ্চতর গণিত', en: 'Mathematics & Higher Math' },
+    qualification: { bn: 'এম.এসসি (গণিত), বি.এড', en: 'M.Sc (Math), B.Ed' },
+    photo: '',
+    isPublic: true,
+  },
+  {
+    id: 't-4',
+    name: { bn: 'জান্নাতুল ফেরদৌস', en: 'Jannatul Ferdous' },
+    designation: { bn: 'সহকারী শিক্ষক (আইসিটি)', en: 'Assistant Teacher (ICT)' },
+    subject: { bn: 'তথ্য ও যোগাযোগ প্রযুক্তি', en: 'ICT & Computer Lab' },
+    qualification: { bn: 'বি.এসসি ইন সিএসই', en: 'B.Sc in CSE' },
+    photo: '',
+    isPublic: true,
+  },
+  {
+    id: 't-5',
+    name: { bn: 'মোঃ রফিকুল ইসলাম', en: 'Md. Rafiqul Islam' },
+    designation: { bn: 'সহকারী শিক্ষক (বিজ্ঞান)', en: 'Assistant Teacher (Science)' },
+    subject: { bn: 'পদার্থবিজ্ঞান ও রসায়ন', en: 'Physics & Chemistry' },
+    qualification: { bn: 'এম.এসসি (পদার্থবিজ্ঞান), বি.এড', en: 'M.Sc (Physics), B.Ed' },
+    photo: '',
+    isPublic: true,
+  },
+  {
+    id: 't-6',
+    name: { bn: 'মোঃ নজরুল ইসলাম', en: 'Md. Nazrul Islam' },
+    designation: { bn: 'সহকারী শিক্ষক (ইংরেজি)', en: 'Assistant Teacher (English)' },
+    subject: { bn: 'ইংরেজি ১ম ও ২য় পত্র', en: 'English 1st & 2nd Paper' },
+    qualification: { bn: 'এম.এ (ইংরেজি), বি.এড', en: 'M.A (English), B.Ed' },
+    photo: '',
+    isPublic: true,
+  },
+];
+
+export const ROUTINES: ClassRoutine[] = [
+  {
+    classId: '6',
+    className: { bn: '৬ষ্ঠ শ্রেণী', en: 'Class 6' },
+    schedule: [
+      {
+        day: { bn: 'রবিবার', en: 'Sunday' },
+        periods: [
+          { time: '10:00 - 10:45', subject: { bn: 'বাংলা', en: 'Bangla' }, teacher: { bn: 'মোসাঃ ফাতেমা বেগম', en: 'Mst. Fatema Begum' } },
+          { time: '10:45 - 11:30', subject: { bn: 'ইংরেজি', en: 'English' }, teacher: { bn: 'মোঃ নজরুল ইসলাম', en: 'Md. Nazrul Islam' } },
+          { time: '11:30 - 12:15', subject: { bn: 'গণিত', en: 'Mathematics' }, teacher: { bn: 'বাবু সুব্রত দাস', en: 'Subrata Das' } },
+          { time: '12:45 - 01:30', subject: { bn: 'বিজ্ঞান', en: 'Science' }, teacher: { bn: 'মোঃ রফিকুল ইসলাম', en: 'Md. Rafiqul Islam' } },
+          { time: '01:30 - 02:15', subject: { bn: 'ডিজিটাল প্রযুক্তি', en: 'ICT' }, teacher: { bn: 'জান্নাতুল ফেরদৌস', en: 'Jannatul Ferdous' } },
+        ],
+      },
+      {
+        day: { bn: 'সোমবার', en: 'Monday' },
+        periods: [
+          { time: '10:00 - 10:45', subject: { bn: 'ইংরেজি', en: 'English' }, teacher: { bn: 'মোঃ নজরুল ইসলাম', en: 'Md. Nazrul Islam' } },
+          { time: '10:45 - 11:30', subject: { bn: 'গণিত', en: 'Mathematics' }, teacher: { bn: 'বাবু সুব্রত দাস', en: 'Subrata Das' } },
+          { time: '11:30 - 12:15', subject: { bn: 'বাংলা', en: 'Bangla' }, teacher: { bn: 'মোসাঃ ফাতেমা বেগম', en: 'Mst. Fatema Begum' } },
+          { time: '12:45 - 01:30', subject: { bn: 'ইতিহাস ও সামাজিক বিজ্ঞান', en: 'Social Science' }, teacher: { bn: 'মোঃ আব্দুল করিম', en: 'Md. Abdul Karim' } },
+        ],
+      },
+    ],
+  },
+  {
+    classId: '7',
+    className: { bn: '৭ম শ্রেণী', en: 'Class 7' },
+    schedule: [
+      {
+        day: { bn: 'রবিবার', en: 'Sunday' },
+        periods: [
+          { time: '10:00 - 10:45', subject: { bn: 'গণিত', en: 'Mathematics' }, teacher: { bn: 'বাবু সুব্রত দাস', en: 'Subrata Das' } },
+          { time: '10:45 - 11:30', subject: { bn: 'বিজ্ঞান', en: 'Science' }, teacher: { bn: 'মোঃ রফিকুল ইসলাম', en: 'Md. Rafiqul Islam' } },
+          { time: '11:30 - 12:15', subject: { bn: 'ইংরেজি', en: 'English' }, teacher: { bn: 'মোঃ নজরুল ইসলাম', en: 'Md. Nazrul Islam' } },
+          { time: '12:45 - 01:30', subject: { bn: 'বাংলা', en: 'Bangla' }, teacher: { bn: 'মোসাঃ ফাতেমা বেগম', en: 'Mst. Fatema Begum' } },
+        ],
+      },
+    ],
+  },
+  {
+    classId: '8',
+    className: { bn: '৮ম শ্রেণী', en: 'Class 8' },
+    schedule: [
+      {
+        day: { bn: 'রবিবার', en: 'Sunday' },
+        periods: [
+          { time: '10:00 - 10:45', subject: { bn: 'ইংরেজি', en: 'English' }, teacher: { bn: 'মোঃ নজরুল ইসলাম', en: 'Md. Nazrul Islam' } },
+          { time: '10:45 - 11:30', subject: { bn: 'গণিত', en: 'Mathematics' }, teacher: { bn: 'বাবু সুব্রত দাস', en: 'Subrata Das' } },
+          { time: '11:30 - 12:15', subject: { bn: 'ডিজিটাল প্রযুক্তি', en: 'ICT' }, teacher: { bn: 'জান্নাতুল ফেরদৌস', en: 'Jannatul Ferdous' } },
+          { time: '12:45 - 01:30', subject: { bn: 'বিজ্ঞান', en: 'Science' }, teacher: { bn: 'মোঃ রফিকুল ইসলাম', en: 'Md. Rafiqul Islam' } },
+        ],
+      },
+    ],
+  },
+  {
+    classId: '9',
+    className: { bn: '৯ম শ্রেণী', en: 'Class 9' },
+    schedule: [
+      {
+        day: { bn: 'রবিবার', en: 'Sunday' },
+        periods: [
+          { time: '10:00 - 10:45', subject: { bn: 'উচ্চতর গণিত / অর্থনীতি', en: 'Higher Math / Economics' }, teacher: { bn: 'বাবু সুব্রত দাস', en: 'Subrata Das' } },
+          { time: '10:45 - 11:30', subject: { bn: 'পদার্থবিজ্ঞান', en: 'Physics' }, teacher: { bn: 'মোঃ রফিকুল ইসলাম', en: 'Md. Rafiqul Islam' } },
+          { time: '11:30 - 12:15', subject: { bn: 'ইংরেজি', en: 'English' }, teacher: { bn: 'মোঃ নজরুল ইসলাম', en: 'Md. Nazrul Islam' } },
+          { time: '12:45 - 01:30', subject: { bn: 'তথ্য ও যোগাযোগ প্রযুক্তি', en: 'ICT' }, teacher: { bn: 'জান্নাতুল ফেরদৌস', en: 'Jannatul Ferdous' } },
+        ],
+      },
+    ],
+  },
+  {
+    classId: '10',
+    className: { bn: '১০ম শ্রেণী', en: 'Class 10' },
+    schedule: [
+      {
+        day: { bn: 'রবিবার', en: 'Sunday' },
+        periods: [
+          { time: '10:00 - 10:45', subject: { bn: 'রসায়ন', en: 'Chemistry' }, teacher: { bn: 'মোঃ রফিকুল ইসলাম', en: 'Md. Rafiqul Islam' } },
+          { time: '10:45 - 11:30', subject: { bn: 'সাধারণ গণিত', en: 'General Math' }, teacher: { bn: 'বাবু সুব্রত দাস', en: 'Subrata Das' } },
+          { time: '11:30 - 12:15', subject: { bn: 'বাংলা', en: 'Bangla' }, teacher: { bn: 'মোসাঃ ফাতেমা বেগম', en: 'Mst. Fatema Begum' } },
+          { time: '12:45 - 01:30', subject: { bn: 'তথ্য ও যোগাযোগ প্রযুক্তি', en: 'ICT' }, teacher: { bn: 'জান্নাতুল ফেরদৌস', en: 'Jannatul Ferdous' } },
+        ],
+      },
+    ],
+  },
+];
+
+export const INITIAL_EXAM_ROUTINES: ExamRoutineItem[] = [
+  { id: 'er-1', examTerm: 'Half-Yearly Exam 2026', classId: '9', subject: 'Bangla', date: '2026-06-15', time: '10:00 AM - 01:00 PM', room: 'Room 101', isPublic: true },
+  { id: 'er-2', examTerm: 'Half-Yearly Exam 2026', classId: '9', subject: 'English', date: '2026-06-17', time: '10:00 AM - 01:00 PM', room: 'Room 101', isPublic: true },
+  { id: 'er-3', examTerm: 'Half-Yearly Exam 2026', classId: '9', subject: 'Mathematics', date: '2026-06-20', time: '10:00 AM - 01:00 PM', room: 'Room 102', isPublic: true },
+  { id: 'er-4', examTerm: 'Half-Yearly Exam 2026', classId: '9', subject: 'Science / Physics', date: '2026-06-22', time: '10:00 AM - 01:00 PM', room: 'Science Hall', isPublic: true },
+  { id: 'er-5', examTerm: 'Half-Yearly Exam 2026', classId: '9', subject: 'ICT', date: '2026-06-24', time: '10:00 AM - 12:00 PM', room: 'ICT Lab', isPublic: true },
+  { id: 'er-6', examTerm: 'Half-Yearly Exam 2026', classId: '10', subject: 'General Math', date: '2026-06-16', time: '10:00 AM - 01:00 PM', room: 'Hall 1', isPublic: true },
+  { id: 'er-7', examTerm: 'Half-Yearly Exam 2026', classId: '6', subject: 'Bangla', date: '2026-06-15', time: '10:00 AM - 12:30 PM', room: 'Room 201', isPublic: true },
+  { id: 'er-8', examTerm: 'Half-Yearly Exam 2026', classId: '6', subject: 'Mathematics', date: '2026-06-18', time: '10:00 AM - 12:30 PM', room: 'Room 201', isPublic: true },
+];
+
+export const SYLLABUS_2026: SyllabusItem[] = [
+  {
+    classId: '6',
+    className: { bn: '৬ষ্ঠ শ্রেণী', en: 'Class 6' },
+    subjects: [
+      { name: { bn: 'বাংলা', en: 'Bangla' }, code: '101', pdfUrl: '#' },
+      { name: { bn: 'ইংরেজি', en: 'English' }, code: '107', pdfUrl: '#' },
+      { name: { bn: 'গণিত', en: 'Mathematics' }, code: '109', pdfUrl: '#' },
+      { name: { bn: 'বিজ্ঞান', en: 'Science' }, code: '127', pdfUrl: '#' },
+      { name: { bn: 'ইতিহাস ও সামাজিক বিজ্ঞান', en: 'History & Social Science' }, code: '150', pdfUrl: '#' },
+      { name: { bn: 'ডিজিটাল প্রযুক্তি', en: 'Digital Technology' }, code: '154', pdfUrl: '#' },
+    ],
+  },
+  {
+    classId: '7',
+    className: { bn: '৭ম শ্রেণী', en: 'Class 7' },
+    subjects: [
+      { name: { bn: 'বাংলা', en: 'Bangla' }, code: '101', pdfUrl: '#' },
+      { name: { bn: 'ইংরেজি', en: 'English' }, code: '107', pdfUrl: '#' },
+      { name: { bn: 'গণিত', en: 'Mathematics' }, code: '109', pdfUrl: '#' },
+      { name: { bn: 'বিজ্ঞান', en: 'Science' }, code: '127', pdfUrl: '#' },
+      { name: { bn: 'ডিজিটাল প্রযুক্তি', en: 'Digital Technology' }, code: '154', pdfUrl: '#' },
+    ],
+  },
+  {
+    classId: '8',
+    className: { bn: '৮ম শ্রেণী', en: 'Class 8' },
+    subjects: [
+      { name: { bn: 'বাংলা', en: 'Bangla' }, code: '101', pdfUrl: '#' },
+      { name: { bn: 'ইংরেজি', en: 'English' }, code: '107', pdfUrl: '#' },
+      { name: { bn: 'গণিত', en: 'Mathematics' }, code: '109', pdfUrl: '#' },
+      { name: { bn: 'বিজ্ঞান', en: 'Science' }, code: '127', pdfUrl: '#' },
+      { name: { bn: 'ডিজিটাল প্রযুক্তি', en: 'Digital Technology' }, code: '154', pdfUrl: '#' },
+    ],
+  },
+  {
+    classId: '9',
+    className: { bn: '৯ম শ্রেণী', en: 'Class 9' },
+    subjects: [
+      { name: { bn: 'বাংলা', en: 'Bangla' }, code: '101', pdfUrl: '#' },
+      { name: { bn: 'ইংরেজি', en: 'English' }, code: '107', pdfUrl: '#' },
+      { name: { bn: 'গণিত', en: 'Mathematics' }, code: '109', pdfUrl: '#' },
+      { name: { bn: 'পদার্থবিজ্ঞান', en: 'Physics' }, code: '136', pdfUrl: '#' },
+      { name: { bn: 'রসায়ন', en: 'Chemistry' }, code: '137', pdfUrl: '#' },
+      { name: { bn: 'তথ্য ও যোগাযোগ প্রযুক্তি', en: 'ICT' }, code: '154', pdfUrl: '#' },
+    ],
+  },
+  {
+    classId: '10',
+    className: { bn: '১০ম শ্রেণী', en: 'Class 10' },
+    subjects: [
+      { name: { bn: 'বাংলা', en: 'Bangla' }, code: '101', pdfUrl: '#' },
+      { name: { bn: 'ইংরেজি', en: 'English' }, code: '107', pdfUrl: '#' },
+      { name: { bn: 'সাধারণ গণিত', en: 'General Mathematics' }, code: '109', pdfUrl: '#' },
+      { name: { bn: 'জীববিজ্ঞান', en: 'Biology' }, code: '138', pdfUrl: '#' },
+      { name: { bn: 'তথ্য ও যোগাযোগ প্রযুক্তি', en: 'ICT' }, code: '154', pdfUrl: '#' },
+    ],
+  },
+];
+
+export const INITIAL_SUBJECTS: SchoolSubject[] = [
+  { id: 'sub-1', code: '101', name: { bn: 'বাংলা', en: 'Bangla' }, classId: '9', totalMarks: 100, teacherName: 'Mst. Fatema Begum', isPublic: true },
+  { id: 'sub-2', code: '107', name: { bn: 'ইংরেজি', en: 'English' }, classId: '9', totalMarks: 100, teacherName: 'Md. Nazrul Islam', isPublic: true },
+  { id: 'sub-3', code: '109', name: { bn: 'গণিত', en: 'Mathematics' }, classId: '9', totalMarks: 100, teacherName: 'Subrata Das', isPublic: true },
+  { id: 'sub-4', code: '136', name: { bn: 'পদার্থবিজ্ঞান', en: 'Physics' }, classId: '9', totalMarks: 100, teacherName: 'Md. Rafiqul Islam', isPublic: true },
+  { id: 'sub-5', code: '154', name: { bn: 'তথ্য ও যোগাযোগ প্রযুক্তি', en: 'ICT' }, classId: '9', totalMarks: 50, teacherName: 'Jannatul Ferdous', isPublic: true },
+  { id: 'sub-6', code: '109', name: { bn: 'গণিত', en: 'Mathematics' }, classId: '10', totalMarks: 100, teacherName: 'Subrata Das', isPublic: true },
+  { id: 'sub-7', code: '101', name: { bn: 'বাংলা', en: 'Bangla' }, classId: '6', totalMarks: 100, teacherName: 'Mst. Fatema Begum', isPublic: true },
+];
+
+export const INITIAL_EBOOKS: EBook[] = [
+  {
+    id: 'eb-1',
+    title: { bn: 'বাংলা সাহিত্য (৬ষ্ঠ শ্রেণী - NCTB)', en: 'Bangla Literature (Class 6 NCTB)' },
+    classId: '6',
+    className: { bn: '৬ষ্ঠ শ্রেণী', en: 'Class 6' },
+    subject: 'Bangla',
+    category: 'Textbook',
+    description: { bn: 'NCTB কর্তৃক প্রকাশিত ২০২৬ শিক্ষাবর্ষের মূল পাঠ্যবই।', en: 'Official 2026 NCTB textbook for Class 6 Bangla.' },
+    coverUrl: '',
+    downloadUrl: 'https://nctb.gov.bd',
+    isPublic: true,
+  },
+  {
+    id: 'eb-2',
+    title: { bn: 'English Grammar & Composition Guide (Class 6–10)', en: 'English Grammar & Composition Mastery (Class 6–10)' },
+    classId: '9',
+    className: { bn: '৯ম শ্রেণী', en: 'Class 9' },
+    subject: 'English Grammar',
+    category: 'EnglishGrammar',
+    description: { bn: 'টেন্স, ভয়েস, ন্যারেশন, প্রিপোজিশন ও প্যারাগ্রাফ লেখার পূর্ণাঙ্গ গাইড।', en: 'Complete guide covering Tense, Voice, Narration, Connectors, and Academic Writing.' },
+    coverUrl: '',
+    downloadUrl: 'https://nctb.gov.bd',
+    isPublic: true,
+  },
+  {
+    id: 'eb-3',
+    title: { bn: 'মাধ্যমিক গণিত অধ্যায়ভিত্তিক সমাধান (৯ম-১০ম)', en: 'SSC Mathematics Full Solutions (Class 9–10)' },
+    classId: '9',
+    className: { bn: '৯ম শ্রেণী', en: 'Class 9' },
+    subject: 'Mathematics',
+    category: 'MathSolution',
+    description: { bn: 'বীজগণিত, ত্রিকোণমিতি ও জ্যামিতির সৃজনশীল প্রশ্নের ধাপে ধাপে সমাধান।', en: 'Step-by-step solutions for Algebra, Trigonometry, and Geometry creative questions.' },
+    coverUrl: '',
+    downloadUrl: 'https://nctb.gov.bd',
+    isPublic: true,
+  },
+  {
+    id: 'eb-4',
+    title: { bn: 'তথ্য ও যোগাযোগ প্রযুক্তি (ICT) হ্যান্ডনোট ও কোডিং', en: 'ICT Learning Handbook & HTML/Spreadsheet Guide' },
+    classId: '9',
+    className: { bn: '৯ম শ্রেণী', en: 'Class 9' },
+    subject: 'ICT',
+    category: 'ICT',
+    description: { bn: 'ইন্টারনেট নিরাপত্তা, স্প্রেডশিট ফর্মুলা ও ওয়েব ডিজাইন প্র্যাকটিক্যাল নোট।', en: 'Practical notes covering cybersecurity, spreadsheet formulas, and HTML fundamentals.' },
+    coverUrl: '',
+    downloadUrl: 'https://nctb.gov.bd',
+    isPublic: true,
+  },
+  {
+    id: 'eb-5',
+    title: { bn: 'পদার্থবিজ্ঞান ও রসায়ন প্র্যাকটিক্যাল ল্যাব ম্যানুয়াল', en: 'Science Practical & Lab Experiment Manual' },
+    classId: '10',
+    className: { bn: '১০ম শ্রেণী', en: 'Class 10' },
+    subject: 'Science',
+    category: 'Practical',
+    description: { bn: 'এসএসসি ব্যবহারিক পরীক্ষার চিত্র, পর্যবেক্ষণ ছক ও মৌখিক প্রশ্নোত্তর।', en: 'SSC practical diagrams, observation tables, and viva-voce preparation.' },
+    coverUrl: '',
+    downloadUrl: 'https://nctb.gov.bd',
+    isPublic: true,
+  },
+  {
+    id: 'eb-6',
+    title: { bn: 'বিগত ৫ বছরের SSC বোর্ড প্রশ্ন ও উত্তর (কুমিল্লা বোর্ড)', en: 'Previous 5 Years SSC Board Questions (Cumilla Board)' },
+    classId: '10',
+    className: { bn: '১০ম শ্রেণী', en: 'Class 10' },
+    subject: 'All Subjects',
+    category: 'BoardQuestion',
+    description: { bn: '২০২১–২০২৫ সালের কুমিল্লা ও ঢাকা বোর্ডের প্রশ্ন ও সমাধান সংকলন।', en: 'Curated archive of 2021–2025 SSC Board creative and MCQ papers with solutions.' },
+    coverUrl: '',
+    downloadUrl: 'https://nctb.gov.bd',
+    isPublic: true,
+  },
+  {
+    id: 'eb-7',
+    title: { bn: 'SSC ২০২৬ স্পেশাল মডেল টেস্ট সিরিজ ও সাজেশন', en: 'SSC 2026 Model Test Papers & Revision Pack' },
+    classId: '10',
+    className: { bn: '১০ম শ্রেণী', en: 'Class 10' },
+    subject: 'Science & Math',
+    category: 'ModelTest',
+    description: { bn: 'সময় ধরে পরীক্ষা অনুশীলনের জন্য ১০টি পূর্ণাঙ্গ মডেল টেস্ট।', en: '10 timed model test sets designed for final board exam readiness.' },
+    coverUrl: '',
+    downloadUrl: 'https://nctb.gov.bd',
+    isPublic: true,
+  },
+  {
+    id: 'eb-8',
+    title: { bn: '৭ম ও ৮ম শ্রেণী সাধারণ বিজ্ঞান অধ্যায়-১ থেকে ৫ নোটস', en: 'Class 7 & 8 General Science Chapter PDFs (Ch 1–5)' },
+    classId: '8',
+    className: { bn: '৮ম শ্রেণী', en: 'Class 8' },
+    subject: 'Science',
+    category: 'ChapterPDF',
+    description: { bn: 'কোষ বিভাজন, উদ্ভিদের বংশবৃদ্ধি ও শক্তির রূপান্তর সহজ নোট।', en: 'Concise visual chapter summaries for Cell Biology, Force, and Energy.' },
+    coverUrl: '',
+    downloadUrl: 'https://nctb.gov.bd',
+    isPublic: true,
+  },
+  {
+    id: 'eb-9',
+    title: { bn: '৭ম শ্রেণী গণিত ও জ্যামিতি স্টাডি ম্যাটেরিয়াল', en: 'Class 7 Mathematics Study Material & Worksheets' },
+    classId: '7',
+    className: { bn: '৭ম শ্রেণী', en: 'Class 7' },
+    subject: 'Mathematics',
+    category: 'StudyMaterial',
+    description: { bn: 'অনুপাত, লাভ-ক্ষতি ও ত্রিভুজ সংক্রান্ত অনুশীলনী ওয়ার্কশিট।', en: 'Structured practice worksheets on ratios, percentages, and triangle properties.' },
+    coverUrl: '',
+    downloadUrl: 'https://nctb.gov.bd',
+    isPublic: true,
+  },
+];
+
+export const INITIAL_GALLERY: GalleryItem[] = [
+  {
+    id: 'gal-1',
+    url: heroCampusImg,
+    mediaType: 'image',
+    category: 'Campus',
+    caption: { bn: 'রাণীর বাজার মাধ্যমিক বিদ্যালয়ের মনোরম একাডেমিক ভবন ও প্রাঙ্গণ', en: 'Ranir Bazar Secondary High School Main Campus & Courtyard' },
+    isPublic: true,
+  },
+  {
+    id: 'gal-2',
+    url: scienceLabImg,
+    mediaType: 'image',
+    category: 'Lab',
+    caption: { bn: 'আধুনিক বিজ্ঞান ল্যাবে শিক্ষার্থীদের ব্যবহারিক ক্লাস ও গবেষণা', en: 'Students performing experiments in the Modern Science Laboratory' },
+    isPublic: true,
+  },
+  {
+    id: 'gal-3',
+    url: computerLabImg,
+    mediaType: 'image',
+    category: 'Lab',
+    caption: { bn: 'শেখ রাসেল ডিজিটাল আইসিটি ল্যাবে শিক্ষার্থীদের হাতে-কলমে প্রশিক্ষণ', en: 'Hands-on ICT and programming practice at the Digital Computer Lab' },
+    isPublic: true,
+  },
+  {
+    id: 'gal-4',
+    url: sportsEventImg,
+    mediaType: 'image',
+    category: 'Sports',
+    caption: { bn: 'বার্ষিক ক্রীড়া প্রতিযোগিতা ও পুরস্কার বিতরণী অনুষ্ঠান ২০২৬', en: 'Annual Sports Championship & Cultural Assembly 2026' },
+    isPublic: true,
+  },
+];
+
+export const HOLIDAYS_2026: Holiday[] = [
+  { id: 'h-1', title: { bn: 'শহীদ দিবস ও আন্তর্জাতিক মাতৃভাষা দিবস', en: 'Shaheed Day & Int. Mother Language Day' }, date: '2026-02-21', duration: { bn: '১ দিন', en: '1 Day' }, type: 'National', isPublic: true },
+  { id: 'h-2', title: { bn: 'স্বাধীনতা ও জাতীয় দিবস', en: 'Independence & National Day' }, date: '2026-03-26', duration: { bn: '১ দিন', en: '1 Day' }, type: 'National', isPublic: true },
+  { id: 'h-3', title: { bn: 'পবিত্র ঈদ-উল-ফিতর', en: 'Eid-ul-Fitr Holiday' }, date: '2026-03-21', duration: { bn: '৫ দিন', en: '5 Days' }, type: 'Religious', isPublic: true },
+  { id: 'h-4', title: { bn: 'বাংলা নববর্ষ (পহেলা বৈশাখ)', en: 'Pahela Baishakh (Bangla New Year)' }, date: '2026-04-14', duration: { bn: '১ দিন', en: '1 Day' }, type: 'National', isPublic: true },
+  { id: 'h-5', title: { bn: 'গ্রীষ্মকালীন অবকাশ ও ঈদ-উল-আযহা', en: 'Summer Vacation & Eid-ul-Adha' }, date: '2026-05-27', duration: { bn: '১২ দিন', en: '12 Days' }, type: 'Seasonal', isPublic: true },
+  { id: 'h-6', title: { bn: 'মহান বিজয় দিবস', en: 'Victory Day of Bangladesh' }, date: '2026-12-16', duration: { bn: '১ দিন', en: '1 Day' }, type: 'National', isPublic: true },
+];
+
+export const INITIAL_STUDENTS: SchoolStudent[] = [
+  { id: 'st-6-1', roll: '01', name: 'সাদিয়া আফরিন (Sadia Afrin)', classId: '6', section: 'A', guardianMobile: '01711-223344' },
+  { id: 'st-6-2', roll: '02', name: 'রাফি আহমেদ (Rafi Ahmed)', classId: '6', section: 'A', guardianMobile: '01811-334455' },
+  { id: 'st-7-1', roll: '01', name: 'তাসনিম তাবাসসুম (Tasnim Tabassum)', classId: '7', section: 'A', guardianMobile: '01911-445566' },
+  { id: 'st-8-1', roll: '01', name: 'মাহফুজ রহমান (Mahfuz Rahman)', classId: '8', section: 'A', guardianMobile: '01611-556677' },
+  { id: 'st-9-1', roll: '01', name: 'আরিয়ান করিম (Aryan Karim)', classId: '9', section: 'Science', guardianMobile: '01712-667788' },
+  { id: 'st-9-2', roll: '02', name: 'নুসরাত জাহান (Nusrat Jahan)', classId: '9', section: 'Science', guardianMobile: '01715-778899' },
+  { id: 'st-9-3', roll: '03', name: 'তামিম ইকবাল (Tamim Iqbal)', classId: '9', section: 'Commerce', guardianMobile: '01815-889900' },
+  { id: 'st-10-1', roll: '01', name: 'জাহিদুল ইসলাম (Jahidul Islam)', classId: '10', section: 'Science', guardianMobile: '01700-112233' },
+  { id: 'st-10-2', roll: '02', name: 'সুমাইয়া আক্তার (Sumaiya Akter)', classId: '10', section: 'Science', guardianMobile: '01700-445566' },
+];
+
+export const INITIAL_HOMEWORK: HomeworkItem[] = [
+  {
+    id: 'hw-1',
+    title: 'Quadratic Equations & Factorization Practice',
+    subject: 'Mathematics',
+    classId: '9',
+    description: 'Solve Exercise 3.1 problems 1 to 10 in your notebook and submit clear steps.',
+    dueDate: '2026-06-25',
+    assignedBy: 'Subrata Das',
+    createdDate: '2026-06-15',
+    isPublic: true,
+  },
+  {
+    id: 'hw-2',
+    title: 'Paragraph: Importance of Digital Education',
+    subject: 'English',
+    classId: '9',
+    description: 'Write a structured 200-word paragraph highlighting digital classrooms and online practice.',
+    dueDate: '2026-06-27',
+    assignedBy: 'Md. Nazrul Islam',
+    createdDate: '2026-06-16',
+    isPublic: true,
+  },
+  {
+    id: 'hw-3',
+    title: 'HTML Basic Page Design Assignment',
+    subject: 'ICT',
+    classId: '9',
+    description: 'Create a simple HTML structure with headings, lists, and a table for class timetable.',
+    dueDate: '2026-06-29',
+    assignedBy: 'Jannatul Ferdous',
+    createdDate: '2026-06-17',
+    isPublic: true,
+  },
+];
+
+export const CLASS_SUBJECTS: Record<string, string[]> = {
+  '6': ['Bangla', 'English', 'Mathematics', 'Science', 'ICT'],
+  '7': ['Bangla', 'English', 'Mathematics', 'Science', 'ICT'],
+  '8': ['Bangla', 'English', 'Mathematics', 'Science', 'ICT'],
+  '9': ['Bangla', 'English', 'Mathematics', 'Physics', 'Chemistry', 'ICT'],
+  '10': ['Bangla', 'English', 'General Math', 'Biology', 'Physics', 'ICT'],
+};
+
+export const INITIAL_ONLINE_EXAMS: OnlineExam[] = [
+  {
+    id: 'exam-math-9-ch3',
+    title: { bn: '৯ম শ্রেণী গণিত: বীজগাণিতিক রাশি MCQ', en: 'Class 9 Math: Algebraic Expressions MCQ' },
+    classId: '9',
+    subject: 'Mathematics',
+    chapter: 'Chapter 3: Algebraic Expressions',
+    durationMinutes: 10,
+    mode: 'exam',
+    createdBy: 'Subrata Das',
+    date: '2026-06-12',
+    isPublic: true,
+    questions: [
+      {
+        id: 'q1',
+        question: 'If a + b = 5 and ab = 6, what is the value of a² + b²?',
+        options: ['11', '13', '17', '25'],
+        correctIndex: 1,
+        explanation: 'a² + b² = (a + b)² - 2ab = 5² - 2(6) = 25 - 12 = 13.',
+      },
+      {
+        id: 'q2',
+        question: 'What is the factored form of x² - 9?',
+        options: ['(x - 3)²', '(x + 3)²', '(x + 3)(x - 3)', '(x - 9)(x + 1)'],
+        correctIndex: 2,
+        explanation: 'Using difference of squares: a² - b² = (a + b)(a - b). Here b = 3.',
+      },
+      {
+        id: 'q3',
+        question: 'If x - 1/x = 4, then what is x² + 1/x²?',
+        options: ['14', '16', '18', '20'],
+        correctIndex: 2,
+        explanation: 'x² + 1/x² = (x - 1/x)² + 2 = 16 + 2 = 18.',
+      },
+      {
+        id: 'q4',
+        question: 'What is the value of (a - b)² + 4ab?',
+        options: ['(a + b)²', 'a² - b²', '2(a² + b²)', 'a² + b²'],
+        correctIndex: 0,
+        explanation: '(a - b)² + 4ab = a² - 2ab + b² + 4ab = a² + 2ab + b² = (a + b)².',
+      },
+    ],
+  },
+  {
+    id: 'exam-ict-9-ch2',
+    title: { bn: 'আইসিটি কুইজ: কম্পিউটার নিরাপত্তা ও নেটওয়ার্ক', en: 'ICT Quiz: Cybersecurity & Networks' },
+    classId: '9',
+    subject: 'ICT',
+    chapter: 'Chapter 2: Computer Security',
+    durationMinutes: 8,
+    mode: 'practice',
+    createdBy: 'Jannatul Ferdous',
+    date: '2026-06-14',
+    isPublic: true,
+    questions: [
+      {
+        id: 'q1',
+        question: 'Which protocol encrypts communication between browser and web server?',
+        options: ['HTTP', 'FTP', 'HTTPS', 'SMTP'],
+        correctIndex: 2,
+        explanation: 'HTTPS uses TLS/SSL encryption to secure web traffic.',
+      },
+      {
+        id: 'q2',
+        question: 'What is the full form of CPU?',
+        options: ['Central Program Unit', 'Central Processing Unit', 'Computer Personal Unit', 'Control Processing Utility'],
+        correctIndex: 1,
+        explanation: 'CPU stands for Central Processing Unit, the primary processor of a computer.',
+      },
+      {
+        id: 'q3',
+        question: 'Which of the following is considered strong password hygiene?',
+        options: ['Using 123456', 'Using your birth date', 'Combining upper/lowercase letters, numbers & symbols', 'Sharing passwords with friends'],
+        correctIndex: 2,
+        explanation: 'Long passwords with mixed characters resist brute-force and dictionary attacks.',
+      },
+      {
+        id: 'q4',
+        question: 'Which HTML tag defines the largest heading?',
+        options: ['<head>', '<h6>', '<h1>', '<header>'],
+        correctIndex: 2,
+        explanation: '<h1> defines the highest-level heading in HTML documents.',
+      },
+    ],
+  },
+  {
+    id: 'exam-phy-10-ch1',
+    title: { bn: 'পদার্থবিজ্ঞান: গতি ও বল অনুশীলন পরীক্ষা', en: 'Physics Practice: Motion & Force' },
+    classId: '10',
+    subject: 'Physics',
+    chapter: 'Chapter 2 & 3: Motion & Laws of Force',
+    durationMinutes: 10,
+    mode: 'exam',
+    createdBy: 'Md. Rafiqul Islam',
+    date: '2026-06-16',
+    isPublic: true,
+    questions: [
+      {
+        id: 'q1',
+        question: 'What is the SI unit of Acceleration?',
+        options: ['m/s', 'm/s²', 'N', 'kg·m/s'],
+        correctIndex: 1,
+        explanation: 'Acceleration is rate of change of velocity: (m/s)/s = m/s².',
+      },
+      {
+        id: 'q2',
+        question: 'According to Newton’s Second Law, Force F equals:',
+        options: ['m / a', 'm × v', 'm × a', 'v / t'],
+        correctIndex: 2,
+        explanation: 'Newton’s Second Law states F = m × a (mass times acceleration).',
+      },
+      {
+        id: 'q3',
+        question: 'A car starts from rest with uniform acceleration 2 m/s². What is its velocity after 5 seconds?',
+        options: ['2.5 m/s', '7 m/s', '10 m/s', '25 m/s'],
+        correctIndex: 2,
+        explanation: 'v = u + at = 0 + (2 × 5) = 10 m/s.',
+      },
+    ],
+  },
+  {
+    id: 'exam-eng-6-ch1',
+    title: { bn: '৬ষ্ঠ শ্রেণী ইংরেজি গ্রামার প্র্যাকটিস', en: 'Class 6 English Grammar Practice' },
+    classId: '6',
+    subject: 'English',
+    chapter: 'Parts of Speech & Articles',
+    durationMinutes: 8,
+    mode: 'practice',
+    createdBy: 'Md. Nazrul Islam',
+    date: '2026-06-15',
+    isPublic: true,
+    questions: [
+      {
+        id: 'q1',
+        question: 'Choose the correct article: "He is ___ honest man."',
+        options: ['a', 'an', 'the', 'no article'],
+        correctIndex: 1,
+        explanation: '"Honest" begins with a vowel sound (/ɒ/), so "an" is used.',
+      },
+      {
+        id: 'q2',
+        question: 'Identify the verb in: "The students study diligently."',
+        options: ['The', 'students', 'study', 'diligently'],
+        correctIndex: 2,
+        explanation: '"study" expresses the action in the sentence.',
+      },
+      {
+        id: 'q3',
+        question: 'Which is the plural form of "Child"?',
+        options: ['Childs', 'Childrens', 'Children', 'Childes'],
+        correctIndex: 2,
+        explanation: '"Child" has the irregular plural "Children".',
+      },
+    ],
+  },
+];
+
+export const INITIAL_ALUMNI: AlumniProfile[] = [
+  {
+    id: 'alu-1',
+    name: 'Md. Jahidul Islam',
+    batchYear: '2018',
+    currentRole: 'Software Engineer & Researcher',
+    organization: 'IIT, University of Dhaka',
+    city: 'Dhaka',
+    message: 'Proud alumnus of Ranir Bazar Secondary High School. Wishing our younger students limitless curiosity and excellence.',
+    status: 'approved',
+    isPublic: true,
+  },
+  {
+    id: 'alu-2',
+    name: 'Dr. Taslima Akter',
+    batchYear: '2014',
+    currentRole: 'Medical Officer',
+    organization: 'Cumilla Medical College Hospital',
+    city: 'Cumilla',
+    message: 'The discipline and guidance of our teachers built the foundation of my career in medicine.',
+    status: 'approved',
+    isPublic: true,
+  },
+  {
+    id: 'alu-3',
+    name: 'Engr. Kamrul Hasan',
+    batchYear: '2016',
+    currentRole: 'Civil Engineer',
+    organization: 'LGED Bangladesh',
+    city: 'Chattogram',
+    message: 'Grateful to every mentor at RBHS. Looking forward to the Winter Alumni Reunion 2026!',
+    status: 'approved',
+    isPublic: true,
+  },
+];
+
+export const EIIN = INITIAL_SETTINGS.eiin;
+export const CONTACT_INFO = {
+  mobile: INITIAL_SETTINGS.phone,
+  email: INITIAL_SETTINGS.email,
+  location: INITIAL_SETTINGS.location,
+};
+export const CLASSES = ROUTINES;
+export const CLASS_ROUTINES = ROUTINES;
+export const EXAM_TERMS = [
+  { id: 'First Term Exam 2026', bn: 'প্রথম সাময়িক পরীক্ষা ২০২৬', en: 'First Term Exam 2026' },
+  { id: 'Half-Yearly Exam 2026', bn: 'অর্ধবার্ষিক পরীক্ষা ২০২৬', en: 'Half-Yearly Exam 2026' },
+  { id: 'Pre-Test Exam 2026', bn: 'প্রাক-নির্বাচনী পরীক্ষা ২০২৬', en: 'Pre-Test Exam 2026' },
+  { id: 'Annual Exam 2026', bn: 'বার্ষিক পরীক্ষা ২০২৬', en: 'Annual Exam 2026' },
+];
+export const NOTICES = INITIAL_NOTICES;
+export const E_BOOKS_2026 = INITIAL_EBOOKS;
+export const GALLERY = INITIAL_GALLERY;
+export const INITIAL_STUDENT_LEAVES = [
+  {
+    id: 'sl-1',
+    studentId: 'st-9-1',
+    studentName: 'আরিয়ান করিম (Aryan Karim)',
+    roll: '01',
+    classId: '9',
+    leaveType: 'Sick' as const,
+    startDate: '2026-06-18',
+    endDate: '2026-06-19',
+    reason: 'Seasonal fever and doctor advised 2 days rest.',
+    status: 'pending' as const,
+    submittedDate: '2026-06-17',
+  },
+];
+export type { EBook };
+
+

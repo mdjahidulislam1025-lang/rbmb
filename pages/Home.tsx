@@ -1,19 +1,39 @@
-
 import * as React from 'react';
 import * as RouterDom from 'react-router-dom';
-import { Users, GraduationCap, Award, BookOpen, ChevronRight, ChevronLeft, Phone, Mail, MapPin, Sparkles, Download, Info, ExternalLink, ShieldCheck, ShieldAlert, User as UserIcon, ArrowRight, ImageIcon } from 'lucide-react';
-import { SCHOOL_NAME, TRANSLATIONS, CONTACT_INFO } from '../constants';
+import {
+  Users,
+  GraduationCap,
+  Award,
+  BookOpen,
+  ChevronRight,
+  ChevronLeft,
+  Phone,
+  Mail,
+  MapPin,
+  Sparkles,
+  ExternalLink,
+  ShieldCheck,
+  ShieldAlert,
+  User as UserIcon,
+  ArrowRight,
+  ClipboardCheck,
+  Trophy,
+  Quote,
+  FileText,
+  Calendar,
+} from 'lucide-react';
+import { TRANSLATIONS } from '../constants';
 import { useApp } from '../App';
+import { heroCampusImg, headTeacherImg } from '../src/assets/media';
+import CampusMap from '../components/CampusMap';
 
 const { Link } = RouterDom;
 
 const Home: React.FC = () => {
-  const { lang, t, notices, teachers, ebooks, gallery, settings } = useApp();
-  
-  const [currentSlide, setCurrentSlide] = React.useState(0);
-  const defaultHeroImage = "https://images.unsplash.com/photo-1523050853064-8504f2f40fd5?auto=format&fit=crop&q=80&w=1200";
+  const { lang, t, notices, teachers, ebooks, gallery, settings, students, alumni } = useApp();
 
-  // Build high-quality dynamic slides combining campus, event gallery, and teachers
+  const [currentSlide, setCurrentSlide] = React.useState(0);
+
   const slides = React.useMemo(() => {
     const list: Array<{
       url: string;
@@ -23,29 +43,28 @@ const Home: React.FC = () => {
       tagEn: string;
     }> = [];
 
-    // 1. Core School Building Image
     list.push({
-      url: settings.schoolPhoto || defaultHeroImage,
-      captionBn: "আমাদের সুসজ্জিত ও ঐতিহ্যবাহী রানীর বাজার মাধ্যমিক বিদ্যালয় প্রাঙ্গণ",
-      captionEn: "Our historic and beautiful Ranir Bazar Secondary High School campus",
-      tagBn: "স্বাগতম প্রাঙ্গণ",
-      tagEn: "Welcome Campus"
+      url: settings.schoolPhoto || heroCampusImg,
+      captionBn: 'আমাদের সুসজ্জিত ও ঐতিহ্যবাহী রাণীর বাজার মাধ্যমিক বিদ্যালয় প্রাঙ্গণ',
+      captionEn: 'Our historic and serene Ranir Bazar Secondary High School campus',
+      tagBn: 'স্থাপিত ১৯৫৮ • স্বাগতম প্রাঙ্গণ',
+      tagEn: 'Est. 1958 • Welcome Campus',
     });
 
-    // 2. Event/Gallery entries
     if (gallery && gallery.length > 0) {
       gallery.forEach((item) => {
-        list.push({
-          url: item.url,
-          captionBn: item.caption.bn || "বিদ্যালয়ের বিভিন্ন দৃষ্টিনন্দন কার্যক্রম",
-          captionEn: item.caption.en || "Glorious school activities and snapshots",
-          tagBn: "বিদ্যালয়ের কার্যক্রম ও ইভেন্ট",
-          tagEn: "School Activities & Events"
-        });
+        if (item.url && item.mediaType !== 'video') {
+          list.push({
+            url: item.url,
+            captionBn: item.caption.bn || 'বিদ্যালয়ের বিভিন্ন দৃষ্টিনন্দন কার্যক্রম',
+            captionEn: item.caption.en || 'Memorable school activities and events',
+            tagBn: 'বিদ্যালয়ের কার্যক্রম ও ইভেন্ট',
+            tagEn: 'School Activities & Events',
+          });
+        }
       });
     }
 
-    // 3. Teacher details
     if (teachers && teachers.length > 0) {
       teachers.forEach((teacher) => {
         if (teacher.photo) {
@@ -53,8 +72,8 @@ const Home: React.FC = () => {
             url: teacher.photo,
             captionBn: `${teacher.name.bn} — ${teacher.designation.bn} (${teacher.subject.bn})`,
             captionEn: `${teacher.name.en} — ${teacher.designation.en} (${teacher.subject.en})`,
-            tagBn: "আমাদের পরম শ্রদ্ধেয় শিক্ষক মন্ডলী",
-            tagEn: "Our Proud Educators"
+            tagBn: 'আমাদের শ্রদ্ধেয় শিক্ষকমণ্ডলী',
+            tagEn: 'Our Distinguished Educators',
           });
         }
       });
@@ -63,87 +82,180 @@ const Home: React.FC = () => {
     return list;
   }, [settings.schoolPhoto, gallery, teachers]);
 
-  // Handle auto-advance interval for the slideshow
   React.useEffect(() => {
     if (slides.length <= 1) return;
     const timer = setInterval(() => {
       setCurrentSlide((prev) => (prev + 1) % slides.length);
-    }, 4500);
+    }, 5000);
     return () => clearInterval(timer);
   }, [slides.length]);
 
-  const nextSlide = () => {
-    setCurrentSlide((prev) => (prev + 1) % slides.length);
-  };
-
-  const prevSlide = () => {
-    setCurrentSlide((prev) => (prev - 1 + slides.length) % slides.length);
-  };
+  const nextSlide = () => setCurrentSlide((prev) => (prev + 1) % slides.length);
+  const prevSlide = () => setCurrentSlide((prev) => (prev - 1 + slides.length) % slides.length);
 
   const featuredBooks = ebooks.slice(0, 5);
-  const latestNotices = notices.slice(0, 3);
-  const headTeacher = teachers.find(teach => t(teach.designation).includes('Head') || t(teach.designation).includes('প্রধান')) || teachers[0];
+  const latestNotices = notices.slice(0, 4);
 
   const importantLinks = [
-    { label: lang === 'bn' ? 'শিক্ষা বোর্ড ফলাফল' : 'Education Board Result', path: 'http://www.educationboardresults.gov.bd/', external: true },
-    { label: lang === 'bn' ? 'শিক্ষক বাতায়ন' : 'Teacher Portal', path: 'https://www.teachers.gov.bd/', external: true },
-    { label: lang === 'bn' ? 'মাধ্যমিক ও উচ্চশিক্ষা অধিদপ্তর' : 'DSHE Website', path: 'https://dshe.gov.bd/', external: true },
-    { label: lang === 'bn' ? 'NCTB ই-বুক লাইব্রেরি' : 'NCTB E-Book Library', path: '/ebooks', external: false },
-    { label: lang === 'bn' ? 'ছুটির তালিকা ২০২৬' : 'Holiday List 2026', path: '/holidays', external: false }
+    {
+      label: lang === 'bn' ? 'শিক্ষা বোর্ড ফলাফল' : 'Education Board Result',
+      path: 'http://www.educationboardresults.gov.bd/',
+      external: true,
+    },
+    {
+      label: lang === 'bn' ? 'শিক্ষক বাতায়ন (a2i)' : 'Teachers Portal (a2i)',
+      path: 'https://www.teachers.gov.bd/',
+      external: true,
+    },
+    {
+      label: lang === 'bn' ? 'মাধ্যমিক ও উচ্চশিক্ষা অধিদপ্তর' : 'DSHE Official Website',
+      path: 'https://dshe.gov.bd/',
+      external: true,
+    },
+    {
+      label: lang === 'bn' ? 'ক্লাস ও পরীক্ষার রুটিন' : 'Class & Exam Routine',
+      path: '/routine',
+      external: false,
+    },
+    {
+      label: lang === 'bn' ? 'একাডেমিক ক্যালেন্ডার ২০২৬' : 'Academic Calendar 2026',
+      path: '/calendar',
+      external: false,
+    },
+    {
+      label: lang === 'bn' ? 'সরকারি ছুটির তালিকা ২০২৬' : 'Holiday List 2026',
+      path: '/holidays',
+      external: false,
+    },
+  ];
+
+  const portalCards = [
+    {
+      role: 'student',
+      icon: UserIcon,
+      color: 'bg-blue-600',
+      label: lang === 'bn' ? 'শিক্ষার্থী পোর্টাল' : 'Student Portal',
+      sub: lang === 'bn' ? 'ফলাফল, হাজিরা ও অ্যাসাইনমেন্ট' : 'Results, Attendance & Homework',
+      path: '/login/student',
+    },
+    {
+      role: 'parent',
+      icon: Users,
+      color: 'bg-emerald-600',
+      label: lang === 'bn' ? 'অভিভাবক পোর্টাল' : 'Parent Portal',
+      sub: lang === 'bn' ? 'সন্তানের অগ্রগতি ও শিক্ষক বার্তা' : 'Progress, Grades & Teacher Chat',
+      path: '/login/parent',
+    },
+    {
+      role: 'teacher',
+      icon: ShieldCheck,
+      color: 'bg-purple-600',
+      label: lang === 'bn' ? 'শিক্ষক পোর্টাল' : 'Teacher Portal',
+      sub: lang === 'bn' ? 'হাজিরা, নম্বর ও ক্লাস ব্যবস্থাপনা' : 'Attendance, Marks & Materials',
+      path: '/login/teacher',
+    },
+    {
+      role: 'admin',
+      icon: ShieldAlert,
+      color: 'bg-slate-900 dark:bg-slate-700',
+      label: lang === 'bn' ? 'অ্যাডমিন প্যানেল' : 'Admin System',
+      sub: lang === 'bn' ? 'সম্পূর্ণ স্কুল ও ভর্তি নিয়ন্ত্রণ' : 'Full Campus & User Control',
+      path: '/login/admin',
+    },
+  ];
+
+  const featureQuickLinks = [
+    {
+      icon: Trophy,
+      title: lang === 'bn' ? 'অনলাইন MCQ পরীক্ষা' : 'Online MCQ Exams',
+      desc: lang === 'bn' ? 'অধ্যায়ভিত্তিক কুইজ ও তাৎক্ষণিক ফলাফল' : 'Timed chapter quizzes & instant analysis',
+      path: '/exams',
+      accent: 'text-amber-600 dark:text-amber-400 bg-amber-50 dark:bg-amber-950/50',
+    },
+    {
+      icon: BookOpen,
+      title: lang === 'bn' ? 'ডিজিটাল লাইব্রেরি' : 'Digital Library',
+      desc: lang === 'bn' ? 'NCTB বই, নোট ও বিগত বোর্ড প্রশ্ন' : 'Textbooks, notes, practicals & tests',
+      path: '/ebooks',
+      accent: 'text-emerald-600 dark:text-emerald-400 bg-emerald-50 dark:bg-emerald-950/50',
+    },
+    {
+      icon: ClipboardCheck,
+      title: lang === 'bn' ? 'ভর্তি আবেদন ও স্ট্যাটাস' : 'Admission & Status',
+      desc: lang === 'bn' ? 'অনলাইন আবেদন ও লাইভ ট্র্যাকিং' : 'Apply online & verify App ID live',
+      path: '/admission',
+      accent: 'text-blue-600 dark:text-blue-400 bg-blue-50 dark:bg-blue-950/50',
+    },
+    {
+      icon: GraduationCap,
+      title: lang === 'bn' ? 'অ্যালামনাই নেটওয়ার্ক' : 'Alumni Network',
+      desc: lang === 'bn' ? 'প্রাক্তন শিক্ষার্থীদের গর্বিত ডিরেক্টরি' : 'Connect with former RBHS graduates',
+      path: '/alumni',
+      accent: 'text-purple-600 dark:text-purple-400 bg-purple-50 dark:bg-purple-950/50',
+    },
   ];
 
   return (
-    <div className="space-y-12 pb-20">
-      {/* Hero Section with Custom Slide Transition Animation */}
-      <section className="relative h-[480px] md:h-[650px] overflow-hidden bg-slate-900 border-b-4 border-green-700 shadow-2xl">
+    <div className="space-y-14 pb-20">
+      {/* Hero Slideshow Section */}
+      <section className="relative h-[500px] md:h-[640px] overflow-hidden bg-slate-900 border-b-4 border-green-700 shadow-2xl">
         {slides.map((slide, idx) => (
-          <img 
+          <img
             key={idx}
-            src={slide.url} 
+            src={slide.url || heroCampusImg}
             alt={lang === 'bn' ? slide.captionBn : slide.captionEn}
-            className={`absolute inset-0 w-full h-full object-cover transition-all duration-1000 ease-in-out transform ${
+            className={`absolute inset-0 w-full h-full object-cover transition-all duration-1000 ease-in-out ${
               idx === currentSlide ? 'opacity-100 scale-100 z-0' : 'opacity-0 scale-105 pointer-events-none'
             }`}
             onError={(e) => {
               const target = e.target as HTMLImageElement;
-              target.src = defaultHeroImage;
+              if (target.src !== heroCampusImg) target.src = heroCampusImg;
             }}
           />
         ))}
 
-        {/* Dynamic Dark Gradient Overlay to guarantee high contrast typography */}
-        <div className="absolute inset-0 bg-gradient-to-t from-black/90 via-black/55 to-black/35 md:bg-gradient-to-r md:from-green-950/95 md:via-green-950/45 md:to-transparent flex items-center z-10">
+        {/* Contrast Gradient Overlay */}
+        <div className="absolute inset-0 bg-gradient-to-t from-slate-950/90 via-slate-950/60 to-slate-950/35 md:bg-gradient-to-r md:from-green-950/95 md:via-green-950/55 md:to-transparent flex items-center z-10">
           <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 w-full text-white">
-            <div className="max-w-3xl space-y-6">
-              {/* Slidable Tag Badge */}
-              <div className="inline-flex items-center gap-2 bg-green-600/35 backdrop-blur-md px-4 py-2 rounded-full border border-green-400/40 animate-pulse duration-1000">
-                <Sparkles className="w-4 h-4 text-yellow-400" />
-                <span className="text-[10px] font-extrabold uppercase tracking-widest text-green-20">
+            <div className="max-w-3xl space-y-5">
+              <div className="inline-flex items-center gap-2 bg-green-600/40 backdrop-blur-md px-4 py-2 rounded-full border border-green-400/40">
+                <Sparkles className="w-4 h-4 text-yellow-400 shrink-0" />
+                <span className="text-[11px] font-extrabold uppercase tracking-widest text-green-100">
                   {lang === 'bn' ? slides[currentSlide]?.tagBn : slides[currentSlide]?.tagEn}
                 </span>
               </div>
 
-              {/* Majestic School Name */}
-              <h1 className="text-3xl md:text-7xl font-black md:leading-none tracking-tight drop-shadow-2xl">
+              <h1 className="text-3xl sm:text-5xl md:text-6xl font-black leading-tight tracking-tight drop-shadow-2xl">
                 {t(settings.name)}
               </h1>
 
-              {/* Contextual Active Slide Caption Box */}
-              <div className="bg-black/50 backdrop-blur-md p-5 rounded-2xl border border-white/10 max-w-2xl shadow-xl transform transition-all duration-500 hover:bg-black/60">
-                <p className="text-lg md:text-xl font-extrabold text-yellow-400 leading-snug tracking-tight">
+              <div className="bg-black/45 backdrop-blur-md p-5 rounded-2xl border border-white/15 max-w-2xl shadow-xl">
+                <p className="text-base md:text-xl font-extrabold text-yellow-300 leading-snug">
                   {lang === 'bn' ? slides[currentSlide]?.captionBn : slides[currentSlide]?.captionEn}
                 </p>
-                <p className="text-xs md:text-sm text-slate-300 mt-1.5 opacity-90">
+                <p className="text-xs md:text-sm text-slate-200 mt-1.5 opacity-95">
                   {t(TRANSLATIONS.hero.subtitle)}
                 </p>
               </div>
 
-              {/* Action Buttons */}
-              <div className="flex flex-wrap gap-4 pt-2">
-                <Link to="/admission" className="bg-yellow-500 hover:bg-yellow-600 text-green-950 px-8 py-4 rounded-2xl font-black text-base shadow-2xl transition-all transform hover:scale-105 active:scale-95 flex items-center gap-2">
-                  {t(TRANSLATIONS.admission.onlineApply)}
+              <div className="flex flex-wrap gap-3.5 pt-2">
+                <Link
+                  to="/admission"
+                  className="bg-yellow-400 hover:bg-yellow-500 text-green-950 px-7 py-3.5 rounded-2xl font-black text-sm md:text-base shadow-xl transition-all hover:scale-[1.02] active:scale-95 flex items-center gap-2"
+                >
+                  {t(TRANSLATIONS.admission.onlineApply)} <ArrowRight className="w-4 h-4" />
                 </Link>
-                <Link to="/about" className="bg-white/15 hover:bg-white/25 backdrop-blur-md text-white border border-white/25 px-8 py-4 rounded-2xl font-black text-base transition-all active:scale-95">
+                <Link
+                  to="/exams"
+                  className="bg-green-700 hover:bg-green-600 text-white border border-green-400/30 px-7 py-3.5 rounded-2xl font-black text-sm md:text-base transition-all active:scale-95 flex items-center gap-2"
+                >
+                  <Trophy className="w-4 h-4 text-yellow-300" />
+                  {lang === 'bn' ? 'অনলাইন পরীক্ষা' : 'Online Exam'}
+                </Link>
+                <Link
+                  to="/about"
+                  className="bg-white/15 hover:bg-white/25 backdrop-blur-md text-white border border-white/25 px-6 py-3.5 rounded-2xl font-black text-sm md:text-base transition-all active:scale-95"
+                >
                   {t(TRANSLATIONS.hero.learnMore)}
                 </Link>
               </div>
@@ -151,35 +263,33 @@ const Home: React.FC = () => {
           </div>
         </div>
 
-        {/* Navigation Arrows */}
         {slides.length > 1 && (
           <>
-            <button 
+            <button
               onClick={prevSlide}
-              className="absolute left-4 top-1/2 -translate-y-1/2 z-20 bg-black/40 hover:bg-green-700/90 hover:scale-110 active:scale-95 text-white p-3 rounded-full backdrop-blur-md transition-all border border-white/10"
+              className="hidden sm:flex absolute left-4 top-1/2 -translate-y-1/2 z-20 bg-black/40 hover:bg-green-700/90 text-white p-3 rounded-full backdrop-blur-md transition-all border border-white/10"
               aria-label="Previous Slide"
             >
-              <ChevronLeft className="w-6 h-6" />
+              <ChevronLeft className="w-5 h-5" />
             </button>
-            <button 
+            <button
               onClick={nextSlide}
-              className="absolute right-4 top-1/2 -translate-y-1/2 z-20 bg-black/40 hover:bg-green-700/90 hover:scale-110 active:scale-95 text-white p-3 rounded-full backdrop-blur-md transition-all border border-white/10"
+              className="hidden sm:flex absolute right-4 top-1/2 -translate-y-1/2 z-20 bg-black/40 hover:bg-green-700/90 text-white p-3 rounded-full backdrop-blur-md transition-all border border-white/10"
               aria-label="Next Slide"
             >
-              <ChevronRight className="w-6 h-6" />
+              <ChevronRight className="w-5 h-5" />
             </button>
           </>
         )}
 
-        {/* Dots Indicators */}
         {slides.length > 1 && (
-          <div className="absolute bottom-6 left-1/2 -translate-x-1/2 z-20 flex gap-2.5 bg-black/50 backdrop-blur-md py-2.5 px-5 rounded-full border border-white/15">
-            {slides.map((_, idx) => (
+          <div className="absolute bottom-14 sm:bottom-10 left-1/2 -translate-x-1/2 z-20 flex gap-2 bg-black/50 backdrop-blur-md py-2 px-4 rounded-full border border-white/15">
+            {slides.slice(0, 8).map((_, idx) => (
               <button
                 key={idx}
                 onClick={() => setCurrentSlide(idx)}
-                className={`h-2.5 rounded-full transition-all duration-300 ${
-                  idx === currentSlide ? 'w-8 bg-yellow-400' : 'w-2.5 bg-white/45 hover:bg-white/75'
+                className={`h-2 rounded-full transition-all duration-300 ${
+                  idx === currentSlide ? 'w-7 bg-yellow-400' : 'w-2 bg-white/45 hover:bg-white/75'
                 }`}
                 aria-label={`Go to slide ${idx + 1}`}
               />
@@ -187,85 +297,198 @@ const Home: React.FC = () => {
           </div>
         )}
 
-        {/* Bottom Ambient Fader */}
-        <div className="absolute bottom-0 left-0 right-0 h-24 bg-gradient-to-t from-slate-50 to-transparent pointer-events-none z-10" />
+        <div className="absolute bottom-0 left-0 right-0 h-20 bg-gradient-to-t from-slate-50 dark:from-slate-950 to-transparent pointer-events-none z-10" />
       </section>
 
-      {/* Portal Selection Card */}
-      <section className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 -mt-20 relative z-20">
-         <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-            {[
-              { role: 'student', icon: UserIcon, color: 'bg-blue-600', label: lang === 'bn' ? 'শিক্ষার্থী' : 'Student', path: '/login/student' },
-              { role: 'teacher', icon: ShieldCheck, color: 'bg-purple-600', label: lang === 'bn' ? 'শিক্ষক' : 'Teacher', path: '/login/teacher' },
-              { role: 'admin', icon: ShieldAlert, color: 'bg-slate-900', label: lang === 'bn' ? 'অ্যাডমিন' : 'Admin', path: '/login/admin' }
-            ].map((p, i) => (
-              <Link key={i} to={p.path} className="bg-white p-6 rounded-[2rem] shadow-xl border border-gray-50 flex items-center gap-6 hover:shadow-2xl hover:-translate-y-1 transition-all group">
-                <div className={`${p.color} p-4 rounded-2xl text-white shadow-lg group-hover:scale-110 transition-transform`}><p.icon className="w-8 h-8" /></div>
-                <div>
-                  <h3 className="font-black text-slate-900 text-lg">{p.label} পোর্টাল</h3>
-                  <p className="text-[10px] text-slate-400 font-bold uppercase tracking-widest">প্রবেশ করতে ক্লিক করুন</p>
-                </div>
-                <ArrowRight className="ml-auto w-5 h-5 text-slate-300 group-hover:text-green-600 transition-colors" />
+      {/* 4 Portal Entry Cards */}
+      <section className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 -mt-14 relative z-20">
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-5">
+          {portalCards.map((p) => (
+            <Link
+              key={p.role}
+              to={p.path}
+              className="bg-white dark:bg-slate-900 p-5 rounded-3xl shadow-xl border border-slate-100 dark:border-slate-800 flex items-center gap-4 hover:shadow-2xl hover:-translate-y-1 transition-all group"
+            >
+              <div className={`${p.color} p-3.5 rounded-2xl text-white shadow-md group-hover:scale-105 transition-transform shrink-0`}>
+                <p.icon className="w-6 h-6" />
+              </div>
+              <div className="min-w-0 flex-1">
+                <h3 className="font-black text-slate-900 dark:text-white text-base leading-tight">{p.label}</h3>
+                <p className="text-xs text-slate-500 dark:text-slate-400 font-semibold mt-0.5 truncate">{p.sub}</p>
+              </div>
+              <ArrowRight className="w-4 h-4 text-slate-300 dark:text-slate-600 group-hover:text-green-600 shrink-0 transition-colors" />
+            </Link>
+          ))}
+        </div>
+      </section>
+
+      {/* Feature Discovery Hub */}
+      <section className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+          {featureQuickLinks.map((item) => (
+            <Link
+              key={item.path}
+              to={item.path}
+              className="bg-white dark:bg-slate-900 p-5 rounded-2xl border border-slate-100 dark:border-slate-800 shadow-sm hover:shadow-lg transition-all flex items-start gap-4 group"
+            >
+              <div className={`p-3 rounded-xl shrink-0 ${item.accent}`}>
+                <item.icon className="w-5 h-5" />
+              </div>
+              <div className="min-w-0">
+                <h4 className="font-black text-sm text-slate-900 dark:text-white group-hover:text-green-700 dark:group-hover:text-green-400 transition-colors">
+                  {item.title}
+                </h4>
+                <p className="text-xs text-slate-500 dark:text-slate-400 mt-1 leading-relaxed">{item.desc}</p>
+              </div>
+            </Link>
+          ))}
+        </div>
+      </section>
+
+      {/* Head Teacher's Welcome Message & School Overview */}
+      <section className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+        <div className="bg-white dark:bg-slate-900 rounded-[2.5rem] p-6 sm:p-10 shadow-xl border border-slate-100 dark:border-slate-800 grid lg:grid-cols-3 gap-8 items-center">
+          <div className="flex flex-col items-center text-center lg:border-r lg:border-slate-100 dark:lg:border-slate-800 lg:pr-8">
+            <div className="w-40 h-44 rounded-3xl overflow-hidden shadow-lg border-4 border-emerald-50 dark:border-emerald-950 bg-slate-100 dark:bg-slate-800">
+              <img
+                src={settings.headTeacherPhoto || headTeacherImg}
+                alt={t(settings.headTeacherName)}
+                className="w-full h-full object-cover"
+                onError={(e) => {
+                  const target = e.target as HTMLImageElement;
+                  if (target.src !== headTeacherImg) target.src = headTeacherImg;
+                }}
+              />
+            </div>
+            <h3 className="mt-4 text-lg font-black text-slate-900 dark:text-white">
+              {t(settings.headTeacherName) || (lang === 'bn' ? 'প্রধান শিক্ষক' : 'Head Teacher')}
+            </h3>
+            <p className="text-xs font-bold uppercase tracking-wider text-emerald-700 dark:text-emerald-400 mt-0.5">
+              {lang === 'bn' ? 'প্রধান শিক্ষক' : 'Head Teacher'} • {t(settings.name)}
+            </p>
+            <span className="mt-2 inline-block px-3 py-1 rounded-full bg-slate-100 dark:bg-slate-800 text-[11px] font-bold text-slate-600 dark:text-slate-300">
+              EIIN: {settings.eiin}
+            </span>
+          </div>
+
+          <div className="lg:col-span-2 space-y-5">
+            <div className="inline-flex items-center gap-2 px-3.5 py-1.5 rounded-full bg-emerald-50 dark:bg-emerald-950/60 text-emerald-700 dark:text-emerald-300 text-xs font-black uppercase tracking-wider">
+              <Quote className="w-3.5 h-3.5" />
+              {lang === 'bn' ? 'প্রধান শিক্ষকের স্বাগত বক্তব্য ও পরিচিতি' : 'Head Teacher’s Welcome & Overview'}
+            </div>
+            <p className="text-slate-700 dark:text-slate-200 text-base md:text-lg leading-relaxed font-medium">
+              {t(settings.headTeacherMessage)}
+            </p>
+            <div className="flex flex-wrap gap-3 pt-2">
+              <Link
+                to="/about"
+                className="inline-flex items-center gap-2 px-5 py-2.5 rounded-xl bg-green-700 text-white text-xs font-black hover:bg-green-800 transition-colors"
+              >
+                {lang === 'bn' ? 'বিদ্যালয়ের বিস্তারিত পরিচিতি' : 'Full School History'} <ArrowRight className="w-3.5 h-3.5" />
               </Link>
-            ))}
-         </div>
+              <Link
+                to="/teachers"
+                className="inline-flex items-center gap-2 px-5 py-2.5 rounded-xl bg-slate-100 dark:bg-slate-800 text-slate-800 dark:text-slate-100 text-xs font-black hover:bg-slate-200 dark:hover:bg-slate-700 transition-colors"
+              >
+                {lang === 'bn' ? 'সকল শিক্ষক দেখুন' : 'Meet Faculty'}
+              </Link>
+            </div>
+          </div>
+        </div>
       </section>
 
       {/* Stats Section */}
-      <section className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 pt-10">
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-6">
+      <section className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-5">
           {[
-            { icon: Users, label: t(TRANSLATIONS.stats.students), value: lang === 'bn' ? '১০০০+' : '1000+' },
-            { icon: GraduationCap, label: t(TRANSLATIONS.stats.teachers), value: teachers.length > 0 ? (lang === 'bn' ? `${teachers.length}+` : `${teachers.length}+`) : (lang === 'bn' ? '৪০+' : '40+') },
-            { icon: Award, label: t(TRANSLATIONS.stats.passRate), value: lang === 'bn' ? '৯৮%' : '98%' },
-            { icon: BookOpen, label: t(TRANSLATIONS.stats.library), value: lang === 'bn' ? '৫০০০+ বই' : '5000+ Books' },
+            {
+              icon: Users,
+              label: t(TRANSLATIONS.stats.students),
+              value: students.length > 10 ? `${students.length}+` : lang === 'bn' ? '১২০০+' : '1,200+',
+            },
+            {
+              icon: GraduationCap,
+              label: t(TRANSLATIONS.stats.teachers),
+              value: teachers.length > 0 ? `${teachers.length}+` : lang === 'bn' ? '৩০+' : '30+',
+            },
+            {
+              icon: Award,
+              label: t(TRANSLATIONS.stats.passRate),
+              value: lang === 'bn' ? '৯৮.৫%' : '98.5%',
+            },
+            {
+              icon: BookOpen,
+              label: t(TRANSLATIONS.stats.library),
+              value: `${Math.max(ebooks.length, 10)}+ • ${alumni.length > 0 ? `${alumni.length} Alumni` : '2026'}`,
+            },
           ].map((stat, idx) => (
-            <div key={idx} className="bg-white p-6 rounded-3xl shadow-sm border border-gray-100 text-center hover:shadow-md transition-all">
-              <stat.icon className="w-10 h-10 text-green-600 mx-auto mb-3" />
-              <div className="text-2xl md:text-3xl font-black text-gray-900">{stat.value}</div>
-              <div className="text-gray-500 font-bold text-xs uppercase tracking-widest mt-1">{stat.label}</div>
+            <div
+              key={idx}
+              className="bg-white dark:bg-slate-900 p-6 rounded-3xl shadow-sm border border-slate-100 dark:border-slate-800 text-center hover:shadow-md transition-all"
+            >
+              <stat.icon className="w-9 h-9 text-green-600 dark:text-green-400 mx-auto mb-3" />
+              <div className="text-2xl md:text-3xl font-black text-slate-900 dark:text-white">{stat.value}</div>
+              <div className="text-slate-500 dark:text-slate-400 font-bold text-xs uppercase tracking-wider mt-1">
+                {stat.label}
+              </div>
             </div>
           ))}
         </div>
       </section>
 
-      {/* E-books Section */}
+      {/* Digital Library Preview Section */}
       {featuredBooks.length > 0 && (
-        <section className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4">
-          <div className="bg-white rounded-[2.5rem] p-8 md:p-12 shadow-2xl shadow-green-900/5 border border-green-50 relative overflow-hidden">
-            <div className="absolute -top-12 -right-12 w-64 h-64 bg-green-50 rounded-full blur-3xl opacity-50"></div>
-            
-            <div className="relative z-10 flex flex-col md:flex-row justify-between items-center gap-8 mb-12">
-              <div className="space-y-4 text-center md:text-left">
-                <div className="inline-flex items-center gap-2 bg-green-100 text-green-700 px-4 py-1 rounded-full text-xs font-bold uppercase tracking-widest">
-                  <span className="flex h-2 w-2 rounded-full bg-green-500 animate-pulse"></span> 2026 Curriculum
+        <section className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+          <div className="bg-white dark:bg-slate-900 rounded-[2.5rem] p-7 md:p-10 shadow-xl border border-slate-100 dark:border-slate-800 relative overflow-hidden">
+            <div className="relative z-10 flex flex-col md:flex-row justify-between items-center gap-6 mb-8">
+              <div className="space-y-2 text-center md:text-left">
+                <div className="inline-flex items-center gap-2 bg-green-100 dark:bg-green-950/70 text-green-700 dark:text-green-300 px-3.5 py-1 rounded-full text-xs font-bold uppercase tracking-wider">
+                  <span className="flex h-2 w-2 rounded-full bg-green-500 animate-pulse" />
+                  {lang === 'bn' ? '২০২৬ ডিজিটাল লাইব্রেরি' : '2026 Digital Library'}
                 </div>
-                <h2 className="text-3xl md:text-4xl font-black text-gray-900 leading-tight">
-                  {lang === 'bn' ? '২০২৬ শিক্ষাবর্ষের ই-বুক লাইব্রেরি' : 'NCTB 2026 E-book Library'}
+                <h2 className="text-2xl md:text-3xl font-black text-slate-900 dark:text-white">
+                  {t(TRANSLATIONS.ebook.title)}
                 </h2>
-                <p className="text-gray-500 max-w-xl font-medium">
-                  {lang === 'bn' ? 'নতুন কারিকুলাম অনুযায়ী সকল বিষয়ের ই-বুক এখন আপনার হাতের নাগালে।' : 'All subject e-books according to the new curriculum are now available.'}
+                <p className="text-slate-500 dark:text-slate-400 max-w-xl text-sm font-medium">
+                  {t(TRANSLATIONS.ebook.subtitle)}
                 </p>
               </div>
-              <Link to="/ebooks" className="bg-green-700 text-white px-8 py-4 rounded-2xl font-bold hover:bg-green-800 transition-all flex items-center gap-3 shadow-lg group">
-                {t(TRANSLATIONS.ui.seeAll)} <ChevronRight className="w-5 h-5 group-hover:translate-x-1 transition-transform" />
+              <Link
+                to="/ebooks"
+                className="bg-green-700 text-white px-6 py-3.5 rounded-2xl font-black text-xs uppercase tracking-wider hover:bg-green-800 transition-all flex items-center gap-2 shadow-lg shrink-0"
+              >
+                {t(TRANSLATIONS.ui.seeAll)} <ChevronRight className="w-4 h-4" />
               </Link>
             </div>
 
-            <div className="grid grid-cols-2 md:grid-cols-5 gap-6">
+            <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-5 gap-5">
               {featuredBooks.map((book) => (
-                <div key={book.id} className="group relative">
-                  <div className="aspect-[3/4] rounded-2xl overflow-hidden shadow-lg border border-gray-100 group-hover:shadow-2xl transition-all duration-500 group-hover:-translate-y-2">
-                    <img src={book.coverUrl} className="w-full h-full object-cover" />
-                    <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
-                      <button className="bg-white text-green-700 p-3 rounded-full hover:scale-110 transition-transform">
-                        <Download className="w-5 h-5" />
-                      </button>
-                    </div>
+                <Link key={book.id} to="/ebooks" className="group relative block">
+                  <div className="aspect-[3/4] rounded-2xl overflow-hidden shadow-md border border-slate-100 dark:border-slate-800 group-hover:shadow-xl transition-all duration-300 group-hover:-translate-y-1.5">
+                    {book.coverUrl ? (
+                      <img src={book.coverUrl} alt={t(book.title)} className="w-full h-full object-cover" />
+                    ) : (
+                      <div className="w-full h-full bg-gradient-to-br from-emerald-700 via-green-800 to-teal-900 p-4 flex flex-col justify-between text-white">
+                        <div className="flex items-center justify-between">
+                          <span className="text-[10px] font-black uppercase bg-white/15 px-2 py-0.5 rounded">
+                            {t(book.className)}
+                          </span>
+                          <BookOpen className="w-4 h-4 text-yellow-300" />
+                        </div>
+                        <div className="space-y-1">
+                          <p className="text-[10px] font-bold text-emerald-200 uppercase">{book.subject}</p>
+                          <p className="text-sm font-black leading-snug line-clamp-3">{t(book.title)}</p>
+                        </div>
+                      </div>
+                    )}
                   </div>
-                  <h3 className="mt-4 font-bold text-sm text-gray-800 line-clamp-1 group-hover:text-green-700 transition-colors">{t(book.title)}</h3>
-                  <span className="text-[10px] text-gray-400 font-bold uppercase">{t(book.className)}</span>
-                </div>
+                  <h3 className="mt-3 font-bold text-sm text-slate-800 dark:text-slate-100 line-clamp-1 group-hover:text-green-700 dark:group-hover:text-green-400">
+                    {t(book.title)}
+                  </h3>
+                  <span className="text-[11px] text-slate-500 dark:text-slate-400 font-semibold">
+                    {t(book.className)} • {book.category || 'Textbook'}
+                  </span>
+                </Link>
               ))}
             </div>
           </div>
@@ -273,108 +496,184 @@ const Home: React.FC = () => {
       )}
 
       {/* Latest Notices & Important Links */}
-      <section className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 grid md:grid-cols-3 gap-8 pt-10">
-        <div className="md:col-span-2 space-y-6">
-          <div className="flex justify-between items-center border-b pb-4">
-            <h2 className="text-2xl font-black text-gray-900">{t(TRANSLATIONS.nav.notices)}</h2>
-            <Link to="/notices" className="text-green-600 hover:text-green-700 font-black flex items-center text-xs uppercase tracking-widest">
+      <section className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 grid md:grid-cols-3 gap-8">
+        <div className="md:col-span-2 space-y-5">
+          <div className="flex justify-between items-center border-b border-slate-200 dark:border-slate-800 pb-4">
+            <h2 className="text-2xl font-black text-slate-900 dark:text-white flex items-center gap-2.5">
+              <FileText className="w-6 h-6 text-green-700 dark:text-green-400" />
+              {t(TRANSLATIONS.nav.notices)}
+            </h2>
+            <Link
+              to="/notices"
+              className="text-green-700 dark:text-green-400 hover:underline font-black flex items-center text-xs uppercase tracking-wider"
+            >
               {t(TRANSLATIONS.ui.seeAll)} <ChevronRight className="w-4 h-4 ml-1" />
             </Link>
           </div>
           <div className="space-y-4">
-            {latestNotices.length > 0 ? latestNotices.map(notice => (
-              <div key={notice.id} className="bg-white p-5 rounded-3xl border border-transparent hover:border-green-100 hover:shadow-xl transition-all flex gap-5 group cursor-pointer">
-                <div className="bg-slate-50 text-slate-400 p-3 rounded-2xl h-fit flex flex-col items-center justify-center shrink-0 min-w-[75px] border border-gray-100 group-hover:bg-green-700 group-hover:text-white transition-colors">
-                  <span className="text-[10px] font-black uppercase tracking-widest">{new Date(notice.date).toLocaleString('default', { month: 'short' })}</span>
-                  <span className="text-3xl font-black leading-none">{new Date(notice.date).getDate()}</span>
-                </div>
-                <div className="flex-grow">
-                  <span className={`text-[9px] uppercase font-black px-2.5 py-1 rounded-lg mb-2 inline-block shadow-sm ${
-                    notice.category === 'Admission' ? 'bg-blue-600 text-white' : 
-                    notice.category === 'Exam' ? 'bg-red-600 text-white' : 'bg-slate-700 text-white'
-                  }`}>
-                    {notice.category}
-                  </span>
-                  <h3 className="text-lg font-black text-gray-900 group-hover:text-green-700 transition-colors leading-tight">{t(notice.title)}</h3>
-                  <p className="text-gray-500 text-sm line-clamp-1 mt-1 font-medium">{t(notice.description)}</p>
-                </div>
-              </div>
-            )) : (
-              <div className="text-center py-12 bg-slate-50 rounded-2xl border-2 border-dashed border-slate-200 text-slate-400 font-bold">
-                {lang === 'bn' ? 'কোন নোটিশ পাওয়া যায়নি' : 'No notices found'}
+            {latestNotices.length > 0 ? (
+              latestNotices.map((notice) => {
+                const parsedDate = new Date(notice.date);
+                const isValidDate = !isNaN(parsedDate.getTime());
+                return (
+                  <Link
+                    key={notice.id}
+                    to="/notices"
+                    className="bg-white dark:bg-slate-900 p-5 rounded-3xl border border-slate-100 dark:border-slate-800 hover:border-green-300 dark:hover:border-green-700 hover:shadow-lg transition-all flex gap-5 group"
+                  >
+                    <div className="bg-slate-50 dark:bg-slate-800 text-slate-500 dark:text-slate-300 p-3 rounded-2xl h-fit flex flex-col items-center justify-center shrink-0 min-w-[70px] border border-slate-200/60 dark:border-slate-700 group-hover:bg-green-700 group-hover:text-white transition-colors">
+                      <span className="text-[10px] font-black uppercase tracking-wider">
+                        {isValidDate ? parsedDate.toLocaleString('default', { month: 'short' }) : 'INFO'}
+                      </span>
+                      <span className="text-2xl font-black leading-none mt-0.5">
+                        {isValidDate ? parsedDate.getDate() : '--'}
+                      </span>
+                    </div>
+                    <div className="flex-grow min-w-0">
+                      <span
+                        className={`text-[10px] uppercase font-black px-2.5 py-0.5 rounded-lg mb-1.5 inline-block ${
+                          notice.category === 'Admission'
+                            ? 'bg-blue-600 text-white'
+                            : notice.category === 'Exam'
+                            ? 'bg-red-600 text-white'
+                            : notice.category === 'Holiday'
+                            ? 'bg-amber-600 text-white'
+                            : 'bg-slate-700 text-white'
+                        }`}
+                      >
+                        {notice.category}
+                      </span>
+                      <h3 className="text-base md:text-lg font-black text-slate-900 dark:text-white group-hover:text-green-700 dark:group-hover:text-green-400 transition-colors leading-snug">
+                        {t(notice.title)}
+                      </h3>
+                      <p className="text-slate-500 dark:text-slate-400 text-sm line-clamp-1 mt-1">
+                        {t(notice.description)}
+                      </p>
+                    </div>
+                  </Link>
+                );
+              })
+            ) : (
+              <div className="text-center py-12 bg-white dark:bg-slate-900 rounded-3xl border border-dashed border-slate-200 dark:border-slate-800 text-slate-400 font-bold">
+                {lang === 'bn' ? 'কোনো নোটিশ পাওয়া যায়নি' : 'No notices found'}
               </div>
             )}
           </div>
         </div>
 
-        <div className="space-y-6">
-          <h2 className="text-2xl font-black text-gray-900 border-b pb-4">{t(TRANSLATIONS.ui.importantLinks)}</h2>
+        <div className="space-y-5">
+          <h2 className="text-2xl font-black text-slate-900 dark:text-white border-b border-slate-200 dark:border-slate-800 pb-4">
+            {t(TRANSLATIONS.ui.importantLinks)}
+          </h2>
           <div className="grid grid-cols-1 gap-3">
-            {importantLinks.map((link, i) => (
+            {importantLinks.map((link, i) =>
               link.external ? (
-                <a key={i} href={link.path} target="_blank" rel="noopener noreferrer" className="flex items-center justify-between p-4 bg-white rounded-2xl border border-gray-100 hover:border-green-300 hover:bg-green-50 hover:text-green-700 font-bold transition-all group shadow-sm">
-                  <div className="flex items-center">
-                    <div className="bg-slate-50 p-2 rounded-xl mr-3 group-hover:bg-white transition-colors"><ExternalLink className="w-4 h-4 text-slate-400 group-hover:text-green-600" /></div>
-                    {link.label}
+                <a
+                  key={i}
+                  href={link.path}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="flex items-center justify-between p-4 bg-white dark:bg-slate-900 rounded-2xl border border-slate-100 dark:border-slate-800 hover:border-green-400 hover:bg-green-50/70 dark:hover:bg-green-950/30 font-bold text-sm text-slate-800 dark:text-slate-100 transition-all group shadow-sm"
+                >
+                  <div className="flex items-center gap-3 min-w-0">
+                    <div className="bg-slate-50 dark:bg-slate-800 p-2 rounded-xl shrink-0">
+                      <ExternalLink className="w-4 h-4 text-slate-500 group-hover:text-green-600" />
+                    </div>
+                    <span className="truncate">{link.label}</span>
                   </div>
-                  <ChevronRight className="w-4 h-4 text-gray-300 group-hover:text-green-600 group-hover:translate-x-1 transition-all" />
+                  <ChevronRight className="w-4 h-4 text-slate-400 group-hover:text-green-600 shrink-0" />
                 </a>
               ) : (
-                <Link key={i} to={link.path} className="flex items-center justify-between p-4 bg-white rounded-2xl border border-gray-100 hover:border-green-300 hover:bg-green-50 hover:text-green-700 font-bold transition-all group shadow-sm">
-                  <div className="flex items-center">
-                    <div className="bg-slate-50 p-2 rounded-xl mr-3 group-hover:bg-white transition-colors"><BookOpen className="w-4 h-4 text-slate-400 group-hover:text-green-600" /></div>
-                    {link.label}
+                <Link
+                  key={i}
+                  to={link.path}
+                  className="flex items-center justify-between p-4 bg-white dark:bg-slate-900 rounded-2xl border border-slate-100 dark:border-slate-800 hover:border-green-400 hover:bg-green-50/70 dark:hover:bg-green-950/30 font-bold text-sm text-slate-800 dark:text-slate-100 transition-all group shadow-sm"
+                >
+                  <div className="flex items-center gap-3 min-w-0">
+                    <div className="bg-slate-50 dark:bg-slate-800 p-2 rounded-xl shrink-0">
+                      <Calendar className="w-4 h-4 text-slate-500 group-hover:text-green-600" />
+                    </div>
+                    <span className="truncate">{link.label}</span>
                   </div>
-                  <ChevronRight className="w-4 h-4 text-gray-300 group-hover:text-green-600 group-hover:translate-x-1 transition-all" />
+                  <ChevronRight className="w-4 h-4 text-slate-400 group-hover:text-green-600 shrink-0" />
                 </Link>
               )
-            ))}
+            )}
           </div>
         </div>
       </section>
 
       {/* Gallery Preview */}
       {gallery.length > 0 && (
-        <section className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 pt-10">
-          <h2 className="text-2xl font-black text-gray-900 mb-8 flex justify-between items-center">
-            {t(TRANSLATIONS.nav.gallery)}
-            <Link to="/gallery" className="text-xs font-black uppercase text-green-600 hover:underline tracking-widest">{t(TRANSLATIONS.ui.seeAll)}</Link>
-          </h2>
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-6">
-            {gallery.slice(0, 4).map(item => (
-              <div key={item.id} className="relative group overflow-hidden rounded-[2rem] h-56 shadow-lg bg-slate-100">
-                <img src={item.url} alt={t(item.caption)} className="w-full h-full object-cover transition-transform duration-700 group-hover:scale-110" />
-                <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-transparent to-transparent opacity-0 group-hover:opacity-100 transition-opacity flex items-end p-6">
-                  <p className="text-white text-sm font-black tracking-tight">{t(item.caption)}</p>
+        <section className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+          <div className="flex justify-between items-center mb-6">
+            <h2 className="text-2xl font-black text-slate-900 dark:text-white">{t(TRANSLATIONS.nav.gallery)}</h2>
+            <Link to="/gallery" className="text-xs font-black uppercase text-green-700 dark:text-green-400 hover:underline tracking-wider">
+              {t(TRANSLATIONS.ui.seeAll)}
+            </Link>
+          </div>
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-5">
+            {gallery.slice(0, 4).map((item) => (
+              <Link
+                key={item.id}
+                to="/gallery"
+                className="relative group overflow-hidden rounded-3xl h-52 shadow-md bg-slate-200 dark:bg-slate-800 block"
+              >
+                <img
+                  src={item.url || heroCampusImg}
+                  alt={t(item.caption)}
+                  className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-105"
+                />
+                <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-transparent to-transparent flex items-end p-4">
+                  <p className="text-white text-xs sm:text-sm font-bold leading-snug line-clamp-2">{t(item.caption)}</p>
                 </div>
-              </div>
+              </Link>
             ))}
           </div>
         </section>
       )}
 
-      {/* Contact Snippet */}
-      <section className="bg-slate-900 text-white py-20 rounded-[4rem] mx-4 md:mx-8">
-        <div className="max-w-7xl mx-auto px-8 grid md:grid-cols-3 gap-16">
-          <div className="space-y-8">
-            <h2 className="text-4xl font-black tracking-tight">{t(TRANSLATIONS.nav.contact)}</h2>
-            <div className="space-y-8">
-              <div className="flex items-start gap-6">
-                <div className="bg-green-600/20 p-4 rounded-2xl"><MapPin className="text-green-500 w-6 h-6" /></div>
-                <p className="text-gray-400 font-medium text-lg leading-relaxed">{t(settings.location)}</p>
+      {/* Contact & Interactive Map Section */}
+      <section className="bg-slate-900 text-white py-14 rounded-[2.5rem] mx-4 md:mx-8 shadow-2xl">
+        <div className="max-w-7xl mx-auto px-6 md:px-10 grid md:grid-cols-3 gap-10 items-center">
+          <div className="space-y-6">
+            <h2 className="text-3xl font-black tracking-tight">{t(TRANSLATIONS.nav.contact)}</h2>
+            <div className="space-y-5">
+              <div className="flex items-start gap-4">
+                <div className="bg-green-600/20 p-3 rounded-2xl shrink-0">
+                  <MapPin className="text-green-400 w-5 h-5" />
+                </div>
+                <p className="text-slate-300 font-medium text-sm leading-relaxed">{t(settings.location)}</p>
               </div>
-              <div className="flex items-center gap-6">
-                <div className="bg-green-600/20 p-4 rounded-2xl"><Phone className="text-green-500 w-6 h-6" /></div>
-                <p className="text-gray-400 font-black text-lg">{settings.phone}</p>
+              <div className="flex items-center gap-4">
+                <div className="bg-green-600/20 p-3 rounded-2xl shrink-0">
+                  <Phone className="text-green-400 w-5 h-5" />
+                </div>
+                <p className="text-slate-200 font-black text-base">{settings.phone}</p>
               </div>
-              <div className="flex items-center gap-6">
-                <div className="bg-green-600/20 p-4 rounded-2xl"><Mail className="text-green-500 w-6 h-6" /></div>
-                <p className="text-gray-400 font-bold">{settings.email}</p>
+              <div className="flex items-center gap-4">
+                <div className="bg-green-600/20 p-3 rounded-2xl shrink-0">
+                  <Mail className="text-green-400 w-5 h-5" />
+                </div>
+                <p className="text-slate-300 font-bold text-sm break-all">{settings.email}</p>
               </div>
             </div>
+            <Link
+              to="/contact"
+              className="inline-flex items-center gap-2 px-5 py-3 rounded-xl bg-green-700 hover:bg-green-600 text-white text-xs font-black uppercase tracking-wider transition-colors"
+            >
+              {lang === 'bn' ? 'বার্তা পাঠান' : 'Send a Message'} <ArrowRight className="w-4 h-4" />
+            </Link>
           </div>
-          <div className="md:col-span-2 rounded-[3rem] overflow-hidden h-96 grayscale opacity-80 hover:grayscale-0 transition-all duration-700 border-8 border-white/5">
-             <iframe src="https://www.google.com/maps/embed?pb=!1m18!1m12!1m3!1d3663.2201977799514!2d91.29177117589574!3d23.235017408375635!2m3!1f0!2f0!3f0!3m2!1i1024!2i768!4f13.1!3m3!1m2!1s0x37549303d8d6469b%3A0x8e87d15967000e3!2sChauddagram!5e0!3m2!1sen!2sbd!4v1700000000000!5m2!1sen!2sbd" width="100%" height="100%" style={{ border: 0 }} allowFullScreen={true} loading="lazy" />
+          <div className="md:col-span-2">
+            <CampusMap
+              schoolName={t(settings.name)}
+              address={t(settings.location)}
+              lat={settings.latitude}
+              lng={settings.longitude}
+              lang={lang}
+              heightClass="h-[340px]"
+            />
           </div>
         </div>
       </section>

@@ -21,6 +21,11 @@
         "email": { "type": "string", "format": "email", "maxLength": 150 },
         "location": { "$ref": "#/entities/LocalizedString" },
         "schoolPhoto": { "type": "string", "maxLength": 600000 },
+        "headTeacherName": { "$ref": "#/entities/LocalizedString" },
+        "headTeacherMessage": { "$ref": "#/entities/LocalizedString" },
+        "headTeacherPhoto": { "type": "string", "maxLength": 600000 },
+        "latitude": { "type": "number" },
+        "longitude": { "type": "number" },
         "updatedAt": { "type": "string", "format": "date-time" }
       },
       "required": ["name", "eiin", "phone", "email", "location", "updatedAt"]
@@ -61,7 +66,7 @@
     },
     "EBook": {
       "title": "EBook",
-      "description": "Digital NCTB textbook resource.",
+      "description": "Digital library textbook, study material, note, or practice PDF.",
       "type": "object",
       "properties": {
         "id": { "type": "string", "pattern": "^[a-zA-Z0-9_\\-]+$", "maxLength": 128 },
@@ -69,6 +74,8 @@
         "classId": { "type": "string", "maxLength": 16 },
         "className": { "$ref": "#/entities/LocalizedString" },
         "subject": { "type": "string", "maxLength": 120 },
+        "category": { "type": "string", "maxLength": 40 },
+        "description": { "$ref": "#/entities/LocalizedString" },
         "coverUrl": { "type": "string", "maxLength": 600000 },
         "downloadUrl": { "type": "string", "maxLength": 2000 },
         "isPublic": { "type": "boolean" },
@@ -79,12 +86,15 @@
     },
     "GalleryItem": {
       "title": "GalleryItem",
-      "description": "School campus or event photograph.",
+      "description": "School campus photo or event video.",
       "type": "object",
       "properties": {
         "id": { "type": "string", "pattern": "^[a-zA-Z0-9_\\-]+$", "maxLength": 128 },
         "url": { "type": "string", "maxLength": 600000 },
         "caption": { "$ref": "#/entities/LocalizedString" },
+        "mediaType": { "type": "string", "enum": ["image", "video"] },
+        "videoUrl": { "type": "string", "maxLength": 2000 },
+        "category": { "type": "string", "maxLength": 32 },
         "isPublic": { "type": "boolean" },
         "createdAt": { "type": "string", "format": "date-time" },
         "updatedAt": { "type": "string", "format": "date-time" }
@@ -154,8 +164,11 @@
         "uid": { "type": "string", "pattern": "^[a-zA-Z0-9_\\-]+$", "maxLength": 128 },
         "name": { "type": "string", "minLength": 1, "maxLength": 150 },
         "email": { "type": "string", "format": "email", "maxLength": 150 },
-        "role": { "type": "string", "enum": ["student", "teacher", "admin"] },
+        "role": { "type": "string", "enum": ["student", "teacher", "parent", "admin"] },
         "photo": { "type": "string", "maxLength": 600000 },
+        "linkedChildClass": { "type": "string", "maxLength": 16 },
+        "linkedChildRoll": { "type": "string", "maxLength": 20 },
+        "linkedChildName": { "type": "string", "maxLength": 150 },
         "createdAt": { "type": "string", "format": "date-time" },
         "updatedAt": { "type": "string", "format": "date-time" }
       },
@@ -171,6 +184,272 @@
         "grantedAt": { "type": "string", "format": "date-time" }
       },
       "required": ["uid", "email", "grantedAt"]
+    },
+    "SchoolStudent": {
+      "title": "SchoolStudent",
+      "description": "Enrolled student record managed by teachers/admins.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "pattern": "^[a-zA-Z0-9_\\-]+$", "maxLength": 128 },
+        "roll": { "type": "string", "minLength": 1, "maxLength": 20 },
+        "name": { "type": "string", "minLength": 1, "maxLength": 150 },
+        "classId": { "type": "string", "enum": ["6", "7", "8", "9", "10"] },
+        "section": { "type": "string", "minLength": 1, "maxLength": 40 },
+        "guardianMobile": { "type": "string", "minLength": 6, "maxLength": 30 },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["id", "roll", "name", "classId", "section", "guardianMobile", "createdAt", "updatedAt"]
+    },
+    "AttendanceRecord": {
+      "title": "AttendanceRecord",
+      "description": "Class daily attendance sheet.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "pattern": "^[a-zA-Z0-9_\\-]+$", "maxLength": 128 },
+        "date": { "type": "string", "maxLength": 32 },
+        "classId": { "type": "string", "enum": ["6", "7", "8", "9", "10"] },
+        "teacherName": { "type": "string", "maxLength": 150 },
+        "records": { "type": "object" },
+        "isPublished": { "type": "boolean" },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["id", "date", "classId", "teacherName", "records", "isPublished", "createdAt", "updatedAt"]
+    },
+    "HomeworkItem": {
+      "title": "HomeworkItem",
+      "description": "Homework assignment for a class.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "pattern": "^[a-zA-Z0-9_\\-]+$", "maxLength": 128 },
+        "title": { "type": "string", "minLength": 1, "maxLength": 300 },
+        "subject": { "type": "string", "minLength": 1, "maxLength": 120 },
+        "classId": { "type": "string", "enum": ["6", "7", "8", "9", "10"] },
+        "description": { "type": "string", "minLength": 1, "maxLength": 3000 },
+        "dueDate": { "type": "string", "maxLength": 32 },
+        "assignedBy": { "type": "string", "maxLength": 150 },
+        "isPublic": { "type": "boolean" },
+        "createdDate": { "type": "string", "maxLength": 32 },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["id", "title", "subject", "classId", "description", "dueDate", "assignedBy", "isPublic", "createdAt", "updatedAt"]
+    },
+    "AssignmentSubmission": {
+      "title": "AssignmentSubmission",
+      "description": "Student assignment submission graded by teachers.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "pattern": "^[a-zA-Z0-9_\\-]+$", "maxLength": 128 },
+        "homeworkId": { "type": "string", "maxLength": 128 },
+        "classId": { "type": "string", "enum": ["6", "7", "8", "9", "10"] },
+        "subject": { "type": "string", "maxLength": 120 },
+        "studentId": { "type": "string", "maxLength": 128 },
+        "studentName": { "type": "string", "maxLength": 150 },
+        "roll": { "type": "string", "maxLength": 20 },
+        "answerText": { "type": "string", "maxLength": 4000 },
+        "attachmentUrl": { "type": "string", "maxLength": 2000 },
+        "status": { "type": "string", "enum": ["submitted", "graded"] },
+        "marks": { "type": "number" },
+        "feedback": { "type": "string", "maxLength": 1000 },
+        "submittedDate": { "type": "string", "maxLength": 32 },
+        "ownerUid": { "type": "string", "maxLength": 128 },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["id", "homeworkId", "classId", "subject", "studentId", "studentName", "roll", "answerText", "status", "submittedDate", "createdAt", "updatedAt"]
+    },
+    "ExamMark": {
+      "title": "ExamMark",
+      "description": "Student exam mark entry.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "pattern": "^[a-zA-Z0-9_\\-]+$", "maxLength": 128 },
+        "examTerm": { "type": "string", "maxLength": 100 },
+        "classId": { "type": "string", "enum": ["6", "7", "8", "9", "10"] },
+        "subject": { "type": "string", "maxLength": 120 },
+        "studentId": { "type": "string", "maxLength": 128 },
+        "studentName": { "type": "string", "maxLength": 150 },
+        "roll": { "type": "string", "maxLength": 20 },
+        "totalMarks": { "type": "number" },
+        "obtainedMarks": { "type": "number" },
+        "grade": { "type": "string", "maxLength": 8 },
+        "enteredBy": { "type": "string", "maxLength": 150 },
+        "isPublished": { "type": "boolean" },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["id", "examTerm", "classId", "subject", "studentId", "studentName", "roll", "totalMarks", "obtainedMarks", "grade", "enteredBy", "isPublished", "createdAt", "updatedAt"]
+    },
+    "OnlineExam": {
+      "title": "OnlineExam",
+      "description": "Subject/chapter MCQ examination or practice test.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "pattern": "^[a-zA-Z0-9_\\-]+$", "maxLength": 128 },
+        "title": { "$ref": "#/entities/LocalizedString" },
+        "classId": { "type": "string", "enum": ["6", "7", "8", "9", "10"] },
+        "subject": { "type": "string", "maxLength": 120 },
+        "chapter": { "type": "string", "maxLength": 200 },
+        "durationMinutes": { "type": "number" },
+        "mode": { "type": "string", "enum": ["exam", "practice"] },
+        "questions": { "type": "array" },
+        "createdBy": { "type": "string", "maxLength": 150 },
+        "date": { "type": "string", "maxLength": 32 },
+        "isPublic": { "type": "boolean" },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["id", "title", "classId", "subject", "chapter", "durationMinutes", "mode", "questions", "createdBy", "date", "isPublic", "createdAt", "updatedAt"]
+    },
+    "ExamAttempt": {
+      "title": "ExamAttempt",
+      "description": "Student MCQ exam attempt result.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "pattern": "^[a-zA-Z0-9_\\-]+$", "maxLength": 128 },
+        "examId": { "type": "string", "maxLength": 128 },
+        "examTitle": { "type": "string", "maxLength": 300 },
+        "subject": { "type": "string", "maxLength": 120 },
+        "classId": { "type": "string", "enum": ["6", "7", "8", "9", "10"] },
+        "studentId": { "type": "string", "maxLength": 128 },
+        "studentName": { "type": "string", "maxLength": 150 },
+        "roll": { "type": "string", "maxLength": 20 },
+        "score": { "type": "number" },
+        "totalQuestions": { "type": "number" },
+        "percentage": { "type": "number" },
+        "answers": { "type": "object" },
+        "timeSpentSeconds": { "type": "number" },
+        "submittedAt": { "type": "string", "maxLength": 64 },
+        "ownerUid": { "type": "string", "maxLength": 128 },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["id", "examId", "examTitle", "subject", "classId", "studentId", "studentName", "roll", "score", "totalQuestions", "percentage", "answers", "timeSpentSeconds", "submittedAt", "createdAt"]
+    },
+    "ExamRoutineItem": {
+      "title": "ExamRoutineItem",
+      "description": "Scheduled exam timetable slot.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "pattern": "^[a-zA-Z0-9_\\-]+$", "maxLength": 128 },
+        "examTerm": { "type": "string", "maxLength": 100 },
+        "classId": { "type": "string", "enum": ["6", "7", "8", "9", "10"] },
+        "subject": { "type": "string", "maxLength": 120 },
+        "date": { "type": "string", "maxLength": 32 },
+        "time": { "type": "string", "maxLength": 64 },
+        "room": { "type": "string", "maxLength": 64 },
+        "isPublic": { "type": "boolean" },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["id", "examTerm", "classId", "subject", "date", "time", "isPublic", "createdAt", "updatedAt"]
+    },
+    "SchoolSubject": {
+      "title": "SchoolSubject",
+      "description": "Academic curriculum subject.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "pattern": "^[a-zA-Z0-9_\\-]+$", "maxLength": 128 },
+        "code": { "type": "string", "maxLength": 16 },
+        "name": { "$ref": "#/entities/LocalizedString" },
+        "classId": { "type": "string", "enum": ["6", "7", "8", "9", "10"] },
+        "totalMarks": { "type": "number" },
+        "teacherName": { "type": "string", "maxLength": 150 },
+        "isPublic": { "type": "boolean" },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["id", "code", "name", "classId", "totalMarks", "isPublic", "createdAt", "updatedAt"]
+    },
+    "ParentMessage": {
+      "title": "ParentMessage",
+      "description": "Direct communication message between guardian and teacher.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "pattern": "^[a-zA-Z0-9_\\-]+$", "maxLength": 128 },
+        "parentName": { "type": "string", "maxLength": 150 },
+        "studentName": { "type": "string", "maxLength": 150 },
+        "classId": { "type": "string", "enum": ["6", "7", "8", "9", "10"] },
+        "roll": { "type": "string", "maxLength": 20 },
+        "teacherName": { "type": "string", "maxLength": 150 },
+        "subject": { "type": "string", "maxLength": 200 },
+        "message": { "type": "string", "maxLength": 2000 },
+        "reply": { "type": "string", "maxLength": 2000 },
+        "repliedBy": { "type": "string", "maxLength": 150 },
+        "status": { "type": "string", "enum": ["open", "replied"] },
+        "createdDate": { "type": "string", "maxLength": 32 },
+        "ownerUid": { "type": "string", "maxLength": 128 },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["id", "parentName", "studentName", "classId", "roll", "teacherName", "subject", "message", "status", "createdDate", "createdAt", "updatedAt"]
+    },
+    "AlumniProfile": {
+      "title": "AlumniProfile",
+      "description": "Verified former student directory profile.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "pattern": "^[a-zA-Z0-9_\\-]+$", "maxLength": 128 },
+        "name": { "type": "string", "maxLength": 150 },
+        "batchYear": { "type": "string", "maxLength": 16 },
+        "currentRole": { "type": "string", "maxLength": 150 },
+        "organization": { "type": "string", "maxLength": 200 },
+        "city": { "type": "string", "maxLength": 100 },
+        "message": { "type": "string", "maxLength": 1000 },
+        "photo": { "type": "string", "maxLength": 600000 },
+        "status": { "type": "string", "enum": ["pending", "approved"] },
+        "isPublic": { "type": "boolean" },
+        "ownerUid": { "type": "string", "maxLength": 128 },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["id", "name", "batchYear", "currentRole", "organization", "message", "status", "isPublic", "createdAt", "updatedAt"]
+    },
+    "TeacherLeave": {
+      "title": "TeacherLeave",
+      "description": "Teacher leave application managed by admins.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "pattern": "^[a-zA-Z0-9_\\-]+$", "maxLength": 128 },
+        "teacherId": { "type": "string", "maxLength": 128 },
+        "teacherName": { "type": "string", "maxLength": 150 },
+        "leaveType": { "type": "string", "enum": ["Casual", "Sick", "Earned", "Emergency"] },
+        "startDate": { "type": "string", "maxLength": 32 },
+        "endDate": { "type": "string", "maxLength": 32 },
+        "reason": { "type": "string", "minLength": 2, "maxLength": 1500 },
+        "status": { "type": "string", "enum": ["pending", "approved", "rejected"] },
+        "adminRemark": { "type": "string", "maxLength": 500 },
+        "ownerUid": { "type": "string", "maxLength": 128 },
+        "submittedDate": { "type": "string", "maxLength": 32 },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["id", "teacherId", "teacherName", "leaveType", "startDate", "endDate", "reason", "status", "submittedDate", "createdAt", "updatedAt"]
+    },
+    "StudentLeave": {
+      "title": "StudentLeave",
+      "description": "Student leave application reviewed by teachers.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "pattern": "^[a-zA-Z0-9_\\-]+$", "maxLength": 128 },
+        "studentId": { "type": "string", "maxLength": 128 },
+        "studentName": { "type": "string", "maxLength": 150 },
+        "roll": { "type": "string", "maxLength": 20 },
+        "classId": { "type": "string", "enum": ["6", "7", "8", "9", "10"] },
+        "leaveType": { "type": "string", "enum": ["Sick", "Family", "Emergency", "Other"] },
+        "startDate": { "type": "string", "maxLength": 32 },
+        "endDate": { "type": "string", "maxLength": 32 },
+        "reason": { "type": "string", "minLength": 2, "maxLength": 1500 },
+        "status": { "type": "string", "enum": ["pending", "approved", "rejected"] },
+        "reviewedBy": { "type": "string", "maxLength": 150 },
+        "teacherRemark": { "type": "string", "maxLength": 500 },
+        "ownerUid": { "type": "string", "maxLength": 128 },
+        "submittedDate": { "type": "string", "maxLength": 32 },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["id", "studentId", "studentName", "roll", "classId", "leaveType", "startDate", "endDate", "reason", "status", "submittedDate", "createdAt", "updatedAt"]
     }
   },
   "firestore": {
@@ -188,11 +467,11 @@
     },
     "/ebooks/{ebookId}": {
       "schema": { "$ref": "#/entities/EBook" },
-      "description": "Digital library e-books collection."
+      "description": "Digital library e-books & study materials collection."
     },
     "/gallery/{itemId}": {
       "schema": { "$ref": "#/entities/GalleryItem" },
-      "description": "School gallery photos collection."
+      "description": "School gallery photos and event videos collection."
     },
     "/holidays/{holidayId}": {
       "schema": { "$ref": "#/entities/Holiday" },
@@ -213,6 +492,58 @@
     "/admins/{uid}": {
       "schema": { "$ref": "#/entities/AdminRecord" },
       "description": "Trusted administrator registry."
+    },
+    "/students/{studentId}": {
+      "schema": { "$ref": "#/entities/SchoolStudent" },
+      "description": "Class-wise student roster managed by teachers and admins."
+    },
+    "/attendance/{attendanceId}": {
+      "schema": { "$ref": "#/entities/AttendanceRecord" },
+      "description": "Daily class attendance sheets."
+    },
+    "/homework/{homeworkId}": {
+      "schema": { "$ref": "#/entities/HomeworkItem" },
+      "description": "Assigned class homework."
+    },
+    "/assignmentSubmissions/{submissionId}": {
+      "schema": { "$ref": "#/entities/AssignmentSubmission" },
+      "description": "Student homework submissions and teacher grading."
+    },
+    "/examMarks/{markId}": {
+      "schema": { "$ref": "#/entities/ExamMark" },
+      "description": "Exam marks and grade records."
+    },
+    "/onlineExams/{examId}": {
+      "schema": { "$ref": "#/entities/OnlineExam" },
+      "description": "Subject and chapter-wise online MCQ exams."
+    },
+    "/examAttempts/{attemptId}": {
+      "schema": { "$ref": "#/entities/ExamAttempt" },
+      "description": "Student MCQ test attempt history."
+    },
+    "/examRoutines/{routineId}": {
+      "schema": { "$ref": "#/entities/ExamRoutineItem" },
+      "description": "Exam timetable schedule."
+    },
+    "/subjects/{subjectId}": {
+      "schema": { "$ref": "#/entities/SchoolSubject" },
+      "description": "School academic subject directory."
+    },
+    "/parentMessages/{messageId}": {
+      "schema": { "$ref": "#/entities/ParentMessage" },
+      "description": "Direct parent-teacher communication threads."
+    },
+    "/alumni/{alumniId}": {
+      "schema": { "$ref": "#/entities/AlumniProfile" },
+      "description": "Alumni network profiles and registration requests."
+    },
+    "/teacherLeaves/{leaveId}": {
+      "schema": { "$ref": "#/entities/TeacherLeave" },
+      "description": "Teacher leave applications."
+    },
+    "/studentLeaves/{leaveId}": {
+      "schema": { "$ref": "#/entities/StudentLeave" },
+      "description": "Student leave applications."
     }
   }
 }
