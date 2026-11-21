@@ -15,14 +15,22 @@ import {
   Send,
   FileText,
   ShieldCheck,
+  Receipt,
+  Printer,
+  Download,
+  Megaphone,
 } from 'lucide-react';
 import { useApp } from '../App';
+import { FeeRecord } from '../types';
 import { calculateOverallGpa, isSafeHttpUrl } from '../utils/security';
+import { exportCsv } from '../utils/exportUtils';
+import { AcademicReportCard } from './AcademicReportCard';
+import { FeeReceiptModal } from './FeeReceiptModal';
 
 const { useState, useMemo, useEffect } = React;
 const { Link } = RouterDom;
 
-type StudentTab = 'homework' | 'marks' | 'progress' | 'attendance' | 'materials' | 'leave' | 'notices';
+type StudentTab = 'homework' | 'marks' | 'progress' | 'attendance' | 'fees' | 'materials' | 'leave' | 'notices';
 
 export const StudentPortal: React.FC = () => {
   const {
@@ -43,12 +51,16 @@ export const StudentPortal: React.FC = () => {
     studentLeaves,
     submitStudentLeave,
     deleteStudentLeave,
+    feeRecords,
+    portalNotifications,
   } = useApp();
 
   const [activeTab, setActiveTab] = useState<StudentTab>('homework');
   const [selectedClassId, setSelectedClassId] = useState<string>(user?.linkedChildClass || '9');
   const [selectedRoll, setSelectedRoll] = useState<string>(user?.linkedChildRoll || '01');
   const [toast, setToast] = useState<string | null>(null);
+  const [reportCardOpen, setReportCardOpen] = useState(false);
+  const [activeReceipt, setActiveReceipt] = useState<FeeRecord | null>(null);
 
   useEffect(() => {
     if (user?.linkedChildClass) setSelectedClassId(user.linkedChildClass);
@@ -143,6 +155,31 @@ export const StudentPortal: React.FC = () => {
           (l.roll === selectedRoll.trim() || l.studentName === user?.name || l.ownerUid === user?.userId)
       ),
     [studentLeaves, selectedClassId, selectedRoll, user]
+  );
+
+  const myFees = useMemo(
+    () =>
+      feeRecords
+        .filter((f) => f.classId === selectedClassId && f.roll.trim() === selectedRoll.trim())
+        .sort((a, b) => b.dueDate.localeCompare(a.dueDate)),
+    [feeRecords, selectedClassId, selectedRoll]
+  );
+
+  const feeSummary = useMemo(() => {
+    const totalBilled = myFees.reduce((sum, f) => sum + f.amount, 0);
+    const totalPaid = myFees.reduce((sum, f) => sum + f.paidAmount, 0);
+    const totalDue = myFees.reduce((sum, f) => (f.status === 'waived' ? sum : sum + Math.max(0, f.amount - f.paidAmount)), 0);
+    return { totalBilled, totalPaid, totalDue };
+  }, [myFees]);
+
+  const targetedAlerts = useMemo(
+    () =>
+      portalNotifications.filter(
+        (n) =>
+          (n.targetRole === 'all' || n.targetRole === 'student') &&
+          (!n.classId || n.classId === 'all' || n.classId === selectedClassId)
+      ),
+    [portalNotifications, selectedClassId]
   );
 
   const handleAssignmentSubmit = (e: React.FormEvent, hwId: string, subject: string) => {
@@ -291,6 +328,7 @@ export const StudentPortal: React.FC = () => {
           { id: 'marks', label: lang === 'bn' ? 'ফলাফল' : 'Exam Results', icon: Award },
           { id: 'progress', label: lang === 'bn' ? 'পড়াশোনার অগ্রগতি' : 'Academic Progress', icon: TrendingUp },
           { id: 'attendance', label: lang === 'bn' ? 'উপস্থিতি' : 'Attendance', icon: ClipboardCheck },
+          { id: 'fees', label: lang === 'bn' ? 'ফি ও রশিদ' : 'Fees & Receipts', icon: Receipt },
           { id: 'materials', label: lang === 'bn' ? 'বই ও নোটস' : 'Study Materials', icon: FileText },
           { id: 'leave', label: lang === 'bn' ? 'ছুটির আবেদন' : 'Apply Leave', icon: CalendarPlus },
           { id: 'notices', label: lang === 'bn' ? 'নোটিশ' : 'Notices', icon: Bell },
@@ -425,6 +463,42 @@ export const StudentPortal: React.FC = () => {
       {/* Exam Results */}
       {activeTab === 'marks' && (
         <div className="space-y-4">
+          <div className="flex flex-wrap items-center justify-between gap-3 bg-white dark:bg-slate-900 p-4 rounded-2xl border border-slate-200 dark:border-slate-800">
+            <div>
+              <h4 className="font-extrabold text-sm text-slate-900 dark:text-white">
+                {lang === 'bn' ? 'প্রকাশিত পরীক্ষার ফলাফল ও ট্রান্সক্রিপ্ট' : 'Published Marks & Official Transcript'}
+              </h4>
+              <p className="text-xs text-slate-500 dark:text-slate-400 tabular-nums">
+                GPA {gpaSummary.gpa} · {myMarks.length} {lang === 'bn' ? 'টি বিষয়' : 'subjects'}
+              </p>
+            </div>
+            <div className="flex flex-wrap gap-2">
+              <button
+                type="button"
+                disabled={myMarks.length === 0}
+                onClick={() =>
+                  exportCsv(
+                    `RBMB-Marks-Class${selectedClassId}-Roll${selectedRoll}`,
+                    ['Term', 'Subject', 'Obtained', 'Total', 'Grade'],
+                    myMarks.map((m) => [m.examTerm, m.subject, m.obtainedMarks, m.totalMarks, m.grade])
+                  )
+                }
+                className="px-3.5 py-2 rounded-xl bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-xs font-bold inline-flex items-center gap-1.5 disabled:opacity-40"
+              >
+                <Download className="w-3.5 h-3.5" />
+                {lang === 'bn' ? 'CSV ডাউনলোড' : 'Export CSV'}
+              </button>
+              <button
+                type="button"
+                onClick={() => setReportCardOpen(true)}
+                className="px-4 py-2 rounded-xl bg-emerald-700 hover:bg-emerald-800 text-white text-xs font-bold inline-flex items-center gap-1.5"
+              >
+                <Printer className="w-3.5 h-3.5" />
+                {lang === 'bn' ? 'মার্কশিট প্রিন্ট / PDF' : 'Print Report Card'}
+              </button>
+            </div>
+          </div>
+
           <div className="bg-white dark:bg-slate-900 rounded-3xl border border-slate-200 dark:border-slate-800 overflow-hidden shadow-sm">
             {myMarks.length === 0 ? (
               <div className="p-10 text-center text-slate-400 font-bold text-sm">
@@ -541,6 +615,87 @@ export const StudentPortal: React.FC = () => {
               </div>
             ))
           )}
+        </div>
+      )}
+
+      {/* Fees & Receipts */}
+      {activeTab === 'fees' && (
+        <div className="space-y-5">
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+            <div className="bg-white dark:bg-slate-900 p-5 rounded-2xl border border-slate-200 dark:border-slate-800">
+              <p className="text-[11px] font-bold uppercase text-slate-400">{lang === 'bn' ? 'মোট নির্ধারিত ফি' : 'Total Billed'}</p>
+              <p className="text-2xl font-black text-slate-900 dark:text-white mt-1 tabular-nums">৳{feeSummary.totalBilled.toLocaleString()}</p>
+            </div>
+            <div className="bg-white dark:bg-slate-900 p-5 rounded-2xl border border-slate-200 dark:border-slate-800">
+              <p className="text-[11px] font-bold uppercase text-slate-400">{lang === 'bn' ? 'মোট পরিশোধিত' : 'Total Paid'}</p>
+              <p className="text-2xl font-black text-emerald-700 dark:text-emerald-400 mt-1 tabular-nums">৳{feeSummary.totalPaid.toLocaleString()}</p>
+            </div>
+            <div className="bg-white dark:bg-slate-900 p-5 rounded-2xl border border-slate-200 dark:border-slate-800">
+              <p className="text-[11px] font-bold uppercase text-slate-400">{lang === 'bn' ? 'বকেয়া পরিমাণ' : 'Balance Due'}</p>
+              <p className="text-2xl font-black text-amber-600 dark:text-amber-400 mt-1 tabular-nums">৳{feeSummary.totalDue.toLocaleString()}</p>
+            </div>
+          </div>
+
+          <div className="bg-white dark:bg-slate-900 rounded-3xl border border-slate-200 dark:border-slate-800 overflow-hidden">
+            {myFees.length === 0 ? (
+              <div className="p-10 text-center text-slate-400 font-bold text-sm">
+                {lang === 'bn' ? 'কোনো বেতন বা ফি রেকর্ড পাওয়া যায়নি।' : 'No fee invoices recorded for this student yet.'}
+              </div>
+            ) : (
+              <div className="overflow-x-auto">
+                <table className="w-full text-left text-sm">
+                  <thead className="bg-slate-50 dark:bg-slate-800 text-[11px] font-bold uppercase text-slate-500 border-b border-slate-200 dark:border-slate-700">
+                    <tr>
+                      <th className="px-5 py-3.5">{lang === 'bn' ? 'ফি-এর বিবরণ' : 'Particular'}</th>
+                      <th className="px-5 py-3.5">{lang === 'bn' ? 'শেষ তারিখ' : 'Due Date'}</th>
+                      <th className="px-5 py-3.5 text-right tabular-nums">{lang === 'bn' ? 'ধার্যকৃত' : 'Amount'}</th>
+                      <th className="px-5 py-3.5 text-right tabular-nums">{lang === 'bn' ? 'পরিশোধিত' : 'Paid'}</th>
+                      <th className="px-5 py-3.5">{lang === 'bn' ? 'অবস্থা' : 'Status'}</th>
+                      <th className="px-5 py-3.5 text-right">{lang === 'bn' ? 'রশিদ' : 'Receipt'}</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
+                    {myFees.map((f) => (
+                      <tr key={f.id}>
+                        <td className="px-5 py-3.5">
+                          <p className="font-bold text-slate-900 dark:text-white">{f.title}</p>
+                          <p className="text-xs text-slate-400">{f.category}{f.billingMonth ? ` · ${f.billingMonth}` : ''}</p>
+                        </td>
+                        <td className="px-5 py-3.5 text-xs font-semibold tabular-nums text-slate-500">{f.dueDate}</td>
+                        <td className="px-5 py-3.5 text-right font-bold tabular-nums">৳{f.amount.toLocaleString()}</td>
+                        <td className="px-5 py-3.5 text-right font-bold text-emerald-700 dark:text-emerald-400 tabular-nums">৳{f.paidAmount.toLocaleString()}</td>
+                        <td className="px-5 py-3.5">
+                          <span
+                            className={`px-2.5 py-1 rounded-lg text-[10px] font-black uppercase ${
+                              f.status === 'paid'
+                                ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-950 dark:text-emerald-300'
+                                : f.status === 'partial'
+                                ? 'bg-blue-100 text-blue-700 dark:bg-blue-950 dark:text-blue-300'
+                                : f.status === 'waived'
+                                ? 'bg-slate-200 text-slate-700 dark:bg-slate-800 dark:text-slate-300'
+                                : 'bg-amber-100 text-amber-800 dark:bg-amber-950 dark:text-amber-300'
+                            }`}
+                          >
+                            {f.status}
+                          </span>
+                        </td>
+                        <td className="px-5 py-3.5 text-right">
+                          <button
+                            type="button"
+                            onClick={() => setActiveReceipt(f)}
+                            className="px-3 py-1.5 rounded-lg bg-slate-100 dark:bg-slate-800 hover:bg-emerald-700 hover:text-white text-xs font-bold inline-flex items-center gap-1 transition-colors"
+                          >
+                            <Receipt className="w-3.5 h-3.5" />
+                            {lang === 'bn' ? 'রশিদ' : 'Voucher'}
+                          </button>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </div>
         </div>
       )}
 
@@ -662,21 +817,64 @@ export const StudentPortal: React.FC = () => {
         </div>
       )}
 
-      {/* Notices */}
+      {/* Notices & Targeted Class Alerts */}
       {activeTab === 'notices' && (
-        <div className="space-y-3">
-          {notices.map((n) => (
-            <div key={n.id} className="bg-white dark:bg-slate-900 p-5 rounded-3xl border border-slate-200 dark:border-slate-800 space-y-1.5">
-              <div className="flex items-center justify-between text-xs text-slate-400">
-                <span className="font-bold text-emerald-700 dark:text-emerald-400 uppercase">{n.category}</span>
-                <span>{n.date}</span>
-              </div>
-              <h4 className="font-extrabold text-base">{t(n.title)}</h4>
-              <p className="text-sm text-slate-600 dark:text-slate-300">{t(n.description)}</p>
+        <div className="space-y-4">
+          {targetedAlerts.length > 0 && (
+            <div className="space-y-2.5">
+              <p className="text-xs font-extrabold uppercase tracking-wider text-slate-400 flex items-center gap-1.5">
+                <Megaphone className="w-3.5 h-3.5 text-emerald-700 dark:text-emerald-400" />
+                {lang === 'bn' ? 'শ্রেণী ও পোর্টাল ঘোষণা' : 'Targeted Portal Alerts'}
+              </p>
+              {targetedAlerts.map((al) => (
+                <div
+                  key={al.id}
+                  className={`p-5 rounded-2xl border space-y-1 ${
+                    al.priority === 'urgent'
+                      ? 'bg-amber-50/70 dark:bg-amber-950/30 border-amber-200 dark:border-amber-800'
+                      : 'bg-emerald-50/60 dark:bg-emerald-950/30 border-emerald-200 dark:border-emerald-800'
+                  }`}
+                >
+                  <div className="flex flex-wrap items-center justify-between gap-2 text-xs text-slate-500 dark:text-slate-400">
+                    <span className="font-extrabold uppercase text-emerald-700 dark:text-emerald-400">
+                      {al.priority === 'urgent' ? (lang === 'bn' ? 'জরুরি ঘোষণা' : 'Urgent') : (lang === 'bn' ? 'পোর্টাল বার্তা' : 'Announcement')}
+                      {al.classId && al.classId !== 'all' ? ` · Class ${al.classId}` : ''}
+                    </span>
+                    <span className="tabular-nums">{al.createdDate} · {al.senderName}</span>
+                  </div>
+                  <h4 className="font-extrabold text-base text-slate-900 dark:text-white">{al.title}</h4>
+                  <p className="text-sm text-slate-600 dark:text-slate-300">{al.message}</p>
+                </div>
+              ))}
             </div>
-          ))}
+          )}
+
+          <div className="space-y-3">
+            {notices.map((n) => (
+              <div key={n.id} className="bg-white dark:bg-slate-900 p-5 rounded-3xl border border-slate-200 dark:border-slate-800 space-y-1.5">
+                <div className="flex items-center justify-between text-xs text-slate-400">
+                  <span className="font-bold text-emerald-700 dark:text-emerald-400 uppercase">{n.category}</span>
+                  <span className="tabular-nums">{n.date}</span>
+                </div>
+                <h4 className="font-extrabold text-base">{t(n.title)}</h4>
+                <p className="text-sm text-slate-600 dark:text-slate-300">{t(n.description)}</p>
+              </div>
+            ))}
+          </div>
         </div>
       )}
+
+      <AcademicReportCard
+        open={reportCardOpen}
+        onClose={() => setReportCardOpen(false)}
+        studentName={matchedStudent?.name || user?.name || 'Student'}
+        classId={selectedClassId}
+        roll={selectedRoll.trim() || '01'}
+        section={matchedStudent?.section || 'A'}
+        marks={myMarks}
+        attendancePct={attendancePct}
+      />
+      <FeeReceiptModal fee={activeReceipt} onClose={() => setActiveReceipt(null)} />
     </div>
   );
 };

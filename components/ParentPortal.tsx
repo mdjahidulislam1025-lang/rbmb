@@ -14,14 +14,22 @@ import {
   ShieldCheck,
   Clock,
   XCircle,
+  Receipt,
+  Printer,
+  Download,
+  Megaphone,
 } from 'lucide-react';
 import { useApp } from '../App';
+import { FeeRecord } from '../types';
 import { calculateOverallGpa } from '../utils/security';
+import { exportCsv } from '../utils/exportUtils';
+import { AcademicReportCard } from './AcademicReportCard';
+import { FeeReceiptModal } from './FeeReceiptModal';
 
 const { useState, useMemo, useEffect } = React;
 const { Link } = RouterDom;
 
-type ParentTab = 'overview' | 'results' | 'attendance' | 'routine' | 'notices' | 'messages';
+type ParentTab = 'overview' | 'results' | 'attendance' | 'fees' | 'routine' | 'notices' | 'messages';
 
 export const ParentPortal: React.FC = () => {
   const {
@@ -41,6 +49,8 @@ export const ParentPortal: React.FC = () => {
     sendParentMessage,
     parentLinks,
     requestParentStudentLink,
+    feeRecords,
+    portalNotifications,
   } = useApp();
 
   const [activeTab, setActiveTab] = useState<ParentTab>('overview');
@@ -49,6 +59,8 @@ export const ParentPortal: React.FC = () => {
   const [relationship, setRelationship] = useState<'Father' | 'Mother' | 'Guardian'>('Father');
   const [isRequestingLink, setIsRequestingLink] = useState(false);
   const [toast, setToast] = useState<string | null>(null);
+  const [reportCardOpen, setReportCardOpen] = useState(false);
+  const [activeReceipt, setActiveReceipt] = useState<FeeRecord | null>(null);
 
   const [msgForm, setMsgForm] = useState({
     teacherName: teachers[0] ? t(teachers[0].name) : 'Md. Abdul Karim',
@@ -167,6 +179,31 @@ export const ParentPortal: React.FC = () => {
           (user?.userId && m.ownerUid === user.userId)
       ),
     [parentMessages, childClass, childRoll, user]
+  );
+
+  const childFees = useMemo(
+    () =>
+      feeRecords
+        .filter((f) => f.classId === childClass && f.roll.trim() === childRoll.trim())
+        .sort((a, b) => b.dueDate.localeCompare(a.dueDate)),
+    [feeRecords, childClass, childRoll]
+  );
+
+  const childFeeSummary = useMemo(() => {
+    const billed = childFees.reduce((s, f) => s + f.amount, 0);
+    const paid = childFees.reduce((s, f) => s + f.paidAmount, 0);
+    const due = childFees.reduce((s, f) => (f.status === 'waived' ? s : s + Math.max(0, f.amount - f.paidAmount)), 0);
+    return { billed, paid, due };
+  }, [childFees]);
+
+  const guardianAlerts = useMemo(
+    () =>
+      portalNotifications.filter(
+        (n) =>
+          (n.targetRole === 'all' || n.targetRole === 'parent') &&
+          (!n.classId || n.classId === 'all' || n.classId === childClass)
+      ),
+    [portalNotifications, childClass]
   );
 
   const handleSendMessage = (e: React.FormEvent) => {
@@ -362,6 +399,7 @@ export const ParentPortal: React.FC = () => {
           { id: 'overview', label: lang === 'bn' ? 'অগ্রগতি' : 'Academic Progress', icon: TrendingUp },
           { id: 'results', label: lang === 'bn' ? 'পরীক্ষার ফলাফল' : 'Exam Results', icon: Award },
           { id: 'attendance', label: lang === 'bn' ? 'উপস্থিতি' : 'Attendance', icon: ClipboardCheck },
+          { id: 'fees', label: lang === 'bn' ? 'বেতন ও ফি রশিদ' : 'Fees & Receipts', icon: Receipt },
           { id: 'routine', label: lang === 'bn' ? 'পরীক্ষার সময়সূচি' : 'Exam Schedule', icon: Calendar },
           { id: 'notices', label: lang === 'bn' ? 'জরুরি ঘোষণা ও নোটিশ' : 'Notices', icon: Bell },
           { id: 'messages', label: lang === 'bn' ? 'শিক্ষক যোগাযোগ' : 'Message Teacher', icon: MessageSquare },
@@ -433,39 +471,72 @@ export const ParentPortal: React.FC = () => {
       )}
 
       {activeTab === 'results' && (
-        <div className="bg-white dark:bg-slate-900 rounded-3xl border border-slate-200 dark:border-slate-800 overflow-hidden">
-          {childMarks.length === 0 ? (
-            <div className="p-10 text-center text-slate-400 font-bold text-sm">
-              {lang === 'bn' ? 'প্রকাশিত ফলাফল পাওয়া যায়নি।' : 'No published exam results found for this student.'}
+        <div className="space-y-4">
+          <div className="flex flex-wrap items-center justify-between gap-3 bg-white dark:bg-slate-900 p-4 rounded-2xl border border-slate-200 dark:border-slate-800">
+            <div>
+              <h4 className="font-extrabold text-sm">{lang === 'bn' ? 'সন্তানের ফলাফল ও প্রগতি পত্র' : 'Child Academic Transcript'}</h4>
+              <p className="text-xs text-slate-500 tabular-nums">GPA {gpaStats.gpa} · {childMarks.length} {lang === 'bn' ? 'টি বিষয়' : 'subjects'}</p>
             </div>
-          ) : (
-            <table className="w-full text-left text-sm">
-              <thead className="bg-slate-50 dark:bg-slate-800 text-[11px] font-bold uppercase text-slate-500 border-b border-slate-200 dark:border-slate-700">
-                <tr>
-                  <th className="px-6 py-4">{lang === 'bn' ? 'পরীক্ষা' : 'Term'}</th>
-                  <th className="px-6 py-4">{lang === 'bn' ? 'বিষয়' : 'Subject'}</th>
-                  <th className="px-6 py-4">{lang === 'bn' ? 'প্রাপ্ত নম্বর' : 'Marks'}</th>
-                  <th className="px-6 py-4 text-right">{lang === 'bn' ? 'গ্রেড' : 'Grade'}</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
-                {childMarks.map((m) => (
-                  <tr key={m.id}>
-                    <td className="px-6 py-4 text-xs text-slate-500 font-semibold">{m.examTerm}</td>
-                    <td className="px-6 py-4 font-bold">{m.subject}</td>
-                    <td className="px-6 py-4 font-semibold">
-                      {m.obtainedMarks} / {m.totalMarks}
-                    </td>
-                    <td className="px-6 py-4 text-right">
-                      <span className="px-2.5 py-1 rounded-lg bg-emerald-100 dark:bg-emerald-950 text-emerald-700 dark:text-emerald-300 text-xs font-extrabold">
-                        {m.grade}
-                      </span>
-                    </td>
+            <div className="flex flex-wrap gap-2">
+              <button
+                type="button"
+                disabled={childMarks.length === 0}
+                onClick={() =>
+                  exportCsv(
+                    `RBMB-Child-Marks-Class${childClass}-Roll${childRoll}`,
+                    ['Term', 'Subject', 'Obtained', 'Total', 'Grade'],
+                    childMarks.map((m) => [m.examTerm, m.subject, m.obtainedMarks, m.totalMarks, m.grade])
+                  )
+                }
+                className="px-3.5 py-2 rounded-xl bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-xs font-bold inline-flex items-center gap-1.5 disabled:opacity-40"
+              >
+                <Download className="w-3.5 h-3.5" /> CSV
+              </button>
+              <button
+                type="button"
+                onClick={() => setReportCardOpen(true)}
+                className="px-4 py-2 rounded-xl bg-emerald-700 hover:bg-emerald-800 text-white text-xs font-bold inline-flex items-center gap-1.5"
+              >
+                <Printer className="w-3.5 h-3.5" />
+                {lang === 'bn' ? 'রিপোর্ট কার্ড প্রিন্ট' : 'Print Report Card'}
+              </button>
+            </div>
+          </div>
+
+          <div className="bg-white dark:bg-slate-900 rounded-3xl border border-slate-200 dark:border-slate-800 overflow-hidden">
+            {childMarks.length === 0 ? (
+              <div className="p-10 text-center text-slate-400 font-bold text-sm">
+                {lang === 'bn' ? 'প্রকাশিত ফলাফল পাওয়া যায়নি।' : 'No published exam results found for this student.'}
+              </div>
+            ) : (
+              <table className="w-full text-left text-sm">
+                <thead className="bg-slate-50 dark:bg-slate-800 text-[11px] font-bold uppercase text-slate-500 border-b border-slate-200 dark:border-slate-700">
+                  <tr>
+                    <th className="px-6 py-4">{lang === 'bn' ? 'পরীক্ষা' : 'Term'}</th>
+                    <th className="px-6 py-4">{lang === 'bn' ? 'বিষয়' : 'Subject'}</th>
+                    <th className="px-6 py-4">{lang === 'bn' ? 'প্রাপ্ত নম্বর' : 'Marks'}</th>
+                    <th className="px-6 py-4 text-right">{lang === 'bn' ? 'গ্রেড' : 'Grade'}</th>
                   </tr>
-                ))}
-              </tbody>
-            </table>
-          )}
+                </thead>
+                <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
+                  {childMarks.map((m) => (
+                    <tr key={m.id}>
+                      <td className="px-6 py-4 text-xs text-slate-500 font-semibold">{m.examTerm}</td>
+                      <td className="px-6 py-4 font-bold">{m.subject}</td>
+                      <td className="px-6 py-4 font-semibold tabular-nums">
+                        {m.obtainedMarks} / {m.totalMarks}
+                      </td>
+                      <td className="px-6 py-4 text-right">
+                        <span className="px-2.5 py-1 rounded-lg bg-emerald-100 dark:bg-emerald-950 text-emerald-700 dark:text-emerald-300 text-xs font-extrabold">
+                          {m.grade}
+                        </span>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            )}
+          </div>
         </div>
       )}
 
@@ -496,6 +567,76 @@ export const ParentPortal: React.FC = () => {
               </div>
             ))
           )}
+        </div>
+      )}
+
+      {activeTab === 'fees' && (
+        <div className="space-y-5">
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+            <div className="bg-white dark:bg-slate-900 p-5 rounded-2xl border border-slate-200 dark:border-slate-800">
+              <p className="text-[11px] font-bold uppercase text-slate-400">{lang === 'bn' ? 'মোট বিল' : 'Total Billed'}</p>
+              <p className="text-2xl font-black mt-1 tabular-nums">৳{childFeeSummary.billed.toLocaleString()}</p>
+            </div>
+            <div className="bg-white dark:bg-slate-900 p-5 rounded-2xl border border-slate-200 dark:border-slate-800">
+              <p className="text-[11px] font-bold uppercase text-slate-400">{lang === 'bn' ? 'পরিশোধিত' : 'Total Paid'}</p>
+              <p className="text-2xl font-black text-emerald-700 dark:text-emerald-400 mt-1 tabular-nums">৳{childFeeSummary.paid.toLocaleString()}</p>
+            </div>
+            <div className="bg-white dark:bg-slate-900 p-5 rounded-2xl border border-slate-200 dark:border-slate-800">
+              <p className="text-[11px] font-bold uppercase text-slate-400">{lang === 'bn' ? 'বকেয়া' : 'Balance Due'}</p>
+              <p className="text-2xl font-black text-amber-600 dark:text-amber-400 mt-1 tabular-nums">৳{childFeeSummary.due.toLocaleString()}</p>
+            </div>
+          </div>
+
+          <div className="bg-white dark:bg-slate-900 rounded-3xl border border-slate-200 dark:border-slate-800 overflow-hidden">
+            {childFees.length === 0 ? (
+              <div className="p-10 text-center text-slate-400 font-bold text-sm">
+                {lang === 'bn' ? 'কোনো ফি রেকর্ড এখনো পাওয়া যায়নি।' : 'No fee records found for this student.'}
+              </div>
+            ) : (
+              <div className="overflow-x-auto">
+                <table className="w-full text-left text-sm">
+                  <thead className="bg-slate-50 dark:bg-slate-800 text-[11px] font-bold uppercase text-slate-500 border-b border-slate-200 dark:border-slate-700">
+                    <tr>
+                      <th className="px-5 py-3.5">{lang === 'bn' ? 'বিবরণ' : 'Fee Particular'}</th>
+                      <th className="px-5 py-3.5">{lang === 'bn' ? 'শেষ তারিখ' : 'Due Date'}</th>
+                      <th className="px-5 py-3.5 text-right tabular-nums">{lang === 'bn' ? 'ধার্যকৃত' : 'Amount'}</th>
+                      <th className="px-5 py-3.5 text-right tabular-nums">{lang === 'bn' ? 'পরিশোধিত' : 'Paid'}</th>
+                      <th className="px-5 py-3.5">{lang === 'bn' ? 'অবস্থা' : 'Status'}</th>
+                      <th className="px-5 py-3.5 text-right">{lang === 'bn' ? 'রশিদ' : 'Receipt'}</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
+                    {childFees.map((f) => (
+                      <tr key={f.id}>
+                        <td className="px-5 py-3.5">
+                          <p className="font-bold">{f.title}</p>
+                          <p className="text-xs text-slate-400">{f.category}{f.billingMonth ? ` · ${f.billingMonth}` : ''}</p>
+                        </td>
+                        <td className="px-5 py-3.5 text-xs tabular-nums text-slate-500">{f.dueDate}</td>
+                        <td className="px-5 py-3.5 text-right font-bold tabular-nums">৳{f.amount.toLocaleString()}</td>
+                        <td className="px-5 py-3.5 text-right font-bold text-emerald-700 dark:text-emerald-400 tabular-nums">৳{f.paidAmount.toLocaleString()}</td>
+                        <td className="px-5 py-3.5">
+                          <span className={`px-2.5 py-1 rounded-lg text-[10px] font-black uppercase ${f.status === 'paid' ? 'bg-emerald-100 text-emerald-700' : f.status === 'partial' ? 'bg-blue-100 text-blue-700' : f.status === 'waived' ? 'bg-slate-200 text-slate-700' : 'bg-amber-100 text-amber-800'}`}>
+                            {f.status}
+                          </span>
+                        </td>
+                        <td className="px-5 py-3.5 text-right">
+                          <button
+                            type="button"
+                            onClick={() => setActiveReceipt(f)}
+                            className="px-3 py-1.5 rounded-lg bg-slate-100 dark:bg-slate-800 hover:bg-emerald-700 hover:text-white text-xs font-bold inline-flex items-center gap-1"
+                          >
+                            <Receipt className="w-3.5 h-3.5" />
+                            {lang === 'bn' ? 'রশিদ' : 'Voucher'}
+                          </button>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </div>
         </div>
       )}
 
@@ -531,17 +672,48 @@ export const ParentPortal: React.FC = () => {
       )}
 
       {activeTab === 'notices' && (
-        <div className="space-y-3">
-          {notices.map((n) => (
-            <div key={n.id} className="bg-white dark:bg-slate-900 p-5 rounded-2xl border border-slate-200 dark:border-slate-800 space-y-1.5">
-              <div className="flex items-center justify-between text-xs text-slate-400">
-                <span className="font-bold text-emerald-700 dark:text-emerald-400 uppercase">{n.category}</span>
-                <span>{n.date}</span>
-              </div>
-              <h4 className="font-bold text-base">{t(n.title)}</h4>
-              <p className="text-sm text-slate-600 dark:text-slate-300">{t(n.description)}</p>
+        <div className="space-y-4">
+          {guardianAlerts.length > 0 && (
+            <div className="space-y-2.5">
+              <p className="text-xs font-extrabold uppercase tracking-wider text-slate-400 flex items-center gap-1.5">
+                <Megaphone className="w-3.5 h-3.5 text-emerald-700 dark:text-emerald-400" />
+                {lang === 'bn' ? 'অভিভাবকদের জন্য বিশেষ ঘোষণা' : 'Guardian & Class Alerts'}
+              </p>
+              {guardianAlerts.map((al) => (
+                <div
+                  key={al.id}
+                  className={`p-5 rounded-2xl border space-y-1 ${
+                    al.priority === 'urgent'
+                      ? 'bg-amber-50/70 dark:bg-amber-950/30 border-amber-200 dark:border-amber-800'
+                      : 'bg-emerald-50/60 dark:bg-emerald-950/30 border-emerald-200 dark:border-emerald-800'
+                  }`}
+                >
+                  <div className="flex flex-wrap items-center justify-between gap-2 text-xs text-slate-500">
+                    <span className="font-extrabold uppercase text-emerald-700 dark:text-emerald-400">
+                      {al.priority === 'urgent' ? (lang === 'bn' ? 'জরুরি ঘোষণা' : 'Urgent') : (lang === 'bn' ? 'অভিভাবক বার্তা' : 'Notice')}
+                      {al.classId && al.classId !== 'all' ? ` · Class ${al.classId}` : ''}
+                    </span>
+                    <span className="tabular-nums">{al.createdDate} · {al.senderName}</span>
+                  </div>
+                  <h4 className="font-bold text-base text-slate-900 dark:text-white">{al.title}</h4>
+                  <p className="text-sm text-slate-600 dark:text-slate-300">{al.message}</p>
+                </div>
+              ))}
             </div>
-          ))}
+          )}
+
+          <div className="space-y-3">
+            {notices.map((n) => (
+              <div key={n.id} className="bg-white dark:bg-slate-900 p-5 rounded-2xl border border-slate-200 dark:border-slate-800 space-y-1.5">
+                <div className="flex items-center justify-between text-xs text-slate-400">
+                  <span className="font-bold text-emerald-700 dark:text-emerald-400 uppercase">{n.category}</span>
+                  <span className="tabular-nums">{n.date}</span>
+                </div>
+                <h4 className="font-bold text-base">{t(n.title)}</h4>
+                <p className="text-sm text-slate-600 dark:text-slate-300">{t(n.description)}</p>
+              </div>
+            ))}
+          </div>
         </div>
       )}
 
@@ -630,6 +802,17 @@ export const ParentPortal: React.FC = () => {
           </div>
         </div>
       )}
+      <AcademicReportCard
+        open={reportCardOpen}
+        onClose={() => setReportCardOpen(false)}
+        studentName={matchedChild?.name || user?.linkedChildName || `Student #${childRoll}`}
+        classId={childClass}
+        roll={childRoll.trim() || '01'}
+        section={matchedChild?.section || 'A'}
+        marks={childMarks}
+        attendancePct={attendancePct}
+      />
+      <FeeReceiptModal fee={activeReceipt} onClose={() => setActiveReceipt(null)} />
     </div>
   );
 };

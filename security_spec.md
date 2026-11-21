@@ -15,6 +15,8 @@
 12. `teacherLeaves/{leaveId}` and `studentLeaves/{leaveId}` enforce initial `status == 'pending'` and strict approval transitions (`isAdmin()` for teacher leaves, `isTeacher()` for student leaves).
 13. `parent_student_links/{linkId}` can only be created by signed-in parents (`parentUid == request.auth.uid`, `status == 'pending'`), read by the requesting parent or teachers/admins, and approved/rejected ONLY by verified teachers/admins.
 14. `audit_logs/{logId}` is append-only (`create` by `isTeacher()` with `actorUid == request.auth.uid` and `createdAt == request.time`), readable ONLY by verified admins (`isAdmin()`), and strictly immutable (`update: false`, `delete: false`).
+15. `fee_records/{feeId}` can ONLY be created, updated, or deleted by verified teachers/admins (`isTeacher()`), and read (`get`, `list`) ONLY by `isTeacher()` or signed-in linked students/parents (`request.auth.uid in existing().allowedUids`). Students/parents cannot mark their own fees paid or forge amounts.
+16. `portal_notifications/{notifId}` can ONLY be created or deleted by verified teachers/admins (`isTeacher()`), are immutable (`update: false`), and readable by signed-in users or when `targetRole == 'all'`.
 
 ## 2. Dirty Dozen+ Payloads (Must Return PERMISSION_DENIED)
 1. **Unauthenticated Notice Create**: `{ "id": "n1", "title": {"bn":"x","en":"x"}, "isPublic": true }` -> Denied (not verified teacher/admin).
@@ -43,4 +45,7 @@
 24. **Cross-Student Exam Marks Read**: Signed-in student whose UID is not in `allowedUids` reads another student's `/examMarks` -> Denied.
 25. **Cross-Student Attendance Read**: Signed-in student reads `/attendance` or another student's `/studentAttendance` -> Denied.
 26. **Cross-Student PII Read**: Signed-in student/parent reads unlinked `/students/{id}` -> Denied.
-
+27. **Cross-Student Fee Record Read**: Signed-in student whose UID is not in `allowedUids` reads another student's `/fee_records` -> Denied.
+28. **Student Self-Marking Fee Paid**: Signed-in student updates `/fee_records/{id}` `{ "status": "paid" }` -> Denied (`isTeacher()` required).
+29. **Anonymous Fee Ledger Scrape**: Visitor (`auth == null`) lists `/fee_records` -> Denied.
+30. **Student Spoofing Broadcast Notification**: Student creates `/portal_notifications/{id}` -> Denied (`isTeacher()` required).

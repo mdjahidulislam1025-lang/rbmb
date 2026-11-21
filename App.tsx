@@ -51,6 +51,8 @@ import {
   INITIAL_EXAM_ROUTINES,
   INITIAL_SUBJECTS,
   INITIAL_ALUMNI,
+  INITIAL_FEE_RECORDS,
+  INITIAL_PORTAL_NOTIFICATIONS,
 } from './constants';
 import {
   Language,
@@ -85,6 +87,10 @@ import {
   AdmissionStatusProjection,
   AuditLog,
   AuditAction,
+  FeeCategory,
+  FeeRecord,
+  PaymentMethod,
+  PortalNotification,
 } from './types';
 import { OfflineIndicator } from './components/OfflineIndicator';
 import {
@@ -308,6 +314,22 @@ interface AppContextType {
   submitStudentLeave: (leave: StudentLeave) => void;
   updateStudentLeaveStatus: (id: string, status: 'pending' | 'approved' | 'rejected', reviewedBy: string, teacherRemark?: string) => void;
   deleteStudentLeave: (id: string) => void;
+  feeRecords: FeeRecord[];
+  addFeeRecord: (fee: FeeRecord) => void;
+  addBulkClassFees: (payload: {
+    classId: string;
+    title: string;
+    category: FeeCategory;
+    billingMonth?: string;
+    amount: number;
+    dueDate: string;
+  }) => number;
+  updateFeePayment: (id: string, paidAmount: number, paymentMethod: PaymentMethod, receiptNo?: string) => Promise<void>;
+  markFeeWaived: (id: string) => Promise<void>;
+  deleteFeeRecord: (id: string) => void;
+  portalNotifications: PortalNotification[];
+  addPortalNotification: (notif: PortalNotification) => Promise<void>;
+  deletePortalNotification: (id: string) => void;
   auditLogs: AuditLog[];
   settings: SchoolSettings;
   updateSettings: (newSettings: SchoolSettings) => void;
@@ -642,6 +664,8 @@ const App: React.FC = () => {
   const [alumni, setAlumni] = useState<AlumniProfile[]>(() => safeLocalGet('db_alumni', INITIAL_ALUMNI));
   const [teacherLeaves, setTeacherLeaves] = useState<TeacherLeave[]>(() => safeLocalGet('db_teacher_leaves', []));
   const [studentLeaves, setStudentLeaves] = useState<StudentLeave[]>(() => safeLocalGet('db_student_leaves', INITIAL_STUDENT_LEAVES));
+  const [feeRecords, setFeeRecords] = useState<FeeRecord[]>(() => safeLocalGet('db_fee_records', INITIAL_FEE_RECORDS));
+  const [portalNotifications, setPortalNotifications] = useState<PortalNotification[]>(() => safeLocalGet('db_portal_notifications', INITIAL_PORTAL_NOTIFICATIONS));
   const [auditLogs, setAuditLogs] = useState<AuditLog[]>(() => safeLocalGet('db_audit_logs', []));
 
   const [registeredUsers, setRegisteredUsers] = useState<AuthUser[]>(() => {
@@ -1528,6 +1552,30 @@ const App: React.FC = () => {
         (err) => safeListenerError(err, OperationType.LIST, 'studentLeaves')
       );
 
+      const unsubFeeRecords = onSnapshot(
+        collection(db, 'fee_records'),
+        (snap) => {
+          const items = snap.docs.map((d) => d.data() as FeeRecord);
+          items.sort((a, b) => (b.dueDate || '').localeCompare(a.dueDate || ''));
+          setFeeRecords(items);
+          safeLocalSet('db_fee_records', items);
+        },
+        (err) => safeListenerError(err, OperationType.LIST, 'fee_records')
+      );
+
+      const unsubPortalNotifications = onSnapshot(
+        collection(db, 'portal_notifications'),
+        (snap) => {
+          if (!snap.empty) {
+            const items = snap.docs.map((d) => d.data() as PortalNotification);
+            items.sort((a, b) => (b.createdDate || '').localeCompare(a.createdDate || ''));
+            setPortalNotifications(items);
+            safeLocalSet('db_portal_notifications', items);
+          }
+        },
+        (err) => safeListenerError(err, OperationType.LIST, 'portal_notifications')
+      );
+
       let unsubOwnTeacherLeaves = () => {};
       if (!isCloudAdmin) {
         unsubOwnTeacherLeaves = onSnapshot(
@@ -1551,6 +1599,8 @@ const App: React.FC = () => {
         unsubParentMsgs();
         unsubParentLinks();
         unsubStudentLeaves();
+        unsubFeeRecords();
+        unsubPortalNotifications();
         unsubOwnTeacherLeaves();
       };
     }
@@ -1646,6 +1696,30 @@ const App: React.FC = () => {
       (err) => safeListenerError(err, OperationType.LIST, 'parentMessages')
     );
 
+    const unsubOwnFeeRecords = onSnapshot(
+      query(collection(db, 'fee_records'), where('allowedUids', 'array-contains', firebaseUser.uid)),
+      (snap) => {
+        const items = snap.docs.map((d) => d.data() as FeeRecord);
+        items.sort((a, b) => (b.dueDate || '').localeCompare(a.dueDate || ''));
+        setFeeRecords(items);
+        safeLocalSet('db_fee_records', items);
+      },
+      (err) => safeListenerError(err, OperationType.LIST, 'fee_records')
+    );
+
+    const unsubPortalAlerts = onSnapshot(
+      collection(db, 'portal_notifications'),
+      (snap) => {
+        if (!snap.empty) {
+          const items = snap.docs.map((d) => d.data() as PortalNotification);
+          items.sort((a, b) => (b.createdDate || '').localeCompare(a.createdDate || ''));
+          setPortalNotifications(items);
+          safeLocalSet('db_portal_notifications', items);
+        }
+      },
+      (err) => safeListenerError(err, OperationType.LIST, 'portal_notifications')
+    );
+
     return () => {
       unsubMyStudents();
       unsubMyAttendance();
@@ -1655,6 +1729,8 @@ const App: React.FC = () => {
       unsubOwnSubmissions();
       unsubOwnAttempts();
       unsubOwnParentMsgs();
+      unsubOwnFeeRecords();
+      unsubPortalAlerts();
     };
   }, [firebaseUser, resolvedUid, isCloudTeacher, isCloudAdmin]);
 
@@ -2738,6 +2814,13 @@ const App: React.FC = () => {
       safeLocalSet('db_student_attendance', next);
       return next;
     });
+    setFeeRecords((prev) => {
+      const next = prev.map((fr) =>
+        fr.classId === classId && fr.roll.trim() === roll.trim() ? { ...fr, allowedUids: mergedUids } : fr
+      );
+      safeLocalSet('db_fee_records', next);
+      return next;
+    });
 
     if (!isCloudTeacher) return;
     try {
@@ -2773,6 +2856,17 @@ const App: React.FC = () => {
       );
       const saSnap = await getDocs(saQuery);
       saSnap.forEach((d) => {
+        batch.update(d.ref, { allowedUids: mergedUids, updatedAt: serverTimestamp() });
+        ops++;
+      });
+
+      const frQuery = query(
+        collection(db, 'fee_records'),
+        where('classId', '==', classId),
+        where('roll', '==', roll.trim())
+      );
+      const frSnap = await getDocs(frQuery);
+      frSnap.forEach((d) => {
         batch.update(d.ref, { allowedUids: mergedUids, updatedAt: serverTimestamp() });
         ops++;
       });
@@ -3738,6 +3832,325 @@ const App: React.FC = () => {
     syncDocDelete('studentLeaves', sanitizeFirestoreId(id), true);
   };
 
+  // Phase 3: Fee & Payment Ledger (Zero-Trust allowedUids isolated per student/parent)
+  const addFeeRecord = (fee: FeeRecord) => {
+    const id = sanitizeFirestoreId(fee.id);
+    const allowedUids = resolveAllowedUids(fee.classId, fee.roll);
+    const safeAmount = Math.max(0, Math.min(500000, Number(fee.amount) || 0));
+    const safePaid = Math.max(0, Math.min(safeAmount, Number(fee.paidAmount) || 0));
+    const computedStatus: FeeRecord['status'] =
+      fee.status === 'waived'
+        ? 'waived'
+        : safePaid >= safeAmount && safeAmount > 0
+        ? 'paid'
+        : safePaid > 0
+        ? 'partial'
+        : 'pending';
+    const clean: FeeRecord = {
+      ...fee,
+      id,
+      studentId: sanitizeFirestoreId(fee.studentId || `st-${fee.classId}-${fee.roll}`),
+      amount: safeAmount,
+      paidAmount: safePaid,
+      status: computedStatus,
+      ...(computedStatus === 'paid' && !fee.receiptNo
+        ? { receiptNo: `RBMB-${Date.now().toString().slice(-6)}` }
+        : {}),
+      ...(computedStatus === 'paid' && !fee.paidDate
+        ? { paidDate: new Date().toISOString().split('T')[0] }
+        : {}),
+      ...(allowedUids.length > 0 ? { allowedUids } : {}),
+    };
+
+    const updated = [clean, ...feeRecords];
+    setFeeRecords(updated);
+    persistLocal('db_fee_records', updated);
+
+    syncDocUpsert(
+      'fee_records',
+      id,
+      {
+        id,
+        studentId: clean.studentId,
+        studentName: clean.studentName.slice(0, 150),
+        classId: clean.classId,
+        roll: clean.roll.slice(0, 20),
+        title: clean.title.slice(0, 200),
+        category: clean.category,
+        ...(clean.billingMonth ? { billingMonth: clean.billingMonth.slice(0, 64) } : {}),
+        amount: clean.amount,
+        paidAmount: clean.paidAmount,
+        dueDate: clean.dueDate.slice(0, 32),
+        status: clean.status,
+        ...(clean.paymentMethod ? { paymentMethod: clean.paymentMethod } : {}),
+        ...(clean.receiptNo ? { receiptNo: clean.receiptNo.slice(0, 64) } : {}),
+        ...(clean.paidDate ? { paidDate: clean.paidDate.slice(0, 32) } : {}),
+        recordedBy: clean.recordedBy.slice(0, 150),
+        ...(allowedUids.length > 0 ? { allowedUids } : {}),
+      },
+      false,
+      true
+    );
+
+    logAuditEvent(
+      'FEE_CREATED',
+      'fee_records',
+      id,
+      `Created fee "${clean.title}" (BDT ${clean.amount}) for Class ${clean.classId} Roll ${clean.roll}`
+    );
+  };
+
+  const addBulkClassFees = (payload: {
+    classId: string;
+    title: string;
+    category: FeeCategory;
+    billingMonth?: string;
+    amount: number;
+    dueDate: string;
+  }): number => {
+    const classStudents = students.filter((s) => s.classId === payload.classId);
+    if (classStudents.length === 0) return 0;
+
+    const recorder = (user?.name || firebaseUser?.displayName || 'Office').slice(0, 150);
+    const safeAmount = Math.max(0, Math.min(500000, Number(payload.amount) || 0));
+    const batchTs = Date.now();
+    const created: FeeRecord[] = classStudents.map((st, idx) => {
+      const id = sanitizeFirestoreId(`fee_${payload.classId}_${st.roll}_${batchTs}_${idx}`);
+      const allowedUids = resolveAllowedUids(st.classId, st.roll, st);
+      return {
+        id,
+        studentId: sanitizeFirestoreId(st.id),
+        studentName: st.name.slice(0, 150),
+        classId: st.classId,
+        roll: st.roll.slice(0, 20),
+        title: payload.title.slice(0, 200),
+        category: payload.category,
+        ...(payload.billingMonth ? { billingMonth: payload.billingMonth.slice(0, 64) } : {}),
+        amount: safeAmount,
+        paidAmount: 0,
+        dueDate: payload.dueDate.slice(0, 32),
+        status: 'pending',
+        recordedBy: recorder,
+        ...(allowedUids.length > 0 ? { allowedUids } : {}),
+      };
+    });
+
+    const updated = [...created, ...feeRecords];
+    setFeeRecords(updated);
+    persistLocal('db_fee_records', updated);
+
+    if (isCloudTeacher) {
+      (async () => {
+        try {
+          setDbStatus('syncing');
+          const batch = writeBatch(db);
+          created.forEach((clean) => {
+            batch.set(doc(db, 'fee_records', clean.id), {
+              id: clean.id,
+              studentId: clean.studentId,
+              studentName: clean.studentName,
+              classId: clean.classId,
+              roll: clean.roll,
+              title: clean.title,
+              category: clean.category,
+              ...(clean.billingMonth ? { billingMonth: clean.billingMonth } : {}),
+              amount: clean.amount,
+              paidAmount: clean.paidAmount,
+              dueDate: clean.dueDate,
+              status: clean.status,
+              recordedBy: clean.recordedBy,
+              ...(clean.allowedUids ? { allowedUids: clean.allowedUids } : {}),
+              createdAt: serverTimestamp(),
+              updatedAt: serverTimestamp(),
+            });
+          });
+          await batch.commit();
+          setDbStatus('synced');
+        } catch (err) {
+          safeListenerError(err, OperationType.WRITE, 'fee_records');
+        }
+      })();
+    }
+
+    logAuditEvent(
+      'FEE_CREATED',
+      'fee_records',
+      `bulk_${payload.classId}`,
+      `Generated "${payload.title}" (BDT ${safeAmount}) for ${created.length} students in Class ${payload.classId}`
+    );
+    return created.length;
+  };
+
+  const updateFeePayment = async (
+    id: string,
+    paidAmount: number,
+    paymentMethod: PaymentMethod,
+    receiptNo?: string
+  ) => {
+    const target = feeRecords.find((f) => f.id === id);
+    if (!target) return;
+
+    const safePaid = Math.max(0, Math.min(target.amount, Number(paidAmount) || 0));
+    const nextStatus: FeeRecord['status'] =
+      safePaid >= target.amount && target.amount > 0 ? 'paid' : safePaid > 0 ? 'partial' : 'pending';
+    const nextReceipt = (receiptNo || target.receiptNo || `RBMB-${Date.now().toString().slice(-6)}`).slice(0, 64);
+    const nextPaidDate = new Date().toISOString().split('T')[0];
+    const recorder = (user?.name || firebaseUser?.displayName || target.recordedBy).slice(0, 150);
+
+    const updated = feeRecords.map((f) =>
+      f.id === id
+        ? {
+            ...f,
+            paidAmount: safePaid,
+            status: nextStatus,
+            paymentMethod,
+            receiptNo: nextReceipt,
+            paidDate: nextPaidDate,
+            recordedBy: recorder,
+          }
+        : f
+    );
+    setFeeRecords(updated);
+    persistLocal('db_fee_records', updated);
+
+    if (isCloudTeacher) {
+      const cleanId = sanitizeFirestoreId(id);
+      const allowedUids = resolveAllowedUids(target.classId, target.roll);
+      await syncDocUpsert(
+        'fee_records',
+        cleanId,
+        {
+          id: cleanId,
+          studentId: sanitizeFirestoreId(target.studentId),
+          studentName: target.studentName.slice(0, 150),
+          classId: target.classId,
+          roll: target.roll.slice(0, 20),
+          title: target.title.slice(0, 200),
+          category: target.category,
+          ...(target.billingMonth ? { billingMonth: target.billingMonth.slice(0, 64) } : {}),
+          amount: target.amount,
+          paidAmount: safePaid,
+          dueDate: target.dueDate.slice(0, 32),
+          status: nextStatus,
+          paymentMethod,
+          receiptNo: nextReceipt,
+          paidDate: nextPaidDate,
+          recordedBy: recorder,
+          ...(allowedUids.length > 0 ? { allowedUids } : {}),
+        },
+        true,
+        true
+      );
+    }
+
+    await logAuditEvent(
+      'FEE_UPDATED',
+      'fee_records',
+      id,
+      `Recorded payment BDT ${safePaid} (${paymentMethod}, Receipt ${nextReceipt}) for ${target.studentName}`
+    );
+  };
+
+  const markFeeWaived = async (id: string) => {
+    const target = feeRecords.find((f) => f.id === id);
+    if (!target) return;
+    const recorder = (user?.name || firebaseUser?.displayName || target.recordedBy).slice(0, 150);
+    const updated = feeRecords.map((f) =>
+      f.id === id ? { ...f, status: 'waived' as const, recordedBy: recorder } : f
+    );
+    setFeeRecords(updated);
+    persistLocal('db_fee_records', updated);
+
+    if (isCloudTeacher) {
+      const cleanId = sanitizeFirestoreId(id);
+      const allowedUids = resolveAllowedUids(target.classId, target.roll);
+      await syncDocUpsert(
+        'fee_records',
+        cleanId,
+        {
+          id: cleanId,
+          studentId: sanitizeFirestoreId(target.studentId),
+          studentName: target.studentName.slice(0, 150),
+          classId: target.classId,
+          roll: target.roll.slice(0, 20),
+          title: target.title.slice(0, 200),
+          category: target.category,
+          ...(target.billingMonth ? { billingMonth: target.billingMonth.slice(0, 64) } : {}),
+          amount: target.amount,
+          paidAmount: target.paidAmount,
+          dueDate: target.dueDate.slice(0, 32),
+          status: 'waived',
+          ...(target.paymentMethod ? { paymentMethod: target.paymentMethod } : {}),
+          ...(target.receiptNo ? { receiptNo: target.receiptNo.slice(0, 64) } : {}),
+          ...(target.paidDate ? { paidDate: target.paidDate.slice(0, 32) } : {}),
+          recordedBy: recorder,
+          ...(allowedUids.length > 0 ? { allowedUids } : {}),
+        },
+        true,
+        true
+      );
+    }
+
+    await logAuditEvent('FEE_UPDATED', 'fee_records', id, `Marked fee waived for ${target.studentName}`);
+  };
+
+  const deleteFeeRecord = (id: string) => {
+    const updated = feeRecords.filter((f) => f.id !== id);
+    setFeeRecords(updated);
+    persistLocal('db_fee_records', updated);
+    syncDocDelete('fee_records', sanitizeFirestoreId(id), true);
+    logAuditEvent('FEE_DELETED', 'fee_records', id, `Deleted fee record ${id}`);
+  };
+
+  // Phase 3: Targeted Portal Notifications (Role & Class Broadcasts)
+  const addPortalNotification = async (notif: PortalNotification) => {
+    const id = sanitizeFirestoreId(notif.id);
+    const clean: PortalNotification = {
+      ...notif,
+      id,
+      classId: notif.classId || 'all',
+      senderName: (notif.senderName || user?.name || 'Administration').slice(0, 150),
+      createdDate: (notif.createdDate || new Date().toISOString().split('T')[0]).slice(0, 32),
+    };
+    const updated = [clean, ...portalNotifications];
+    setPortalNotifications(updated);
+    persistLocal('db_portal_notifications', updated);
+
+    if (isCloudTeacher) {
+      try {
+        setDbStatus('syncing');
+        await setDoc(doc(db, 'portal_notifications', id), {
+          id,
+          title: clean.title.slice(0, 250),
+          message: clean.message.slice(0, 2000),
+          targetRole: clean.targetRole,
+          classId: clean.classId || 'all',
+          priority: clean.priority,
+          senderName: clean.senderName,
+          createdDate: clean.createdDate,
+          createdAt: serverTimestamp(),
+        });
+        setDbStatus('synced');
+      } catch (err) {
+        safeListenerError(err, OperationType.CREATE, `portal_notifications/${id}`);
+      }
+    }
+
+    await logAuditEvent(
+      'NOTIFICATION_SENT',
+      'portal_notifications',
+      id,
+      `Sent ${clean.priority} alert "${clean.title}" to ${clean.targetRole} (Class ${clean.classId})`
+    );
+  };
+
+  const deletePortalNotification = (id: string) => {
+    const updated = portalNotifications.filter((n) => n.id !== id);
+    setPortalNotifications(updated);
+    persistLocal('db_portal_notifications', updated);
+    syncDocDelete('portal_notifications', sanitizeFirestoreId(id), true);
+  };
+
   const exportDatabase = () => {
     const data = {
       settings,
@@ -3763,6 +4176,8 @@ const App: React.FC = () => {
       alumni,
       teacherLeaves,
       studentLeaves,
+      feeRecords,
+      portalNotifications,
       users: registeredUsers.map(stripPlaintextPassword),
       exportDate: new Date().toISOString(),
     };
@@ -3877,6 +4292,14 @@ const App: React.FC = () => {
       if (data.studentLeaves) {
         setStudentLeaves(data.studentLeaves);
         safeLocalSet('db_student_leaves', data.studentLeaves);
+      }
+      if (data.feeRecords) {
+        setFeeRecords(data.feeRecords);
+        safeLocalSet('db_fee_records', data.feeRecords);
+      }
+      if (data.portalNotifications) {
+        setPortalNotifications(data.portalNotifications);
+        safeLocalSet('db_portal_notifications', data.portalNotifications);
       }
       return true;
     } catch {
@@ -4064,6 +4487,15 @@ Available Features: Online Admission (/admission), Online MCQ Exams (/exams), Di
         submitStudentLeave,
         updateStudentLeaveStatus,
         deleteStudentLeave,
+        feeRecords,
+        addFeeRecord,
+        addBulkClassFees,
+        updateFeePayment,
+        markFeeWaived,
+        deleteFeeRecord,
+        portalNotifications,
+        addPortalNotification,
+        deletePortalNotification,
         auditLogs,
         settings,
         updateSettings,

@@ -415,6 +415,41 @@ export interface ParentStudentLink {
   submittedDate: string;
 }
 
+export type FeeCategory = 'Tuition' | 'Exam' | 'Admission' | 'Library' | 'Lab' | 'Sports' | 'Other';
+export type FeeStatus = 'pending' | 'partial' | 'paid' | 'waived';
+export type PaymentMethod = 'Cash' | 'bKash' | 'Nagad' | 'Bank' | 'Online';
+
+export interface FeeRecord {
+  id: string;
+  studentId: string;
+  studentName: string;
+  classId: string;
+  roll: string;
+  title: string;
+  category: FeeCategory;
+  billingMonth?: string;
+  amount: number;
+  paidAmount: number;
+  dueDate: string;
+  status: FeeStatus;
+  paymentMethod?: PaymentMethod;
+  receiptNo?: string;
+  paidDate?: string;
+  recordedBy: string;
+  allowedUids?: string[];
+}
+
+export interface PortalNotification {
+  id: string;
+  title: string;
+  message: string;
+  targetRole: 'all' | 'student' | 'parent' | 'teacher';
+  classId?: string;
+  priority: 'normal' | 'urgent';
+  senderName: string;
+  createdDate: string;
+}
+
 export type AuditAction =
   | 'ROLE_CHANGED'
   | 'ADMISSION_STATUS_UPDATED'
@@ -427,6 +462,10 @@ export type AuditAction =
   | 'TEACHER_LEAVE_REVIEWED'
   | 'STUDENT_LEAVE_REVIEWED'
   | 'ALUMNI_REVIEWED'
+  | 'FEE_CREATED'
+  | 'FEE_UPDATED'
+  | 'FEE_DELETED'
+  | 'NOTIFICATION_SENT'
   | 'RECORD_DELETED';
 
 export interface AuditLog {

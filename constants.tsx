@@ -15,6 +15,8 @@ import {
   ExamRoutineItem,
   SchoolSubject,
   AlumniProfile,
+  FeeRecord,
+  PortalNotification,
 } from './types';
 import {
   heroCampusImg,
@@ -1012,6 +1014,64 @@ export const INITIAL_STUDENT_LEAVES = [
     submittedDate: '2026-06-17',
   },
 ];
-export type { EBook };
+export const INITIAL_FEE_RECORDS: FeeRecord[] = [
+  {
+    id: 'fee-2026-9-01-tuition',
+    studentId: 'st-9-1',
+    studentName: 'আরিয়ান করিম (Aryan Karim)',
+    classId: '9',
+    roll: '01',
+    title: 'Monthly Tuition Fee — June 2026',
+    category: 'Tuition',
+    billingMonth: 'June 2026',
+    amount: 850,
+    paidAmount: 850,
+    dueDate: '2026-06-10',
+    status: 'paid',
+    paymentMethod: 'bKash',
+    receiptNo: 'RBMB-2026-0901',
+    paidDate: '2026-06-05',
+    recordedBy: 'Md. Abdul Karim',
+  },
+  {
+    id: 'fee-2026-9-01-exam',
+    studentId: 'st-9-1',
+    studentName: 'আরিয়ান করিম (Aryan Karim)',
+    classId: '9',
+    roll: '01',
+    title: 'Half-Yearly Examination Fee 2026',
+    category: 'Exam',
+    billingMonth: 'Half-Yearly 2026',
+    amount: 600,
+    paidAmount: 0,
+    dueDate: '2026-06-25',
+    status: 'pending',
+    recordedBy: 'Office Accounts',
+  },
+];
 
+export const INITIAL_PORTAL_NOTIFICATIONS: PortalNotification[] = [
+  {
+    id: 'pn-2026-1',
+    title: 'Half-Yearly Exam Admit & Fee Clearance',
+    message: 'Students of Classes 6–10 are requested to clear pending exam fees before 25 June 2026 to collect their printed exam admit card.',
+    targetRole: 'all',
+    classId: 'all',
+    priority: 'urgent',
+    senderName: 'Md. Abdul Karim (Head Teacher)',
+    createdDate: '2026-06-12',
+  },
+  {
+    id: 'pn-2026-2',
+    title: 'Parent-Teacher Academic Progress Meet',
+    message: 'Guardians of Class 9 & 10 are invited to review half-yearly preparation and attendance sheets in respective classrooms at 10:00 AM.',
+    targetRole: 'parent',
+    classId: '9',
+    priority: 'normal',
+    senderName: 'Class Teacher Desk',
+    createdDate: '2026-06-14',
+  },
+];
+
+export type { EBook };
 

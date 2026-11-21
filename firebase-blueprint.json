@@ -568,6 +568,50 @@
         "createdAt": { "type": "string", "format": "date-time" }
       },
       "required": ["id", "actorUid", "actorName", "actorEmail", "actorRole", "action", "targetCollection", "targetId", "summary", "createdDate", "createdAt"]
+    },
+    "FeeRecord": {
+      "title": "FeeRecord",
+      "description": "Student tuition, exam, and campus fee ledger isolated by allowedUids.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "pattern": "^[a-zA-Z0-9_\\-]+$", "maxLength": 128 },
+        "studentId": { "type": "string", "pattern": "^[a-zA-Z0-9_\\-]+$", "maxLength": 128 },
+        "studentName": { "type": "string", "maxLength": 150 },
+        "classId": { "type": "string", "enum": ["6", "7", "8", "9", "10"] },
+        "roll": { "type": "string", "maxLength": 20 },
+        "title": { "type": "string", "maxLength": 200 },
+        "category": { "type": "string", "enum": ["Tuition", "Exam", "Admission", "Library", "Lab", "Sports", "Other"] },
+        "billingMonth": { "type": "string", "maxLength": 64 },
+        "amount": { "type": "number" },
+        "paidAmount": { "type": "number" },
+        "dueDate": { "type": "string", "maxLength": 32 },
+        "status": { "type": "string", "enum": ["pending", "partial", "paid", "waived"] },
+        "paymentMethod": { "type": "string", "enum": ["Cash", "bKash", "Nagad", "Bank", "Online"] },
+        "receiptNo": { "type": "string", "maxLength": 64 },
+        "paidDate": { "type": "string", "maxLength": 32 },
+        "recordedBy": { "type": "string", "maxLength": 150 },
+        "allowedUids": { "type": "array" },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["id", "studentId", "studentName", "classId", "roll", "title", "category", "amount", "paidAmount", "dueDate", "status", "recordedBy", "createdAt", "updatedAt"]
+    },
+    "PortalNotification": {
+      "title": "PortalNotification",
+      "description": "Targeted role and class portal announcements sent by teachers or admins.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "pattern": "^[a-zA-Z0-9_\\-]+$", "maxLength": 128 },
+        "title": { "type": "string", "maxLength": 250 },
+        "message": { "type": "string", "maxLength": 2000 },
+        "targetRole": { "type": "string", "enum": ["all", "student", "parent", "teacher"] },
+        "classId": { "type": "string", "enum": ["all", "6", "7", "8", "9", "10"] },
+        "priority": { "type": "string", "enum": ["normal", "urgent"] },
+        "senderName": { "type": "string", "maxLength": 150 },
+        "createdDate": { "type": "string", "maxLength": 32 },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["id", "title", "message", "targetRole", "priority", "senderName", "createdDate", "createdAt"]
     }
   },
   "firestore": {
@@ -686,6 +730,14 @@
     "/audit_logs/{logId}": {
       "schema": { "$ref": "#/entities/AuditLog" },
       "description": "Immutable admin/teacher audit trail."
+    },
+    "/fee_records/{feeId}": {
+      "schema": { "$ref": "#/entities/FeeRecord" },
+      "description": "Per-student fee invoices and payment receipts isolated by allowedUids."
+    },
+    "/portal_notifications/{notifId}": {
+      "schema": { "$ref": "#/entities/PortalNotification" },
+      "description": "Targeted role and class portal alerts."
     }
   }
 }

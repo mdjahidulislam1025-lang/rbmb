@@ -219,4 +219,37 @@ export const DIRTY_DOZEN_CASES: DirtyDozenCase[] = [
     expected: 'PERMISSION_DENIED',
     reason: 'Guardian mobile and student profile require isTeacher() or request.auth.uid in allowedUids',
   },
+  {
+    id: 27,
+    name: 'Cross-Student Fee Record Read',
+    collection: 'fee_records',
+    operation: 'get',
+    expected: 'PERMISSION_DENIED',
+    reason: 'Students and parents can only read fee_records where request.auth.uid in allowedUids',
+  },
+  {
+    id: 28,
+    name: 'Student Self-Marking Fee Paid',
+    collection: 'fee_records',
+    operation: 'update',
+    expected: 'PERMISSION_DENIED',
+    reason: 'Only isTeacher() may create, update, or delete fee_records',
+  },
+  {
+    id: 29,
+    name: 'Anonymous Fee Ledger List',
+    collection: 'fee_records',
+    operation: 'list',
+    expected: 'PERMISSION_DENIED',
+    reason: 'Fee records require isTeacher() or authenticated uid in allowedUids',
+  },
+  {
+    id: 30,
+    name: 'Student Spoofing Broadcast Notification',
+    collection: 'portal_notifications',
+    operation: 'create',
+    expected: 'PERMISSION_DENIED',
+    reason: 'Only verified teachers or admins may publish portal_notifications',
+  },
 ];
+

@@ -522,6 +522,44 @@ service cloud.firestore {
         && data.createdAt is timestamp;
     }
 
+    function isValidFeeRecord(data) {
+      return data.keys().hasAll(['id', 'studentId', 'studentName', 'classId', 'roll', 'title', 'category', 'amount', 'paidAmount', 'dueDate', 'status', 'recordedBy', 'createdAt', 'updatedAt'])
+        && data.keys().hasOnly(['id', 'studentId', 'studentName', 'classId', 'roll', 'title', 'category', 'billingMonth', 'amount', 'paidAmount', 'dueDate', 'status', 'paymentMethod', 'receiptNo', 'paidDate', 'recordedBy', 'allowedUids', 'createdAt', 'updatedAt'])
+        && isValidId(data.id)
+        && isValidId(data.studentId)
+        && data.studentName is string && data.studentName.size() >= 1 && data.studentName.size() <= 150
+        && data.classId is string && data.classId in ['6', '7', '8', '9', '10']
+        && data.roll is string && data.roll.size() >= 1 && data.roll.size() <= 20
+        && data.title is string && data.title.size() >= 1 && data.title.size() <= 200
+        && data.category is string && data.category in ['Tuition', 'Exam', 'Admission', 'Library', 'Lab', 'Sports', 'Other']
+        && (!('billingMonth' in data) || (data.billingMonth is string && data.billingMonth.size() <= 64))
+        && (data.amount is int || data.amount is float) && data.amount >= 0 && data.amount <= 500000
+        && (data.paidAmount is int || data.paidAmount is float) && data.paidAmount >= 0 && data.paidAmount <= data.amount
+        && data.dueDate is string && data.dueDate.size() >= 4 && data.dueDate.size() <= 32
+        && data.status is string && data.status in ['pending', 'partial', 'paid', 'waived']
+        && (!('paymentMethod' in data) || (data.paymentMethod is string && data.paymentMethod in ['Cash', 'bKash', 'Nagad', 'Bank', 'Online']))
+        && (!('receiptNo' in data) || (data.receiptNo is string && data.receiptNo.size() <= 64))
+        && (!('paidDate' in data) || (data.paidDate is string && data.paidDate.size() <= 32))
+        && data.recordedBy is string && data.recordedBy.size() >= 1 && data.recordedBy.size() <= 150
+        && (!('allowedUids' in data) || isAllowedUidsList(data.allowedUids))
+        && data.createdAt is timestamp
+        && data.updatedAt is timestamp;
+    }
+
+    function isValidPortalNotification(data) {
+      return data.keys().hasAll(['id', 'title', 'message', 'targetRole', 'priority', 'senderName', 'createdDate', 'createdAt'])
+        && data.keys().hasOnly(['id', 'title', 'message', 'targetRole', 'classId', 'priority', 'senderName', 'createdDate', 'createdAt'])
+        && isValidId(data.id)
+        && data.title is string && data.title.size() >= 1 && data.title.size() <= 250
+        && data.message is string && data.message.size() >= 1 && data.message.size() <= 2000
+        && data.targetRole is string && data.targetRole in ['all', 'student', 'parent', 'teacher']
+        && (!('classId' in data) || (data.classId is string && data.classId in ['all', '6', '7', '8', '9', '10']))
+        && data.priority is string && data.priority in ['normal', 'urgent']
+        && data.senderName is string && data.senderName.size() >= 1 && data.senderName.size() <= 150
+        && data.createdDate is string && data.createdDate.size() >= 4 && data.createdDate.size() <= 32
+        && data.createdAt is timestamp;
+    }
+
     // Connection test doc
     match /test/{docId} {
       allow get: if docId == 'connection';
@@ -903,6 +941,24 @@ service cloud.firestore {
         && incoming().actorUid == request.auth.uid
         && incoming().createdAt == request.time;
       allow update, delete: if false;
+    }
+
+    // Student Fee & Payment Ledger (Isolated per-student access)
+    match /fee_records/{feeId} {
+      allow get: if isValidId(feeId) && (isTeacher() || (isSignedIn() && 'allowedUids' in existing() && request.auth.uid in existing().allowedUids));
+      allow list: if isTeacher() || (isSignedIn() && 'allowedUids' in existing() && request.auth.uid in existing().allowedUids);
+      allow create: if isTeacher() && isValidId(feeId) && isValidFeeRecord(incoming()) && incoming().id == feeId && incoming().createdAt == request.time && incoming().updatedAt == request.time;
+      allow update: if isTeacher() && isValidId(feeId) && isValidFeeRecord(incoming()) && incoming().id == existing().id && incoming().createdAt == existing().createdAt && incoming().updatedAt == request.time;
+      allow delete: if isTeacher() && isValidId(feeId);
+    }
+
+    // Targeted Portal Notifications (Role & Class Broadcasts)
+    match /portal_notifications/{notifId} {
+      allow get: if isValidId(notifId) && (existing().targetRole == 'all' || isSignedIn() || isTeacher());
+      allow list: if existing().targetRole == 'all' || isSignedIn() || isTeacher();
+      allow create: if isTeacher() && isValidId(notifId) && isValidPortalNotification(incoming()) && incoming().id == notifId && incoming().createdAt == request.time;
+      allow update: if false;
+      allow delete: if isTeacher() && isValidId(notifId);
     }
   }
 }

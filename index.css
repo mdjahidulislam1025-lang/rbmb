@@ -79,18 +79,31 @@
     display: none !important;
   }
   body:has(#printable-admission-form) > *:not(#root),
-  body:has(#printable-calendar) > *:not(#root) {
+  body:has(#printable-calendar) > *:not(#root),
+  body:has(#printable-report-card) > *:not(#root),
+  body:has(#printable-fee-receipt) > *:not(#root) {
     display: none !important;
   }
+  body:has(#printable-report-card) #root,
+  body:has(#printable-fee-receipt) #root {
+    background: white !important;
+    color: black !important;
+  }
   #printable-admission-form,
-  #printable-calendar {
+  #printable-calendar,
+  #printable-report-card,
+  #printable-fee-receipt {
     display: block !important;
     width: 100%;
-    background: white;
-    color: black;
+    max-width: 100%;
+    background: white !important;
+    color: black !important;
+    box-shadow: none !important;
+    border: none !important;
   }
   @page {
     size: A4;
     margin: 1cm;
   }
 }
+
