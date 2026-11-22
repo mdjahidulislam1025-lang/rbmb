@@ -17,6 +17,7 @@
 14. `audit_logs/{logId}` is append-only (`create` by `isTeacher()` with `actorUid == request.auth.uid` and `createdAt == request.time`), readable ONLY by verified admins (`isAdmin()`), and strictly immutable (`update: false`, `delete: false`).
 15. `fee_records/{feeId}` can ONLY be created, updated, or deleted by verified teachers/admins (`isTeacher()`), and read (`get`, `list`) ONLY by `isTeacher()` or signed-in linked students/parents (`request.auth.uid in existing().allowedUids`). Students/parents cannot mark their own fees paid or forge amounts.
 16. `portal_notifications/{notifId}` can ONLY be created or deleted by verified teachers/admins (`isTeacher()`), are immutable (`update: false`), and readable by signed-in users or when `targetRole == 'all'`.
+17. `classRoutines/{classId}` are publicly readable when `isPublic == true`, mutable ONLY by verified teachers/admins (`isTeacher()`), and deletable ONLY by admins (`isAdmin()`).
 
 ## 2. Dirty Dozen+ Payloads (Must Return PERMISSION_DENIED)
 1. **Unauthenticated Notice Create**: `{ "id": "n1", "title": {"bn":"x","en":"x"}, "isPublic": true }` -> Denied (not verified teacher/admin).
@@ -49,3 +50,5 @@
 28. **Student Self-Marking Fee Paid**: Signed-in student updates `/fee_records/{id}` `{ "status": "paid" }` -> Denied (`isTeacher()` required).
 29. **Anonymous Fee Ledger Scrape**: Visitor (`auth == null`) lists `/fee_records` -> Denied.
 30. **Student Spoofing Broadcast Notification**: Student creates `/portal_notifications/{id}` -> Denied (`isTeacher()` required).
+31. **Anonymous Class Routine Overwrite**: Visitor writes `/classRoutines/9` -> Denied (`isTeacher()` required).
+32. **Student Tampering Class Routine**: Student updates `/classRoutines/9` -> Denied (`isTeacher()` required).

@@ -19,6 +19,7 @@ import {
   Printer,
   Download,
   Megaphone,
+  IdCard,
 } from 'lucide-react';
 import { useApp } from '../App';
 import { FeeRecord } from '../types';
@@ -26,6 +27,7 @@ import { calculateOverallGpa, isSafeHttpUrl } from '../utils/security';
 import { exportCsv } from '../utils/exportUtils';
 import { AcademicReportCard } from './AcademicReportCard';
 import { FeeReceiptModal } from './FeeReceiptModal';
+import { StudentIdAdmitCard } from './StudentIdAdmitCard';
 
 const { useState, useMemo, useEffect } = React;
 const { Link } = RouterDom;
@@ -61,6 +63,7 @@ export const StudentPortal: React.FC = () => {
   const [toast, setToast] = useState<string | null>(null);
   const [reportCardOpen, setReportCardOpen] = useState(false);
   const [activeReceipt, setActiveReceipt] = useState<FeeRecord | null>(null);
+  const [idCardOpen, setIdCardOpen] = useState(false);
 
   useEffect(() => {
     if (user?.linkedChildClass) setSelectedClassId(user.linkedChildClass);
@@ -277,23 +280,31 @@ export const StudentPortal: React.FC = () => {
         </div>
 
         <div className="flex flex-wrap gap-2 text-xs font-bold">
+          <button
+            type="button"
+            onClick={() => setIdCardOpen(true)}
+            className="px-4 py-2.5 rounded-xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 hover:border-emerald-500 flex items-center gap-1.5 whitespace-nowrap"
+          >
+            <IdCard className="w-3.5 h-3.5 text-emerald-700 dark:text-emerald-400" />
+            {lang === 'bn' ? 'আইডি ও প্রবেশপত্র' : 'ID & Admit Card'}
+          </button>
           <Link
             to="/exams"
-            className="px-4 py-2.5 rounded-xl bg-emerald-700 hover:bg-emerald-800 text-white flex items-center gap-1.5"
+            className="px-4 py-2.5 rounded-xl bg-emerald-700 hover:bg-emerald-800 text-white flex items-center gap-1.5 whitespace-nowrap"
           >
             <Trophy className="w-3.5 h-3.5" />
             {lang === 'bn' ? 'অনলাইন MCQ পরীক্ষা' : 'MCQ Exams'}
           </Link>
           <Link
             to="/routine"
-            className="px-4 py-2.5 rounded-xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 hover:border-emerald-500 flex items-center gap-1.5"
+            className="px-4 py-2.5 rounded-xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 hover:border-emerald-500 flex items-center gap-1.5 whitespace-nowrap"
           >
             <Calendar className="w-3.5 h-3.5" />
             {lang === 'bn' ? 'ক্লাস ও পরীক্ষার রুটিন' : 'Routines'}
           </Link>
           <Link
             to="/ebooks"
-            className="px-4 py-2.5 rounded-xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 hover:border-emerald-500 flex items-center gap-1.5"
+            className="px-4 py-2.5 rounded-xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 hover:border-emerald-500 flex items-center gap-1.5 whitespace-nowrap"
           >
             <BookOpen className="w-3.5 h-3.5" />
             {lang === 'bn' ? 'ডিজিটাল লাইব্রেরি' : 'Digital Library'}
@@ -875,6 +886,15 @@ export const StudentPortal: React.FC = () => {
         attendancePct={attendancePct}
       />
       <FeeReceiptModal fee={activeReceipt} onClose={() => setActiveReceipt(null)} />
+      <StudentIdAdmitCard
+        open={idCardOpen}
+        onClose={() => setIdCardOpen(false)}
+        studentName={matchedStudent?.name || user?.name || 'Student'}
+        classId={selectedClassId}
+        roll={selectedRoll.trim() || '01'}
+        section={matchedStudent?.section || 'A'}
+        guardianMobile={matchedStudent?.guardianMobile}
+      />
     </div>
   );
 };

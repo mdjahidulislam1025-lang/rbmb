@@ -29,19 +29,30 @@ import {
   Calendar,
   Trophy,
   X,
+  BarChart3,
+  Receipt,
+  Megaphone,
+  Clock,
+  RotateCcw,
 } from 'lucide-react';
 import { TRANSLATIONS, EXAM_TERMS } from '../constants';
 import { useApp } from '../App';
-import { Notice, Teacher, GalleryItem, EBook, UserRole } from '../types';
+import { Notice, Teacher, GalleryItem, EBook, UserRole, FeeCategory, FeeRecord, PaymentMethod } from '../types';
 import { compressImageFile } from '../utils/imageUtils';
+import { exportCsv } from '../utils/exportUtils';
 import { TeacherPortal } from '../components/TeacherPortal';
 import { StudentPortal } from '../components/StudentPortal';
 import { ParentPortal } from '../components/ParentPortal';
+import { FeeReceiptModal } from '../components/FeeReceiptModal';
 
-const { useState, useEffect, useRef } = React;
+const { useState, useEffect, useRef, useMemo } = React;
 const { useLocation, Link, useNavigate } = RouterDom;
 
 type ManagementTab =
+  | 'analytics'
+  | 'fees'
+  | 'broadcasts'
+  | 'class-routine'
   | 'notices'
   | 'teachers'
   | 'ebooks'
@@ -127,6 +138,24 @@ const Login: React.FC = () => {
     teacherLeaves,
     updateTeacherLeaveStatus,
     deleteTeacherLeave,
+    students,
+    attendanceRecords,
+    studentAttendance,
+    examMarks,
+    examAttempts,
+    studentLeaves,
+    feeRecords,
+    addFeeRecord,
+    addBulkClassFees,
+    updateFeePayment,
+    markFeeWaived,
+    deleteFeeRecord,
+    portalNotifications,
+    addPortalNotification,
+    deletePortalNotification,
+    classRoutines,
+    saveClassRoutine,
+    resetClassRoutines,
     auditLogs,
     settings,
     updateSettings,
@@ -143,7 +172,7 @@ const Login: React.FC = () => {
   const [needsVerification, setNeedsVerification] = useState(false);
 
   const [dashboardView, setDashboardView] = useState<'main' | 'admin-management' | 'teacher-portal'>('main');
-  const [managementTab, setManagementTab] = useState<ManagementTab>('notices');
+  const [managementTab, setManagementTab] = useState<ManagementTab>('analytics');
   const [leaveRemarks, setLeaveRemarks] = useState<Record<string, string>>({});
   const [adminReplyDrafts, setAdminReplyDrafts] = useState<Record<string, string>>({});
 
@@ -152,8 +181,201 @@ const Login: React.FC = () => {
   const [dbFeedback, setDbFeedback] = useState<{ ok: boolean; msg: string } | null>(null);
   const [tempImage, setTempImage] = useState('');
   const [showSaveSuccess, setShowSaveSuccess] = useState(false);
+  const [adminToast, setAdminToast] = useState('');
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const [editingItem, setEditingItem] = useState<any>(null);
+
+  const todayStr = new Date().toISOString().split('T')[0];
+
+  // Admin Fee Ledger States
+  const [adminFeeMode, setAdminFeeMode] = useState<'bulk' | 'single'>('bulk');
+  const [adminBulkFee, setAdminBulkFee] = useState({
+    classId: '9',
+    title: 'Monthly Tuition Fee',
+    category: 'Tuition' as FeeCategory,
+    billingMonth: 'April 2026',
+    amount: 500,
+    dueDate: todayStr,
+  });
+  const [adminSingleFee, setAdminSingleFee] = useState({
+    studentId: '',
+    title: 'Exam Fee',
+    category: 'Exam' as FeeCategory,
+    billingMonth: 'Half Yearly 2026',
+    amount: 350,
+    dueDate: todayStr,
+  });
+  const [adminFeeClassFilter, setAdminFeeClassFilter] = useState<string>('all');
+  const [adminFeeStatusFilter, setAdminFeeStatusFilter] = useState<string>('all');
+  const [adminPayAmounts, setAdminPayAmounts] = useState<Record<string, string>>({});
+  const [adminPayMethods, setAdminPayMethods] = useState<Record<string, PaymentMethod>>({});
+  const [activeAdminReceipt, setActiveAdminReceipt] = useState<FeeRecord | null>(null);
+
+  // Admin Broadcast State
+  const [adminBroadcast, setAdminBroadcast] = useState({
+    targetRole: 'all' as 'all' | 'student' | 'parent' | 'teacher',
+    classId: 'all',
+    priority: 'normal' as 'normal' | 'urgent',
+    title: '',
+    message: '',
+  });
+
+  // Admin Class Routine Editor State
+  const [routineClassId, setRoutineClassId] = useState<'6' | '7' | '8' | '9' | '10'>('6');
+  const [routineDayIdx, setRoutineDayIdx] = useState<number>(0);
+  const [periodDraft, setPeriodDraft] = useState({
+    time: '01:45 PM',
+    subjectBn: '',
+    subjectEn: '',
+    teacherBn: '',
+    teacherEn: '',
+  });
+
+  const notifyAdmin = (msg: string) => {
+    setAdminToast(msg);
+    setTimeout(() => setAdminToast(''), 3000);
+  };
+
+  const analyticsSummary = useMemo(() => {
+    const totalStudents = students.length;
+
+    // Live Attendance calculation (prefer normalized studentAttendance, fall back to attendanceRecords map)
+    let presentCount = 0;
+    let attTotal = 0;
+    if (studentAttendance.length > 0) {
+      attTotal = studentAttendance.length;
+      presentCount = studentAttendance.filter((a) => a.status === 'present' || a.status === 'late').length;
+    } else {
+      attendanceRecords.forEach((rec) => {
+        const vals = Object.values(rec.records || {});
+        attTotal += vals.length;
+        presentCount += vals.filter((v) => v === 'present' || v === 'late').length;
+      });
+    }
+    const attendanceRatePct = attTotal > 0 ? Math.round((presentCount / attTotal) * 100) : 0;
+
+    // Live Fee Financials
+    const billed = feeRecords.reduce((acc, f) => acc + (f.status === 'waived' ? 0 : Number(f.amount) || 0), 0);
+    const collected = feeRecords.reduce((acc, f) => acc + (Number(f.paidAmount) || 0), 0);
+    const due = feeRecords.reduce(
+      (acc, f) => acc + (f.status === 'waived' ? 0 : Math.max(0, (Number(f.amount) || 0) - (Number(f.paidAmount) || 0))),
+      0
+    );
+    const feeCollectionPct = billed > 0 ? Math.round((collected / billed) * 100) : 0;
+
+    // Pending Approvals Queue
+    const pendingAdmissions = admissions.filter((a) => a.status === 'pending').length;
+    const pendingParentLinks = parentLinks.filter((p) => p.status === 'pending').length;
+    const pendingLeaves =
+      teacherLeaves.filter((l) => l.status === 'pending').length +
+      studentLeaves.filter((l) => l.status === 'pending').length;
+    const pendingAlumni = alumni.filter((al) => al.status === 'pending').length;
+    const pendingTotal = pendingAdmissions + pendingParentLinks + pendingLeaves + pendingAlumni;
+
+    // Class 6-10 Live Breakdown
+    const classBreakdown = ['6', '7', '8', '9', '10'].map((cid) => {
+      const clsStudents = students.filter((s) => s.classId === cid);
+      let clsAttTotal = 0;
+      let clsAttPresent = 0;
+      if (studentAttendance.length > 0) {
+        const rows = studentAttendance.filter((a) => a.classId === cid);
+        clsAttTotal = rows.length;
+        clsAttPresent = rows.filter((a) => a.status === 'present' || a.status === 'late').length;
+      } else {
+        attendanceRecords
+          .filter((r) => r.classId === cid)
+          .forEach((r) => {
+            const vals = Object.values(r.records || {});
+            clsAttTotal += vals.length;
+            clsAttPresent += vals.filter((v) => v === 'present' || v === 'late').length;
+          });
+      }
+      const clsAttPct = clsAttTotal > 0 ? Math.round((clsAttPresent / clsAttTotal) * 100) : 0;
+
+      const clsMarks = examMarks.filter((m) => m.classId === cid);
+      const avgMarkPct =
+        clsMarks.length > 0
+          ? Math.round(
+              clsMarks.reduce((acc, m) => acc + ((Number(m.totalMarks) || 100) > 0 ? (m.obtainedMarks / (m.totalMarks || 100)) * 100 : 0), 0) /
+                clsMarks.length
+            )
+          : 0;
+      const passRatePct =
+        clsMarks.length > 0
+          ? Math.round((clsMarks.filter((m) => m.grade !== 'F').length / clsMarks.length) * 100)
+          : 0;
+
+      const clsFees = feeRecords.filter((f) => f.classId === cid && f.status !== 'waived');
+      const clsBilled = clsFees.reduce((acc, f) => acc + (Number(f.amount) || 0), 0);
+      const clsPaid = clsFees.reduce((acc, f) => acc + (Number(f.paidAmount) || 0), 0);
+      const clsFeePct = clsBilled > 0 ? Math.round((clsPaid / clsBilled) * 100) : 0;
+
+      return {
+        classId: cid,
+        studentCount: clsStudents.length,
+        attPct: clsAttPct,
+        attSamples: clsAttTotal,
+        avgMarkPct,
+        passRatePct,
+        marksCount: clsMarks.length,
+        feePct: clsFeePct,
+        feeBilled: clsBilled,
+      };
+    });
+
+    // Online MCQ Summary
+    const avgAttemptPct =
+      examAttempts.length > 0
+        ? Math.round(examAttempts.reduce((acc, at) => acc + (Number(at.percentage) || 0), 0) / examAttempts.length)
+        : 0;
+
+    return {
+      totalStudents,
+      attendanceRatePct,
+      attTotal,
+      billed,
+      collected,
+      due,
+      feeCollectionPct,
+      pendingTotal,
+      pendingAdmissions,
+      pendingParentLinks,
+      pendingLeaves,
+      pendingAlumni,
+      classBreakdown,
+      mcqCount: onlineExams.length,
+      attemptCount: examAttempts.length,
+      avgAttemptPct,
+    };
+  }, [
+    students,
+    studentAttendance,
+    attendanceRecords,
+    feeRecords,
+    admissions,
+    parentLinks,
+    teacherLeaves,
+    studentLeaves,
+    alumni,
+    examMarks,
+    onlineExams,
+    examAttempts,
+  ]);
+
+  const filteredAdminFees = useMemo(
+    () =>
+      feeRecords.filter(
+        (f) =>
+          (adminFeeClassFilter === 'all' || f.classId === adminFeeClassFilter) &&
+          (adminFeeStatusFilter === 'all' || f.status === adminFeeStatusFilter)
+      ),
+    [feeRecords, adminFeeClassFilter, adminFeeStatusFilter]
+  );
+
+  const activeAdminRoutine = useMemo(
+    () => classRoutines.find((r) => r.classId === routineClassId) || classRoutines[0],
+    [classRoutines, routineClassId]
+  );
 
   const [newSubject, setNewSubject] = useState({ code: '101', nameBn: '', nameEn: '', classId: '9', totalMarks: 100 });
   const [newExamRoutine, setNewExamRoutine] = useState({
@@ -440,6 +662,10 @@ const Login: React.FC = () => {
   if (user) {
     const allUsers = getUsers();
     const adminTabs: { id: ManagementTab; label: string }[] = [
+      { id: 'analytics', label: lang === 'bn' ? 'অ্যানালিটিক্স' : 'Analytics' },
+      { id: 'fees', label: lang === 'bn' ? 'ফি ও হিসাব' : 'Fee Ledger' },
+      { id: 'broadcasts', label: lang === 'bn' ? 'পোর্টাল ঘোষণা' : 'Broadcasts' },
+      { id: 'class-routine', label: lang === 'bn' ? 'ক্লাস রুটিন' : 'Class Routine' },
       { id: 'notices', label: lang === 'bn' ? 'নোটিশ' : 'Notices' },
       { id: 'teachers', label: lang === 'bn' ? 'শিক্ষক' : 'Teachers' },
       { id: 'ebooks', label: lang === 'bn' ? 'লাইব্রেরি' : 'Library' },
@@ -615,6 +841,596 @@ const Login: React.FC = () => {
                     </button>
                   ))}
                 </div>
+
+                {adminToast && (
+                  <div className="p-3.5 rounded-2xl bg-emerald-50 dark:bg-emerald-950/60 border border-emerald-200 dark:border-emerald-800 text-emerald-800 dark:text-emerald-200 text-xs font-bold flex items-center gap-2">
+                    <CheckCircle className="w-4 h-4 shrink-0" />
+                    <span>{adminToast}</span>
+                  </div>
+                )}
+
+                {managementTab === 'analytics' && (
+                  <div className="space-y-6">
+                    {/* 4 Core Real-Data KPI Cards */}
+                    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+                      <div className="p-5 rounded-2xl bg-slate-50 dark:bg-slate-800/70 border border-slate-200 dark:border-slate-700 space-y-1">
+                        <div className="flex items-center justify-between text-xs font-bold text-slate-500 dark:text-slate-400">
+                          <span>{lang === 'bn' ? 'নিবন্ধিত শিক্ষার্থী' : 'Enrolled Students'}</span>
+                          <Users className="w-4 h-4 text-emerald-700 dark:text-emerald-400" />
+                        </div>
+                        <p className="text-3xl font-black text-slate-900 dark:text-white tabular-nums">{analyticsSummary.totalStudents}</p>
+                        <p className="text-[11px] text-slate-500 dark:text-slate-400 tabular-nums">
+                          {lang === 'bn' ? 'শ্রেণী ৬ষ্ঠ – ১০ম' : 'Classes 6 – 10 Roster'}
+                        </p>
+                      </div>
+
+                      <div className="p-5 rounded-2xl bg-slate-50 dark:bg-slate-800/70 border border-slate-200 dark:border-slate-700 space-y-1">
+                        <div className="flex items-center justify-between text-xs font-bold text-slate-500 dark:text-slate-400">
+                          <span>{lang === 'bn' ? 'উপস্থিতির হার' : 'Attendance Rate'}</span>
+                          <BarChart3 className="w-4 h-4 text-emerald-700 dark:text-emerald-400" />
+                        </div>
+                        <p className="text-3xl font-black text-emerald-700 dark:text-emerald-400 tabular-nums">
+                          {analyticsSummary.attendanceRatePct}%
+                        </p>
+                        <p className="text-[11px] text-slate-500 dark:text-slate-400 tabular-nums">
+                          {analyticsSummary.attTotal} {lang === 'bn' ? 'টি হাজিরা এন্ট্রি' : 'recorded entries'}
+                        </p>
+                      </div>
+
+                      <div className="p-5 rounded-2xl bg-slate-50 dark:bg-slate-800/70 border border-slate-200 dark:border-slate-700 space-y-1">
+                        <div className="flex items-center justify-between text-xs font-bold text-slate-500 dark:text-slate-400">
+                          <span>{lang === 'bn' ? 'ফি আদায়ের হার' : 'Fee Collection'}</span>
+                          <Receipt className="w-4 h-4 text-emerald-700 dark:text-emerald-400" />
+                        </div>
+                        <p className="text-3xl font-black text-slate-900 dark:text-white tabular-nums">
+                          {analyticsSummary.feeCollectionPct}%
+                        </p>
+                        <p className="text-[11px] text-slate-500 dark:text-slate-400 tabular-nums">
+                          ৳{analyticsSummary.collected.toLocaleString()} / ৳{analyticsSummary.billed.toLocaleString()}
+                        </p>
+                      </div>
+
+                      <div className="p-5 rounded-2xl bg-slate-50 dark:bg-slate-800/70 border border-slate-200 dark:border-slate-700 space-y-1">
+                        <div className="flex items-center justify-between text-xs font-bold text-slate-500 dark:text-slate-400">
+                          <span>{lang === 'bn' ? 'অনুমোদনের অপেক্ষায়' : 'Pending Approvals'}</span>
+                          <ShieldAlert className="w-4 h-4 text-amber-600 dark:text-amber-400" />
+                        </div>
+                        <p className="text-3xl font-black text-amber-600 dark:text-amber-400 tabular-nums">
+                          {analyticsSummary.pendingTotal}
+                        </p>
+                        <p className="text-[11px] text-slate-500 dark:text-slate-400 tabular-nums">
+                          Adm {analyticsSummary.pendingAdmissions} · Link {analyticsSummary.pendingParentLinks} · Leave {analyticsSummary.pendingLeaves} · Alumni {analyticsSummary.pendingAlumni}
+                        </p>
+                      </div>
+                    </div>
+
+                    {/* Class 6-10 Live Academic & Fee Breakdown */}
+                    <div className="grid lg:grid-cols-12 gap-6">
+                      <div className="lg:col-span-8 p-5 rounded-2xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 space-y-4">
+                        <div className="flex items-center justify-between">
+                          <h4 className="font-extrabold text-sm text-slate-900 dark:text-white">
+                            {lang === 'bn' ? 'শ্রেণীভিত্তিক একাডেমিক ও ফি সারসংক্ষেপ' : 'Class 6–10 Live Academic & Fee Breakdown'}
+                          </h4>
+                          <span className="text-[11px] font-bold text-slate-400 uppercase">{lang === 'bn' ? 'রিয়েল-টাইম ডাটা' : 'Live Firestore Data'}</span>
+                        </div>
+                        <div className="overflow-x-auto">
+                          <table className="w-full text-left text-xs">
+                            <thead className="border-b border-slate-200 dark:border-slate-800 text-[11px] font-bold uppercase text-slate-400">
+                              <tr>
+                                <th className="py-2.5 pr-3">Class</th>
+                                <th className="py-2.5 px-3 tabular-nums">Students</th>
+                                <th className="py-2.5 px-3 tabular-nums">Attendance %</th>
+                                <th className="py-2.5 px-3 tabular-nums">Exam Avg %</th>
+                                <th className="py-2.5 px-3 tabular-nums">Pass Rate</th>
+                                <th className="py-2.5 pl-3 tabular-nums">Fee Paid %</th>
+                              </tr>
+                            </thead>
+                            <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
+                              {analyticsSummary.classBreakdown.map((row) => (
+                                <tr key={row.classId}>
+                                  <td className="py-3 pr-3 font-extrabold">Class {row.classId}</td>
+                                  <td className="py-3 px-3 tabular-nums font-bold">{row.studentCount}</td>
+                                  <td className="py-3 px-3 tabular-nums">
+                                    <div className="flex items-center gap-2">
+                                      <div className="w-16 h-1.5 rounded-full bg-slate-100 dark:bg-slate-800 overflow-hidden">
+                                        <div className="h-full bg-emerald-600" style={{ width: `${row.attPct}%` }} />
+                                      </div>
+                                      <span className="font-bold">{row.attPct}%</span>
+                                    </div>
+                                  </td>
+                                  <td className="py-3 px-3 tabular-nums font-bold">{row.avgMarkPct}%</td>
+                                  <td className="py-3 px-3 tabular-nums font-bold text-emerald-700 dark:text-emerald-400">{row.passRatePct}%</td>
+                                  <td className="py-3 pl-3 tabular-nums font-bold">{row.feePct}%</td>
+                                </tr>
+                              ))}
+                            </tbody>
+                          </table>
+                        </div>
+                      </div>
+
+                      {/* Online MCQ Summary + Quick CSV Exports */}
+                      <div className="lg:col-span-4 space-y-4">
+                        <div className="p-5 rounded-2xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 space-y-3">
+                          <div className="flex items-center justify-between">
+                            <h4 className="font-extrabold text-sm">{lang === 'bn' ? 'অনলাইন MCQ পরীক্ষা' : 'Online MCQ Summary'}</h4>
+                            <Trophy className="w-4 h-4 text-emerald-700 dark:text-emerald-400" />
+                          </div>
+                          <div className="grid grid-cols-3 gap-2 text-center pt-1">
+                            <div className="p-2.5 rounded-xl bg-slate-50 dark:bg-slate-800">
+                              <p className="text-lg font-black tabular-nums">{analyticsSummary.mcqCount}</p>
+                              <p className="text-[10px] font-bold text-slate-400 uppercase">Exams</p>
+                            </div>
+                            <div className="p-2.5 rounded-xl bg-slate-50 dark:bg-slate-800">
+                              <p className="text-lg font-black tabular-nums">{analyticsSummary.attemptCount}</p>
+                              <p className="text-[10px] font-bold text-slate-400 uppercase">Attempts</p>
+                            </div>
+                            <div className="p-2.5 rounded-xl bg-slate-50 dark:bg-slate-800">
+                              <p className="text-lg font-black tabular-nums text-emerald-700 dark:text-emerald-400">{analyticsSummary.avgAttemptPct}%</p>
+                              <p className="text-[10px] font-bold text-slate-400 uppercase">Avg Score</p>
+                            </div>
+                          </div>
+                        </div>
+
+                        <div className="p-5 rounded-2xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 space-y-2.5">
+                          <h4 className="font-extrabold text-sm">{lang === 'bn' ? 'দ্রুত CSV রিপোর্ট ডাউনলোড' : 'Quick CSV Exports'}</h4>
+                          <button
+                            type="button"
+                            onClick={() =>
+                              exportCsv(
+                                `all_fee_ledger_${todayStr}`,
+                                ['ID', 'Class', 'Roll', 'Student Name', 'Title', 'Category', 'Amount', 'Paid', 'Status', 'Method', 'Receipt No', 'Due Date'],
+                                feeRecords.map((f) => [f.id, f.classId, f.roll, f.studentName, f.title, f.category, f.amount, f.paidAmount, f.status, f.paymentMethod || '', f.receiptNo || '', f.dueDate])
+                              )
+                            }
+                            className="w-full py-2 px-3 rounded-xl bg-slate-100 dark:bg-slate-800 hover:bg-emerald-700 hover:text-white text-xs font-bold flex items-center justify-between transition-colors"
+                          >
+                            <span>{lang === 'bn' ? 'সম্পূর্ণ ফি লেজার CSV' : 'Export Fee Ledger CSV'}</span>
+                            <Download className="w-3.5 h-3.5" />
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() =>
+                              exportCsv(
+                                `all_exam_marks_${todayStr}`,
+                                ['Term', 'Class', 'Roll', 'Student Name', 'Subject', 'Obtained', 'Total', 'Grade', 'Entered By'],
+                                examMarks.map((m) => [m.examTerm, m.classId, m.roll, m.studentName, m.subject, m.obtainedMarks, m.totalMarks, m.grade, m.enteredBy])
+                              )
+                            }
+                            className="w-full py-2 px-3 rounded-xl bg-slate-100 dark:bg-slate-800 hover:bg-emerald-700 hover:text-white text-xs font-bold flex items-center justify-between transition-colors"
+                          >
+                            <span>{lang === 'bn' ? 'সকল পরীক্ষার নম্বর CSV' : 'Export Exam Marks CSV'}</span>
+                            <Download className="w-3.5 h-3.5" />
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() =>
+                              exportCsv(
+                                `audit_logs_${todayStr}`,
+                                ['Date', 'Action', 'Actor', 'Email', 'Role', 'Collection', 'Target ID', 'Summary'],
+                                auditLogs.map((l) => [l.createdDate, l.action, l.actorName, l.actorEmail, l.actorRole, l.targetCollection, l.targetId, l.summary])
+                              )
+                            }
+                            className="w-full py-2 px-3 rounded-xl bg-slate-100 dark:bg-slate-800 hover:bg-emerald-700 hover:text-white text-xs font-bold flex items-center justify-between transition-colors"
+                          >
+                            <span>{lang === 'bn' ? 'অডিট লগ CSV' : 'Export Audit Logs CSV'}</span>
+                            <Download className="w-3.5 h-3.5" />
+                          </button>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                )}
+
+                {managementTab === 'fees' && (
+                  <div className="space-y-6">
+                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                      <div className="p-4 rounded-2xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700">
+                        <p className="text-xs font-bold text-slate-400">{lang === 'bn' ? 'মোট নির্ধারিত ফি' : 'Total Billed'}</p>
+                        <p className="text-2xl font-black text-slate-900 dark:text-white tabular-nums mt-1">৳{analyticsSummary.billed.toLocaleString()}</p>
+                      </div>
+                      <div className="p-4 rounded-2xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700">
+                        <p className="text-xs font-bold text-slate-400">{lang === 'bn' ? 'আদায়কৃত টাকা' : 'Collected'}</p>
+                        <p className="text-2xl font-black text-emerald-700 dark:text-emerald-400 tabular-nums mt-1">৳{analyticsSummary.collected.toLocaleString()}</p>
+                      </div>
+                      <div className="p-4 rounded-2xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700">
+                        <p className="text-xs font-bold text-slate-400">{lang === 'bn' ? 'বকেয়া পরিমাণ' : 'Pending Due'}</p>
+                        <p className="text-2xl font-black text-amber-600 dark:text-amber-400 tabular-nums mt-1">৳{analyticsSummary.due.toLocaleString()}</p>
+                      </div>
+                    </div>
+
+                    <div className="grid lg:grid-cols-12 gap-6">
+                      <div className="lg:col-span-4 p-5 rounded-2xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 space-y-4 h-fit">
+                        <div className="flex items-center gap-1 bg-white dark:bg-slate-900 p-1 rounded-xl border border-slate-200 dark:border-slate-700">
+                          <button
+                            type="button"
+                            onClick={() => setAdminFeeMode('bulk')}
+                            className={`flex-1 py-2 rounded-lg text-xs font-bold transition-colors ${adminFeeMode === 'bulk' ? 'bg-emerald-700 text-white' : 'text-slate-500'}`}
+                          >
+                            {lang === 'bn' ? 'শ্রেণীভিত্তিক ফি' : 'Bulk Class Fee'}
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => setAdminFeeMode('single')}
+                            className={`flex-1 py-2 rounded-lg text-xs font-bold transition-colors ${adminFeeMode === 'single' ? 'bg-emerald-700 text-white' : 'text-slate-500'}`}
+                          >
+                            {lang === 'bn' ? 'একক শিক্ষার্থী' : 'Individual Fee'}
+                          </button>
+                        </div>
+
+                        {adminFeeMode === 'bulk' ? (
+                          <form
+                            onSubmit={(e) => {
+                              e.preventDefault();
+                              const count = addBulkClassFees({
+                                classId: adminBulkFee.classId,
+                                title: adminBulkFee.title.trim(),
+                                category: adminBulkFee.category,
+                                billingMonth: adminBulkFee.billingMonth.trim(),
+                                amount: Math.max(0, Number(adminBulkFee.amount) || 0),
+                                dueDate: adminBulkFee.dueDate,
+                              });
+                              notifyAdmin(lang === 'bn' ? `${count} জন শিক্ষার্থীর জন্য ফি যুক্ত হয়েছে!` : `Created ${count} class invoices!`);
+                            }}
+                            className="space-y-3"
+                          >
+                            <div className="grid grid-cols-2 gap-2">
+                              <select value={adminBulkFee.classId} onChange={(e) => setAdminBulkFee((p) => ({ ...p, classId: e.target.value }))} className="px-3 py-2 rounded-xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 text-xs font-bold">
+                                {['6', '7', '8', '9', '10'].map((c) => <option key={c} value={c}>Class {c}</option>)}
+                              </select>
+                              <select value={adminBulkFee.category} onChange={(e) => setAdminBulkFee((p) => ({ ...p, category: e.target.value as FeeCategory }))} className="px-3 py-2 rounded-xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 text-xs font-bold">
+                                {['Tuition', 'Exam', 'Admission', 'Library', 'Lab', 'Sports', 'Other'].map((cat) => <option key={cat} value={cat}>{cat}</option>)}
+                              </select>
+                            </div>
+                            <input required value={adminBulkFee.title} onChange={(e) => setAdminBulkFee((p) => ({ ...p, title: e.target.value }))} placeholder="Fee Title" className="w-full px-3.5 py-2 rounded-xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 text-sm" />
+                            <input value={adminBulkFee.billingMonth} onChange={(e) => setAdminBulkFee((p) => ({ ...p, billingMonth: e.target.value }))} placeholder="Billing Month / Term" className="w-full px-3.5 py-2 rounded-xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 text-sm" />
+                            <div className="grid grid-cols-2 gap-2">
+                              <input type="number" min={0} max={500000} required value={adminBulkFee.amount} onChange={(e) => setAdminBulkFee((p) => ({ ...p, amount: Number(e.target.value) || 0 }))} placeholder="Amount" className="px-3 py-2 rounded-xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 text-xs font-bold tabular-nums" />
+                              <input type="date" required value={adminBulkFee.dueDate} onChange={(e) => setAdminBulkFee((p) => ({ ...p, dueDate: e.target.value }))} className="px-3 py-2 rounded-xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 text-xs font-bold" />
+                            </div>
+                            <button type="submit" className="w-full py-2.5 rounded-xl bg-emerald-700 hover:bg-emerald-800 text-white text-xs font-bold">
+                              {lang === 'bn' ? 'শ্রেণীভিত্তিক ইনভয়েস তৈরি' : 'Generate Class Invoices'}
+                            </button>
+                          </form>
+                        ) : (
+                          <form
+                            onSubmit={(e) => {
+                              e.preventDefault();
+                              const st = students.find((s) => s.id === adminSingleFee.studentId) || students[0];
+                              if (!st) return;
+                              addFeeRecord({
+                                id: `fee-${Date.now()}`,
+                                studentId: st.id,
+                                studentName: st.name,
+                                classId: st.classId,
+                                roll: st.roll,
+                                title: adminSingleFee.title.trim(),
+                                category: adminSingleFee.category,
+                                billingMonth: adminSingleFee.billingMonth.trim(),
+                                amount: Math.max(0, Number(adminSingleFee.amount) || 0),
+                                paidAmount: 0,
+                                dueDate: adminSingleFee.dueDate,
+                                status: 'pending',
+                                recordedBy: user.name,
+                              });
+                              notifyAdmin(lang === 'bn' ? 'শিক্ষার্থীর ফি যুক্ত হয়েছে!' : 'Individual fee invoice created!');
+                            }}
+                            className="space-y-3"
+                          >
+                            <select value={adminSingleFee.studentId || students[0]?.id || ''} onChange={(e) => setAdminSingleFee((p) => ({ ...p, studentId: e.target.value }))} className="w-full px-3 py-2 rounded-xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 text-xs font-bold">
+                              {students.map((st) => (
+                                <option key={st.id} value={st.id}>Class {st.classId} · #{st.roll} {st.name}</option>
+                              ))}
+                            </select>
+                            <select value={adminSingleFee.category} onChange={(e) => setAdminSingleFee((p) => ({ ...p, category: e.target.value as FeeCategory }))} className="w-full px-3 py-2 rounded-xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 text-xs font-bold">
+                              {['Tuition', 'Exam', 'Admission', 'Library', 'Lab', 'Sports', 'Other'].map((cat) => <option key={cat} value={cat}>{cat}</option>)}
+                            </select>
+                            <input required value={adminSingleFee.title} onChange={(e) => setAdminSingleFee((p) => ({ ...p, title: e.target.value }))} placeholder="Fee Title" className="w-full px-3.5 py-2 rounded-xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 text-sm" />
+                            <div className="grid grid-cols-2 gap-2">
+                              <input type="number" min={0} max={500000} required value={adminSingleFee.amount} onChange={(e) => setAdminSingleFee((p) => ({ ...p, amount: Number(e.target.value) || 0 }))} placeholder="Amount" className="px-3 py-2 rounded-xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 text-xs font-bold tabular-nums" />
+                              <input type="date" required value={adminSingleFee.dueDate} onChange={(e) => setAdminSingleFee((p) => ({ ...p, dueDate: e.target.value }))} className="px-3 py-2 rounded-xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 text-xs font-bold" />
+                            </div>
+                            <button type="submit" className="w-full py-2.5 rounded-xl bg-emerald-700 hover:bg-emerald-800 text-white text-xs font-bold">
+                              {lang === 'bn' ? 'একক ইনভয়েস যুক্ত' : 'Create Individual Invoice'}
+                            </button>
+                          </form>
+                        )}
+                      </div>
+
+                      <div className="lg:col-span-8 space-y-3">
+                        <div className="flex flex-wrap items-center justify-between gap-2">
+                          <div className="flex flex-wrap gap-2">
+                            <select value={adminFeeClassFilter} onChange={(e) => setAdminFeeClassFilter(e.target.value)} className="px-3 py-2 rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-xs font-bold">
+                              <option value="all">{lang === 'bn' ? 'সব শ্রেণী' : 'All Classes'}</option>
+                              {['6', '7', '8', '9', '10'].map((c) => <option key={c} value={c}>Class {c}</option>)}
+                            </select>
+                            <select value={adminFeeStatusFilter} onChange={(e) => setAdminFeeStatusFilter(e.target.value)} className="px-3 py-2 rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-xs font-bold">
+                              <option value="all">{lang === 'bn' ? 'সব অবস্থা' : 'All Status'}</option>
+                              <option value="pending">Pending</option>
+                              <option value="partial">Partial</option>
+                              <option value="paid">Paid</option>
+                              <option value="waived">Waived</option>
+                            </select>
+                          </div>
+                          <button
+                            type="button"
+                            onClick={() =>
+                              exportCsv(
+                                `fee_ledger_${todayStr}`,
+                                ['ID', 'Class', 'Roll', 'Student Name', 'Title', 'Category', 'Amount', 'Paid', 'Status', 'Method', 'Receipt No', 'Due Date'],
+                                filteredAdminFees.map((f) => [f.id, f.classId, f.roll, f.studentName, f.title, f.category, f.amount, f.paidAmount, f.status, f.paymentMethod || '', f.receiptNo || '', f.dueDate])
+                              )
+                            }
+                            className="px-3.5 py-2 rounded-xl bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-xs font-bold inline-flex items-center gap-1.5"
+                          >
+                            <Download className="w-3.5 h-3.5" /> Export CSV
+                          </button>
+                        </div>
+
+                        {filteredAdminFees.length === 0 ? (
+                          <p className="text-sm text-slate-400 text-center py-8">No fee records found for the selected filter.</p>
+                        ) : (
+                          filteredAdminFees.map((f) => {
+                            const method = adminPayMethods[f.id] || 'Cash';
+                            const amtInput = adminPayAmounts[f.id] ?? String(f.amount);
+                            return (
+                              <div key={f.id} className="p-4 rounded-2xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 space-y-2.5 text-xs">
+                                <div className="flex flex-wrap justify-between items-center gap-2">
+                                  <div>
+                                    <p className="text-slate-500 dark:text-slate-400 tabular-nums">
+                                      Class {f.classId} · Roll #{f.roll} · {f.category} · Due {f.dueDate}
+                                    </p>
+                                    <p className="font-extrabold text-sm text-slate-900 dark:text-white">{f.studentName} — {f.title}</p>
+                                  </div>
+                                  <div className="text-right tabular-nums">
+                                    <p className="font-black text-sm">৳{f.paidAmount.toLocaleString()} / ৳{f.amount.toLocaleString()}</p>
+                                    <p className={`font-extrabold uppercase ${f.status === 'paid' ? 'text-emerald-700 dark:text-emerald-400' : f.status === 'waived' ? 'text-slate-400' : 'text-amber-600 dark:text-amber-400'}`}>
+                                      {f.status} {f.receiptNo ? `· ${f.receiptNo}` : ''}
+                                    </p>
+                                  </div>
+                                </div>
+                                <div className="flex flex-wrap items-center gap-2 pt-2 border-t border-slate-200 dark:border-slate-700">
+                                  {f.status !== 'paid' && f.status !== 'waived' && (
+                                    <>
+                                      <input
+                                        type="number"
+                                        min={0}
+                                        max={f.amount}
+                                        value={amtInput}
+                                        onChange={(e) => setAdminPayAmounts((p) => ({ ...p, [f.id]: e.target.value }))}
+                                        className="w-24 px-2.5 py-1.5 rounded-lg bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 font-bold tabular-nums"
+                                      />
+                                      <select
+                                        value={method}
+                                        onChange={(e) => setAdminPayMethods((p) => ({ ...p, [f.id]: e.target.value as PaymentMethod }))}
+                                        className="px-2.5 py-1.5 rounded-lg bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 font-bold"
+                                      >
+                                        <option value="Cash">Cash</option>
+                                        <option value="bKash">bKash</option>
+                                        <option value="Nagad">Nagad</option>
+                                        <option value="Bank">Bank</option>
+                                        <option value="Online">Online</option>
+                                      </select>
+                                      <button
+                                        type="button"
+                                        onClick={() => {
+                                          updateFeePayment(f.id, Number(amtInput) || f.amount, method);
+                                          notifyAdmin(lang === 'bn' ? 'পেমেন্ট সেভ ও রশিদ তৈরি হয়েছে!' : 'Payment recorded!');
+                                        }}
+                                        className="px-3 py-1.5 rounded-lg bg-emerald-700 text-white font-bold"
+                                      >
+                                        {lang === 'bn' ? 'জমা নিন' : 'Record Paid'}
+                                      </button>
+                                      <button
+                                        type="button"
+                                        onClick={() => {
+                                          markFeeWaived(f.id);
+                                          notifyAdmin(lang === 'bn' ? 'ফি মওকুফ করা হয়েছে।' : 'Marked as waived.');
+                                        }}
+                                        className="px-3 py-1.5 rounded-lg bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 font-bold"
+                                      >
+                                        {lang === 'bn' ? 'মওকুফ' : 'Waive'}
+                                      </button>
+                                    </>
+                                  )}
+                                  <button
+                                    type="button"
+                                    onClick={() => setActiveAdminReceipt(f)}
+                                    className="px-3 py-1.5 rounded-lg bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 hover:bg-emerald-700 hover:text-white font-bold inline-flex items-center gap-1 ml-auto"
+                                  >
+                                    <Receipt className="w-3.5 h-3.5" /> {lang === 'bn' ? 'রশিদ প্রিন্ট' : 'Voucher'}
+                                  </button>
+                                  <button type="button" onClick={() => deleteFeeRecord(f.id)} className="p-1.5 text-red-500">
+                                    <Trash2 className="w-4 h-4" />
+                                  </button>
+                                </div>
+                              </div>
+                            );
+                          })
+                        )}
+                      </div>
+                    </div>
+                  </div>
+                )}
+
+                {managementTab === 'broadcasts' && (
+                  <div className="grid lg:grid-cols-12 gap-6">
+                    <form
+                      onSubmit={async (e) => {
+                        e.preventDefault();
+                        if (!adminBroadcast.title.trim() || !adminBroadcast.message.trim()) return;
+                        await addPortalNotification({
+                          id: `pn-${Date.now()}`,
+                          title: adminBroadcast.title.trim(),
+                          message: adminBroadcast.message.trim(),
+                          targetRole: adminBroadcast.targetRole,
+                          classId: adminBroadcast.classId,
+                          priority: adminBroadcast.priority,
+                          senderName: user.name,
+                          createdDate: todayStr,
+                        });
+                        setAdminBroadcast((p) => ({ ...p, title: '', message: '' }));
+                        notifyAdmin(lang === 'bn' ? 'টার্গেটেড পোর্টাল ঘোষণা পাঠানো হয়েছে!' : 'Targeted portal broadcast sent!');
+                      }}
+                      className="lg:col-span-5 p-6 rounded-2xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 space-y-3 h-fit"
+                    >
+                      <div className="flex items-center gap-2">
+                        <Megaphone className="w-4 h-4 text-emerald-700 dark:text-emerald-400" />
+                        <h4 className="font-extrabold text-sm">{lang === 'bn' ? 'টার্গেটেড পোর্টাল ঘোষণা পাঠান' : 'Send Targeted Portal Broadcast'}</h4>
+                      </div>
+                      <div className="grid grid-cols-3 gap-2">
+                        <select value={adminBroadcast.targetRole} onChange={(e) => setAdminBroadcast((p) => ({ ...p, targetRole: e.target.value as 'all' | 'student' | 'parent' | 'teacher' }))} className="px-2.5 py-2 rounded-xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 text-xs font-bold">
+                          <option value="all">{lang === 'bn' ? 'সব পোর্টাল' : 'All Portals'}</option>
+                          <option value="student">{lang === 'bn' ? 'শিক্ষার্থী' : 'Students'}</option>
+                          <option value="parent">{lang === 'bn' ? 'অভিভাবক' : 'Parents'}</option>
+                          <option value="teacher">{lang === 'bn' ? 'শিক্ষক' : 'Teachers'}</option>
+                        </select>
+                        <select value={adminBroadcast.classId} onChange={(e) => setAdminBroadcast((p) => ({ ...p, classId: e.target.value }))} className="px-2.5 py-2 rounded-xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 text-xs font-bold">
+                          <option value="all">{lang === 'bn' ? 'সব শ্রেণী' : 'All Classes'}</option>
+                          {['6', '7', '8', '9', '10'].map((c) => <option key={c} value={c}>Class {c}</option>)}
+                        </select>
+                        <select value={adminBroadcast.priority} onChange={(e) => setAdminBroadcast((p) => ({ ...p, priority: e.target.value as 'normal' | 'urgent' }))} className="px-2.5 py-2 rounded-xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 text-xs font-bold">
+                          <option value="normal">Normal</option>
+                          <option value="urgent">Urgent</option>
+                        </select>
+                      </div>
+                      <input required value={adminBroadcast.title} onChange={(e) => setAdminBroadcast((p) => ({ ...p, title: e.target.value }))} placeholder={lang === 'bn' ? 'ঘোষণার শিরোনাম' : 'Broadcast Title'} className="w-full px-3.5 py-2.5 rounded-xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 text-sm" />
+                      <textarea required rows={3} value={adminBroadcast.message} onChange={(e) => setAdminBroadcast((p) => ({ ...p, message: e.target.value }))} placeholder={lang === 'bn' ? 'বিস্তারিত বার্তা লিখুন...' : 'Broadcast message...'} className="w-full px-3.5 py-2.5 rounded-xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 text-sm" />
+                      <button type="submit" className="w-full py-2.5 rounded-xl bg-emerald-700 hover:bg-emerald-800 text-white text-xs font-bold">
+                        {lang === 'bn' ? 'ঘোষণা পাঠান' : 'Send Portal Broadcast'}
+                      </button>
+                    </form>
+
+                    <div className="lg:col-span-7 space-y-2.5">
+                      {portalNotifications.length === 0 ? (
+                        <p className="text-sm text-slate-400 text-center py-8">No portal broadcasts published yet.</p>
+                      ) : portalNotifications.map((pn) => (
+                        <div key={pn.id} className="p-4 rounded-2xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 flex items-start justify-between gap-3 text-xs">
+                          <div className="space-y-1">
+                            <p className={`font-extrabold uppercase tabular-nums ${pn.priority === 'urgent' ? 'text-red-600 dark:text-red-400' : 'text-emerald-700 dark:text-emerald-400'}`}>
+                              {pn.targetRole} · Class {pn.classId || 'all'} · {pn.priority} · {pn.createdDate}
+                            </p>
+                            <p className="font-bold text-sm text-slate-900 dark:text-white">{pn.title}</p>
+                            <p className="text-slate-600 dark:text-slate-300">{pn.message}</p>
+                            <p className="text-[11px] text-slate-400">By {pn.senderName}</p>
+                          </div>
+                          <button type="button" onClick={() => deletePortalNotification(pn.id)} className="p-1.5 text-red-500 shrink-0">
+                            <Trash2 className="w-4 h-4" />
+                          </button>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                {managementTab === 'class-routine' && activeAdminRoutine && (
+                  <div className="p-6 rounded-2xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 space-y-5">
+                    <div className="flex flex-wrap items-center justify-between gap-3">
+                      <div className="flex items-center gap-2">
+                        <Clock className="w-4 h-4 text-emerald-700 dark:text-emerald-400" />
+                        <h4 className="font-extrabold text-base">
+                          {lang === 'bn' ? 'সাপ্তাহিক ক্লাস রুটিন CMS' : 'Dynamic Weekly Class Routine CMS'}
+                        </h4>
+                      </div>
+                      <div className="flex flex-wrap items-center gap-2">
+                        <select
+                          value={routineClassId}
+                          onChange={(e) => {
+                            setRoutineClassId(e.target.value as '6' | '7' | '8' | '9' | '10');
+                            setRoutineDayIdx(0);
+                          }}
+                          className="px-3 py-2 rounded-xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 text-xs font-bold"
+                        >
+                          {['6', '7', '8', '9', '10'].map((c) => <option key={c} value={c}>Class {c}</option>)}
+                        </select>
+                        <select
+                          value={routineDayIdx}
+                          onChange={(e) => setRoutineDayIdx(Number(e.target.value))}
+                          className="px-3 py-2 rounded-xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 text-xs font-bold"
+                        >
+                          {activeAdminRoutine.schedule.map((d, idx) => (
+                            <option key={idx} value={idx}>{t(d.day)}</option>
+                          ))}
+                        </select>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            resetClassRoutines();
+                            notifyAdmin(lang === 'bn' ? 'সকল শ্রেণীর রুটিন ডিফল্টে রিসেট হয়েছে।' : 'All class routines reset to defaults.');
+                          }}
+                          className="px-3.5 py-2 rounded-xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 hover:bg-amber-50 dark:hover:bg-amber-950/40 text-xs font-bold inline-flex items-center gap-1.5"
+                        >
+                          <RotateCcw className="w-3.5 h-3.5" />
+                          {lang === 'bn' ? 'ডিফল্ট রিসেট' : 'Reset Default Timetables'}
+                        </button>
+                      </div>
+                    </div>
+
+                    <form
+                      onSubmit={(e) => {
+                        e.preventDefault();
+                        if (!periodDraft.subjectEn.trim() && !periodDraft.subjectBn.trim()) return;
+                        const nextSchedule = activeAdminRoutine.schedule.map((d, idx) =>
+                          idx === routineDayIdx
+                            ? {
+                                ...d,
+                                periods: [
+                                  ...d.periods,
+                                  {
+                                    time: periodDraft.time.trim() || '01:45 PM',
+                                    subject: {
+                                      bn: periodDraft.subjectBn.trim() || periodDraft.subjectEn.trim(),
+                                      en: periodDraft.subjectEn.trim() || periodDraft.subjectBn.trim(),
+                                    },
+                                    teacher: {
+                                      bn: periodDraft.teacherBn.trim() || periodDraft.teacherEn.trim() || 'শিক্ষক',
+                                      en: periodDraft.teacherEn.trim() || periodDraft.teacherBn.trim() || 'Teacher',
+                                    },
+                                  },
+                                ],
+                              }
+                            : d
+                        );
+                        saveClassRoutine({ ...activeAdminRoutine, schedule: nextSchedule });
+                        setPeriodDraft((p) => ({ ...p, subjectBn: '', subjectEn: '', teacherBn: '', teacherEn: '' }));
+                        notifyAdmin(lang === 'bn' ? 'নতুন ক্লাস পিরিয়ড যুক্ত ও প্রকাশিত হয়েছে!' : 'Class period saved to live timetable!');
+                      }}
+                      className="grid grid-cols-2 sm:grid-cols-5 gap-2"
+                    >
+                      <input required value={periodDraft.time} onChange={(e) => setPeriodDraft((p) => ({ ...p, time: e.target.value }))} placeholder="Time (e.g. 01:45 PM)" className="px-3 py-2 rounded-xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 text-xs font-bold tabular-nums" />
+                      <input required value={periodDraft.subjectEn} onChange={(e) => setPeriodDraft((p) => ({ ...p, subjectEn: e.target.value }))} placeholder="Subject (EN)" className="px-3 py-2 rounded-xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 text-xs" />
+                      <input value={periodDraft.subjectBn} onChange={(e) => setPeriodDraft((p) => ({ ...p, subjectBn: e.target.value }))} placeholder="বিষয় (বাংলা)" className="px-3 py-2 rounded-xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 text-xs" />
+                      <input value={periodDraft.teacherEn} onChange={(e) => setPeriodDraft((p) => ({ ...p, teacherEn: e.target.value, teacherBn: e.target.value }))} placeholder="Teacher Name" className="px-3 py-2 rounded-xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 text-xs" />
+                      <button type="submit" className="px-3 py-2 rounded-xl bg-emerald-700 hover:bg-emerald-800 text-white text-xs font-bold flex items-center justify-center gap-1">
+                        <PlusCircle className="w-3.5 h-3.5" /> {lang === 'bn' ? 'পিরিয়ড যোগ' : 'Add Period'}
+                      </button>
+                    </form>
+
+                    <div className="grid sm:grid-cols-2 lg:grid-cols-4 gap-3">
+                      {(activeAdminRoutine.schedule[routineDayIdx]?.periods || []).map((pr, pIdx) => (
+                        <div key={pIdx} className="p-3.5 rounded-xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 flex items-center justify-between gap-2 text-xs">
+                          <div className="min-w-0">
+                            <p className="font-bold text-emerald-700 dark:text-emerald-400 tabular-nums">{pr.time}</p>
+                            <p className="font-extrabold truncate">{t(pr.subject)}</p>
+                            <p className="text-slate-500 truncate">{t(pr.teacher)}</p>
+                          </div>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              const nextSchedule = activeAdminRoutine.schedule.map((d, idx) =>
+                                idx === routineDayIdx ? { ...d, periods: d.periods.filter((_, i) => i !== pIdx) } : d
+                              );
+                              saveClassRoutine({ ...activeAdminRoutine, schedule: nextSchedule });
+                              notifyAdmin(lang === 'bn' ? 'পিরিয়ড মুছে ফেলা হয়েছে।' : 'Period removed from schedule.');
+                            }}
+                            className="text-red-500 p-1 shrink-0"
+                          >
+                            <Trash2 className="w-3.5 h-3.5" />
+                          </button>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
 
                 {managementTab === 'notices' && (
                   <div className="space-y-2.5">
@@ -963,6 +1779,27 @@ const Login: React.FC = () => {
 
                 {managementTab === 'audit-logs' && (
                   <div className="space-y-3">
+                    <div className="flex items-center justify-between">
+                      <p className="text-xs font-bold text-slate-500 tabular-nums">
+                        {auditLogs.length} {lang === 'bn' ? 'টি অডিট রেকর্ড' : 'audit records'}
+                      </p>
+                      {auditLogs.length > 0 && (
+                        <button
+                          type="button"
+                          onClick={() =>
+                            exportCsv(
+                              `audit_logs_${todayStr}`,
+                              ['Date', 'Action', 'Actor', 'Email', 'Role', 'Target Collection', 'Target ID', 'Summary'],
+                              auditLogs.map((l) => [l.createdDate, l.action, l.actorName, l.actorEmail, l.actorRole, l.targetCollection, l.targetId, l.summary])
+                            )
+                          }
+                          className="px-3.5 py-2 rounded-xl bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-xs font-bold inline-flex items-center gap-1.5"
+                        >
+                          <Download className="w-3.5 h-3.5" />
+                          {lang === 'bn' ? 'অডিট লগ CSV' : 'Export CSV'}
+                        </button>
+                      )}
+                    </div>
                     {auditLogs.length === 0 ? (
                       <p className="text-sm text-slate-400 text-center py-8">
                         {lang === 'bn' ? 'কোনো অডিট লগ পাওয়া যায়নি।' : 'No audit logs recorded yet.'}
@@ -982,7 +1819,7 @@ const Login: React.FC = () => {
                           <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
                             {auditLogs.map((log) => (
                               <tr key={log.id} className="bg-white dark:bg-slate-900">
-                                <td className="px-4 py-3 font-mono text-slate-500 whitespace-nowrap">{log.createdDate}</td>
+                                <td className="px-4 py-3 font-mono text-slate-500 whitespace-nowrap tabular-nums">{log.createdDate}</td>
                                 <td className="px-4 py-3 font-black uppercase text-emerald-700 dark:text-emerald-400">{log.action}</td>
                                 <td className="px-4 py-3 font-semibold">{log.actorName} ({log.actorRole})</td>
                                 <td className="px-4 py-3 text-slate-500">{log.targetCollection}</td>
@@ -1150,6 +1987,8 @@ const Login: React.FC = () => {
             </form>
           </div>
         )}
+
+        <FeeReceiptModal fee={activeAdminReceipt} onClose={() => setActiveAdminReceipt(null)} />
       </div>
     );
   }

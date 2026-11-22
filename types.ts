@@ -78,6 +78,7 @@ export interface ClassRoutine {
       teacher: LocalizedString;
     }[];
   }[];
+  isPublic?: boolean;
 }
 
 export interface ExamRoutineItem {
@@ -466,6 +467,7 @@ export type AuditAction =
   | 'FEE_UPDATED'
   | 'FEE_DELETED'
   | 'NOTIFICATION_SENT'
+  | 'ROUTINE_UPDATED'
   | 'RECORD_DELETED';
 
 export interface AuditLog {

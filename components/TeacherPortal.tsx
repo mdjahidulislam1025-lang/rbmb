@@ -21,11 +21,19 @@ import {
   Trophy,
   MessageSquare,
   Send,
+  Receipt,
+  Download,
+  Megaphone,
+  IdCard,
+  Clock,
 } from 'lucide-react';
 import { useApp } from '../App';
 import { CLASSES, CLASS_SUBJECTS, EXAM_TERMS } from '../constants';
-import { AttendanceStatus, ExamMark, HomeworkItem, LibraryCategory, SchoolStudent } from '../types';
+import { AttendanceStatus, ExamMark, FeeCategory, FeeRecord, HomeworkItem, LibraryCategory, PaymentMethod, SchoolStudent } from '../types';
 import { calculateGrade, isSafeHttpUrl } from '../utils/security';
+import { exportCsv } from '../utils/exportUtils';
+import { FeeReceiptModal } from './FeeReceiptModal';
+import { StudentIdAdmitCard } from './StudentIdAdmitCard';
 
 const { useState, useEffect, useMemo } = React;
 
@@ -33,6 +41,7 @@ type TeacherTab =
   | 'attendance'
   | 'homework'
   | 'marks'
+  | 'fees'
   | 'notices'
   | 'materials'
   | 'classes'
@@ -83,10 +92,23 @@ export const TeacherPortal: React.FC = () => {
     studentLeaves,
     updateStudentLeaveStatus,
     deleteStudentLeave,
+    feeRecords,
+    addFeeRecord,
+    addBulkClassFees,
+    updateFeePayment,
+    markFeeWaived,
+    deleteFeeRecord,
+    portalNotifications,
+    addPortalNotification,
+    deletePortalNotification,
+    classRoutines,
+    saveClassRoutine,
   } = useApp();
 
   const [activeTab, setActiveTab] = useState<TeacherTab>('attendance');
   const [toast, setToast] = useState<string | null>(null);
+  const [activeReceipt, setActiveReceipt] = useState<FeeRecord | null>(null);
+  const [idCardStudent, setIdCardStudent] = useState<SchoolStudent | null>(null);
   const todayStr = new Date().toISOString().split('T')[0];
 
   const notify = (msg: string) => {
@@ -373,11 +395,74 @@ export const TeacherPortal: React.FC = () => {
   });
   const [studentRemarks, setStudentRemarks] = useState<Record<string, string>>({});
 
+  // --- 11. Fee & Payment Ledger ---
+  const [feeMode, setFeeMode] = useState<'bulk' | 'single'>('bulk');
+  const [feeClassFilter, setFeeClassFilter] = useState<string>('all');
+  const [feeStatusFilter, setFeeStatusFilter] = useState<string>('all');
+  const [bulkFeeForm, setBulkFeeForm] = useState({
+    classId: '9',
+    title: 'Monthly Tuition Fee',
+    category: 'Tuition' as FeeCategory,
+    billingMonth: 'November 2026',
+    amount: 500,
+    dueDate: todayStr,
+  });
+  const [singleFeeForm, setSingleFeeForm] = useState({
+    studentId: '',
+    title: 'Exam Fee',
+    category: 'Exam' as FeeCategory,
+    billingMonth: 'Annual 2026',
+    amount: 600,
+    dueDate: todayStr,
+  });
+  const [payMethods, setPayMethods] = useState<Record<string, PaymentMethod>>({});
+  const [payAmounts, setPayAmounts] = useState<Record<string, string>>({});
+
+  const filteredFees = useMemo(() => {
+    return feeRecords.filter((f) => {
+      if (feeClassFilter !== 'all' && f.classId !== feeClassFilter) return false;
+      if (feeStatusFilter !== 'all' && f.status !== feeStatusFilter) return false;
+      return true;
+    });
+  }, [feeRecords, feeClassFilter, feeStatusFilter]);
+
+  const feeStats = useMemo(() => {
+    const billed = filteredFees.reduce((s, f) => s + f.amount, 0);
+    const paid = filteredFees.reduce((s, f) => s + f.paidAmount, 0);
+    const due = filteredFees.reduce((s, f) => (f.status === 'waived' ? s : s + Math.max(0, f.amount - f.paidAmount)), 0);
+    return { billed, paid, due };
+  }, [filteredFees]);
+
+  // --- 12. Targeted Portal Broadcast ---
+  const [broadcastForm, setBroadcastForm] = useState({
+    title: '',
+    message: '',
+    targetRole: 'all' as 'all' | 'student' | 'parent',
+    classId: 'all',
+    priority: 'normal' as 'normal' | 'urgent',
+  });
+
+  // --- 13. Class Routine Editor (Phase 4) ---
+  const [routineDayIdx, setRoutineDayIdx] = useState<number>(0);
+  const [newPeriodForm, setNewPeriodForm] = useState({
+    time: '01:45 PM',
+    subjectBn: '',
+    subjectEn: '',
+    teacherBn: '',
+    teacherEn: '',
+  });
+
+  const activeClassRoutine = useMemo(
+    () => classRoutines.find((r) => r.classId === manageClassId) || classRoutines[0],
+    [classRoutines, manageClassId]
+  );
+
   const tabs: { id: TeacherTab; label: string; icon: React.ComponentType<{ className?: string }> }[] = [
     { id: 'attendance', label: lang === 'bn' ? 'হাজিরা' : 'Attendance', icon: ClipboardCheck },
     { id: 'homework', label: lang === 'bn' ? 'হোমওয়ার্ক ও মূল্যায়ন' : 'Assignments', icon: BookOpenCheck },
     { id: 'marks', label: lang === 'bn' ? 'নম্বর এন্ট্রি' : 'Marks Entry', icon: Award },
-    { id: 'notices', label: lang === 'bn' ? 'নোটিশ প্রকাশ' : 'Notices', icon: Bell },
+    { id: 'fees', label: lang === 'bn' ? 'ফি ও বকেয়া' : 'Fee Ledger', icon: Receipt },
+    { id: 'notices', label: lang === 'bn' ? 'নোটিশ ও ঘোষণা' : 'Notices & Alerts', icon: Bell },
     { id: 'materials', label: lang === 'bn' ? 'স্টাডি নোটস' : 'Study Materials', icon: BookOpen },
     { id: 'classes', label: lang === 'bn' ? 'শ্রেণী ও রুটিন' : 'Classes & Routines', icon: School },
     { id: 'online-exams', label: lang === 'bn' ? 'MCQ পরীক্ষা তৈরি' : 'Create MCQ Exam', icon: Trophy },
@@ -474,13 +559,29 @@ export const TeacherPortal: React.FC = () => {
                 />
               </div>
             </div>
-            <button
-              onClick={handleSaveAttendance}
-              className="px-5 py-2.5 rounded-xl bg-emerald-700 hover:bg-emerald-800 text-white text-xs font-bold flex items-center gap-2"
-            >
-              <Save className="w-4 h-4" />
-              {lang === 'bn' ? 'হাজিরা সেভ করুন' : 'Save Attendance'}
-            </button>
+            <div className="flex flex-wrap gap-2">
+              <button
+                type="button"
+                onClick={() => {
+                  exportCsv(
+                    `attendance_class_${attClassId}_${attDate}`,
+                    ['Date', 'Class', 'Roll', 'Student Name', 'Status'],
+                    attClassStudents.map((st) => [attDate, attClassId, st.roll, st.name, attDraft[st.id] || 'present'])
+                  );
+                }}
+                className="px-4 py-2.5 rounded-xl bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-xs font-bold flex items-center gap-1.5"
+              >
+                <Download className="w-4 h-4" />
+                {lang === 'bn' ? 'CSV এক্সপোর্ট' : 'Export CSV'}
+              </button>
+              <button
+                onClick={handleSaveAttendance}
+                className="px-5 py-2.5 rounded-xl bg-emerald-700 hover:bg-emerald-800 text-white text-xs font-bold flex items-center gap-2"
+              >
+                <Save className="w-4 h-4" />
+                {lang === 'bn' ? 'হাজিরা সেভ করুন' : 'Save Attendance'}
+              </button>
+            </div>
           </div>
 
           <div className="divide-y divide-slate-100 dark:divide-slate-800">
@@ -676,10 +777,27 @@ export const TeacherPortal: React.FC = () => {
               <label className="text-[10px] font-bold uppercase text-slate-400 block mb-1">Full Marks</label>
               <input type="number" min={10} max={200} value={markTotal} onChange={(e) => setMarkTotal(Number(e.target.value) || 100)} className="w-full px-3 py-2.5 rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-xs font-bold" />
             </div>
-            <button onClick={handleSaveMarksBulk} className="py-2.5 px-4 rounded-xl bg-emerald-700 hover:bg-emerald-800 text-white text-xs font-bold flex items-center justify-center gap-1.5">
-              <Save className="w-4 h-4" />
-              {lang === 'bn' ? 'নম্বর প্রকাশ করুন' : 'Publish Marks'}
-            </button>
+            <div className="flex gap-2">
+              <button onClick={handleSaveMarksBulk} className="flex-1 py-2.5 px-4 rounded-xl bg-emerald-700 hover:bg-emerald-800 text-white text-xs font-bold flex items-center justify-center gap-1.5">
+                <Save className="w-4 h-4" />
+                {lang === 'bn' ? 'নম্বর প্রকাশ' : 'Publish'}
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  const classMarks = examMarks.filter((m) => m.classId === markClassId && m.examTerm === markTerm);
+                  exportCsv(
+                    `marks_class_${markClassId}_${markTerm}`,
+                    ['Term', 'Class', 'Roll', 'Student Name', 'Subject', 'Obtained', 'Total', 'Grade'],
+                    classMarks.map((m) => [m.examTerm, m.classId, m.roll, m.studentName, m.subject, m.obtainedMarks, m.totalMarks, m.grade])
+                  );
+                }}
+                title={lang === 'bn' ? 'CSV ডাউনলোড' : 'Export Class Marks CSV'}
+                className="py-2.5 px-3 rounded-xl bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-xs font-bold flex items-center justify-center"
+              >
+                <Download className="w-4 h-4" />
+              </button>
+            </div>
           </div>
 
           <div className="divide-y divide-slate-100 dark:divide-slate-800">
@@ -723,43 +841,358 @@ export const TeacherPortal: React.FC = () => {
         </div>
       )}
 
-      {/* 4. Notices Publish & View */}
-      {activeTab === 'notices' && (
-        <div className="grid lg:grid-cols-12 gap-6">
-          <form onSubmit={handlePublishNotice} className="lg:col-span-5 bg-white dark:bg-slate-900 p-6 rounded-3xl border border-slate-200 dark:border-slate-800 space-y-3 h-fit">
-            <h4 className="font-extrabold text-base">{lang === 'bn' ? 'নতুন নোটিশ প্রকাশ করুন' : 'Publish School Notice'}</h4>
-            <input required value={newNotice.titleBn} onChange={(e) => setNewNotice((p) => ({ ...p, titleBn: e.target.value }))} placeholder="শিরোনাম (বাংলা)" className="w-full px-4 py-2.5 rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-sm" />
-            <input value={newNotice.titleEn} onChange={(e) => setNewNotice((p) => ({ ...p, titleEn: e.target.value }))} placeholder="Title (English)" className="w-full px-4 py-2.5 rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-sm" />
-            <select value={newNotice.category} onChange={(e) => setNewNotice((p) => ({ ...p, category: e.target.value as 'General' | 'Admission' | 'Exam' | 'Holiday' }))} className="w-full px-4 py-2.5 rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-sm font-bold">
-              <option value="General">General</option>
-              <option value="Exam">Exam</option>
-              <option value="Admission">Admission</option>
-              <option value="Holiday">Holiday</option>
-            </select>
-            <textarea required rows={3} value={newNotice.descBn} onChange={(e) => setNewNotice((p) => ({ ...p, descBn: e.target.value }))} placeholder="বিবরণ (বাংলা)" className="w-full px-4 py-2.5 rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-sm" />
-            <textarea rows={2} value={newNotice.descEn} onChange={(e) => setNewNotice((p) => ({ ...p, descEn: e.target.value }))} placeholder="Description (English)" className="w-full px-4 py-2.5 rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-sm" />
-            <button type="submit" className="w-full py-3 rounded-xl bg-emerald-700 hover:bg-emerald-800 text-white text-xs font-bold">
-              {lang === 'bn' ? 'নোটিশ প্রকাশ করুন' : 'Publish Notice'}
-            </button>
-          </form>
+      {/* 3B. Fee & Payment Ledger */}
+      {activeTab === 'fees' && (
+        <div className="space-y-6">
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+            <div className="bg-white dark:bg-slate-900 p-5 rounded-2xl border border-slate-200 dark:border-slate-800">
+              <p className="text-xs font-bold text-slate-400">{lang === 'bn' ? 'মোট নির্ধারিত ফি' : 'Total Billed'}</p>
+              <p className="text-2xl font-black text-slate-900 dark:text-white tabular-nums mt-1">৳{feeStats.billed.toLocaleString()}</p>
+            </div>
+            <div className="bg-white dark:bg-slate-900 p-5 rounded-2xl border border-slate-200 dark:border-slate-800">
+              <p className="text-xs font-bold text-slate-400">{lang === 'bn' ? 'আদায়কৃত টাকা' : 'Collected'}</p>
+              <p className="text-2xl font-black text-emerald-700 dark:text-emerald-400 tabular-nums mt-1">৳{feeStats.paid.toLocaleString()}</p>
+            </div>
+            <div className="bg-white dark:bg-slate-900 p-5 rounded-2xl border border-slate-200 dark:border-slate-800">
+              <p className="text-xs font-bold text-slate-400">{lang === 'bn' ? 'মোট বকেয়া' : 'Pending Due'}</p>
+              <p className="text-2xl font-black text-amber-600 dark:text-amber-400 tabular-nums mt-1">৳{feeStats.due.toLocaleString()}</p>
+            </div>
+          </div>
 
-          <div className="lg:col-span-7 space-y-3">
+          <div className="grid lg:grid-cols-12 gap-6">
+            {/* Create Fee Form */}
+            <div className="lg:col-span-4 bg-white dark:bg-slate-900 p-6 rounded-3xl border border-slate-200 dark:border-slate-800 space-y-4 h-fit">
+              <div className="flex items-center gap-1 bg-slate-100 dark:bg-slate-800 p-1 rounded-xl">
+                <button
+                  type="button"
+                  onClick={() => setFeeMode('bulk')}
+                  className={`flex-1 py-2 rounded-lg text-xs font-bold transition-colors ${feeMode === 'bulk' ? 'bg-white dark:bg-slate-900 text-emerald-700 dark:text-emerald-300 shadow-sm' : 'text-slate-500'}`}
+                >
+                  {lang === 'bn' ? 'শ্রেণীভিত্তিক ফি' : 'Bulk Class Fee'}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setFeeMode('single')}
+                  className={`flex-1 py-2 rounded-lg text-xs font-bold transition-colors ${feeMode === 'single' ? 'bg-white dark:bg-slate-900 text-emerald-700 dark:text-emerald-300 shadow-sm' : 'text-slate-500'}`}
+                >
+                  {lang === 'bn' ? 'একক শিক্ষার্থী' : 'Individual Fee'}
+                </button>
+              </div>
+
+              {feeMode === 'bulk' ? (
+                <form
+                  onSubmit={(e) => {
+                    e.preventDefault();
+                    const count = addBulkClassFees({
+                      classId: bulkFeeForm.classId,
+                      title: bulkFeeForm.title.trim(),
+                      category: bulkFeeForm.category,
+                      billingMonth: bulkFeeForm.billingMonth.trim(),
+                      amount: Math.max(0, Number(bulkFeeForm.amount) || 0),
+                      dueDate: bulkFeeForm.dueDate,
+                    });
+                    notify(lang === 'bn' ? `${count} জন শিক্ষার্থীর জন্য ফি যুক্ত হয়েছে!` : `Generated fee invoices for ${count} students!`);
+                  }}
+                  className="space-y-3"
+                >
+                  <div className="grid grid-cols-2 gap-2">
+                    <select value={bulkFeeForm.classId} onChange={(e) => setBulkFeeForm((p) => ({ ...p, classId: e.target.value }))} className="px-3 py-2.5 rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-xs font-bold">
+                      {['6', '7', '8', '9', '10'].map((c) => <option key={c} value={c}>Class {c}</option>)}
+                    </select>
+                    <select value={bulkFeeForm.category} onChange={(e) => setBulkFeeForm((p) => ({ ...p, category: e.target.value as FeeCategory }))} className="px-3 py-2.5 rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-xs font-bold">
+                      {['Tuition', 'Exam', 'Admission', 'Library', 'Lab', 'Sports', 'Other'].map((cat) => <option key={cat} value={cat}>{cat}</option>)}
+                    </select>
+                  </div>
+                  <input required value={bulkFeeForm.title} onChange={(e) => setBulkFeeForm((p) => ({ ...p, title: e.target.value }))} placeholder="Fee Title (e.g. Monthly Tuition)" className="w-full px-3.5 py-2.5 rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-sm" />
+                  <input value={bulkFeeForm.billingMonth} onChange={(e) => setBulkFeeForm((p) => ({ ...p, billingMonth: e.target.value }))} placeholder="Month / Term" className="w-full px-3.5 py-2.5 rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-sm" />
+                  <div className="grid grid-cols-2 gap-2">
+                    <input type="number" min={0} max={500000} required value={bulkFeeForm.amount} onChange={(e) => setBulkFeeForm((p) => ({ ...p, amount: Number(e.target.value) || 0 }))} placeholder="Amount (BDT)" className="px-3 py-2.5 rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-xs font-bold tabular-nums" />
+                    <input type="date" required value={bulkFeeForm.dueDate} onChange={(e) => setBulkFeeForm((p) => ({ ...p, dueDate: e.target.value }))} className="px-3 py-2.5 rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-xs font-bold" />
+                  </div>
+                  <button type="submit" className="w-full py-3 rounded-xl bg-emerald-700 hover:bg-emerald-800 text-white text-xs font-bold">
+                    {lang === 'bn' ? 'সকল শিক্ষার্থীর ফি তৈরি করুন' : 'Generate Class Invoices'}
+                  </button>
+                </form>
+              ) : (
+                <form
+                  onSubmit={(e) => {
+                    e.preventDefault();
+                    const st = students.find((s) => s.id === singleFeeForm.studentId) || students[0];
+                    if (!st) return;
+                    addFeeRecord({
+                      id: `fee-${Date.now()}`,
+                      studentId: st.id,
+                      studentName: st.name,
+                      classId: st.classId,
+                      roll: st.roll,
+                      title: singleFeeForm.title.trim(),
+                      category: singleFeeForm.category,
+                      billingMonth: singleFeeForm.billingMonth.trim(),
+                      amount: Math.max(0, Number(singleFeeForm.amount) || 0),
+                      paidAmount: 0,
+                      dueDate: singleFeeForm.dueDate,
+                      status: 'pending',
+                      recordedBy: user?.name || 'Teacher',
+                    });
+                    notify(lang === 'bn' ? 'শিক্ষার্থীর ফি যুক্ত হয়েছে!' : 'Fee invoice created!');
+                  }}
+                  className="space-y-3"
+                >
+                  <select value={singleFeeForm.studentId || students[0]?.id || ''} onChange={(e) => setSingleFeeForm((p) => ({ ...p, studentId: e.target.value }))} className="w-full px-3 py-2.5 rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-xs font-bold">
+                    {students.map((st) => (
+                      <option key={st.id} value={st.id}>Class {st.classId} · #{st.roll} {st.name}</option>
+                    ))}
+                  </select>
+                  <select value={singleFeeForm.category} onChange={(e) => setSingleFeeForm((p) => ({ ...p, category: e.target.value as FeeCategory }))} className="w-full px-3 py-2.5 rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-xs font-bold">
+                    {['Tuition', 'Exam', 'Admission', 'Library', 'Lab', 'Sports', 'Other'].map((cat) => <option key={cat} value={cat}>{cat}</option>)}
+                  </select>
+                  <input required value={singleFeeForm.title} onChange={(e) => setSingleFeeForm((p) => ({ ...p, title: e.target.value }))} placeholder="Fee Title" className="w-full px-3.5 py-2.5 rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-sm" />
+                  <div className="grid grid-cols-2 gap-2">
+                    <input type="number" min={0} max={500000} required value={singleFeeForm.amount} onChange={(e) => setSingleFeeForm((p) => ({ ...p, amount: Number(e.target.value) || 0 }))} placeholder="Amount" className="px-3 py-2.5 rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-xs font-bold tabular-nums" />
+                    <input type="date" required value={singleFeeForm.dueDate} onChange={(e) => setSingleFeeForm((p) => ({ ...p, dueDate: e.target.value }))} className="px-3 py-2.5 rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-xs font-bold" />
+                  </div>
+                  <button type="submit" className="w-full py-3 rounded-xl bg-emerald-700 hover:bg-emerald-800 text-white text-xs font-bold">
+                    {lang === 'bn' ? 'ইনভয়েস যুক্ত করুন' : 'Create Invoice'}
+                  </button>
+                </form>
+              )}
+            </div>
+
+            {/* Fee Ledger List */}
+            <div className="lg:col-span-8 space-y-4">
+              <div className="flex flex-wrap items-center justify-between gap-3">
+                <div className="flex flex-wrap gap-2">
+                  <select value={feeClassFilter} onChange={(e) => setFeeClassFilter(e.target.value)} className="px-3 py-2 rounded-xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 text-xs font-bold">
+                    <option value="all">{lang === 'bn' ? 'সব শ্রেণী' : 'All Classes'}</option>
+                    {['6', '7', '8', '9', '10'].map((c) => <option key={c} value={c}>Class {c}</option>)}
+                  </select>
+                  <select value={feeStatusFilter} onChange={(e) => setFeeStatusFilter(e.target.value)} className="px-3 py-2 rounded-xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 text-xs font-bold">
+                    <option value="all">{lang === 'bn' ? 'সব অবস্থা' : 'All Status'}</option>
+                    <option value="pending">Pending</option>
+                    <option value="partial">Partial</option>
+                    <option value="paid">Paid</option>
+                    <option value="waived">Waived</option>
+                  </select>
+                </div>
+                <button
+                  type="button"
+                  onClick={() =>
+                    exportCsv(
+                      `fee_ledger_${todayStr}`,
+                      ['ID', 'Class', 'Roll', 'Student Name', 'Title', 'Category', 'Amount', 'Paid', 'Status', 'Method', 'Receipt No', 'Due Date'],
+                      filteredFees.map((f) => [f.id, f.classId, f.roll, f.studentName, f.title, f.category, f.amount, f.paidAmount, f.status, f.paymentMethod || '', f.receiptNo || '', f.dueDate])
+                    )
+                  }
+                  className="px-4 py-2 rounded-xl bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-xs font-bold inline-flex items-center gap-1.5"
+                >
+                  <Download className="w-3.5 h-3.5" />
+                  {lang === 'bn' ? 'ফি CSV এক্সপোর্ট' : 'Export Fee CSV'}
+                </button>
+              </div>
+
+              {filteredFees.length === 0 ? (
+                <div className="bg-white dark:bg-slate-900 p-10 rounded-3xl border border-slate-200 dark:border-slate-800 text-center text-slate-400 font-bold text-sm">
+                  {lang === 'bn' ? 'কোনো ফি রেকর্ড পাওয়া যায়নি।' : 'No matching fee records found.'}
+                </div>
+              ) : (
+                <div className="space-y-3">
+                  {filteredFees.map((f) => {
+                    const method = payMethods[f.id] || 'Cash';
+                    const amtInput = payAmounts[f.id] ?? String(f.amount);
+                    return (
+                      <div key={f.id} className="bg-white dark:bg-slate-900 p-4 rounded-2xl border border-slate-200 dark:border-slate-800 space-y-3">
+                        <div className="flex flex-wrap items-center justify-between gap-2">
+                          <div>
+                            <p className="text-xs text-slate-500 dark:text-slate-400 tabular-nums">
+                              Class {f.classId} · Roll #{f.roll} · {f.category} · Due {f.dueDate}
+                            </p>
+                            <h5 className="font-bold text-sm text-slate-900 dark:text-white">
+                              {f.studentName} — {f.title}
+                            </h5>
+                          </div>
+                          <div className="text-right tabular-nums">
+                            <p className="text-sm font-black">
+                              ৳{f.paidAmount.toLocaleString()} / ৳{f.amount.toLocaleString()}
+                            </p>
+                            <p className={`text-[11px] font-extrabold uppercase ${f.status === 'paid' ? 'text-emerald-700 dark:text-emerald-400' : f.status === 'waived' ? 'text-slate-500' : 'text-amber-600 dark:text-amber-400'}`}>
+                              {f.status} {f.receiptNo ? `· ${f.receiptNo}` : ''}
+                            </p>
+                          </div>
+                        </div>
+
+                        <div className="flex flex-wrap items-center gap-2 pt-2 border-t border-slate-100 dark:border-slate-800">
+                          {f.status !== 'paid' && f.status !== 'waived' && (
+                            <>
+                              <input
+                                type="number"
+                                min={0}
+                                max={f.amount}
+                                value={amtInput}
+                                onChange={(e) => setPayAmounts((p) => ({ ...p, [f.id]: e.target.value }))}
+                                className="w-24 px-2.5 py-1.5 rounded-lg bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-xs font-bold tabular-nums"
+                              />
+                              <select
+                                value={method}
+                                onChange={(e) => setPayMethods((p) => ({ ...p, [f.id]: e.target.value as PaymentMethod }))}
+                                className="px-2.5 py-1.5 rounded-lg bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-xs font-bold"
+                              >
+                                <option value="Cash">Cash</option>
+                                <option value="bKash">bKash</option>
+                                <option value="Nagad">Nagad</option>
+                                <option value="Bank">Bank</option>
+                                <option value="Online">Online</option>
+                              </select>
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  updateFeePayment(f.id, Number(amtInput) || f.amount, method);
+                                  notify(lang === 'bn' ? 'পেমেন্ট সেভ ও রশিদ তৈরি হয়েছে!' : 'Payment recorded!');
+                                }}
+                                className="px-3 py-1.5 rounded-lg bg-emerald-700 text-white text-xs font-bold"
+                              >
+                                {lang === 'bn' ? 'জমা নিন' : 'Record Paid'}
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  markFeeWaived(f.id);
+                                  notify(lang === 'bn' ? 'ফি মওকুফ করা হয়েছে।' : 'Marked as waived.');
+                                }}
+                                className="px-3 py-1.5 rounded-lg bg-slate-100 dark:bg-slate-800 text-xs font-bold"
+                              >
+                                {lang === 'bn' ? 'মওকুফ' : 'Waive'}
+                              </button>
+                            </>
+                          )}
+                          <button
+                            type="button"
+                            onClick={() => setActiveReceipt(f)}
+                            className="px-3 py-1.5 rounded-lg bg-slate-100 dark:bg-slate-800 hover:bg-emerald-700 hover:text-white text-xs font-bold inline-flex items-center gap-1 ml-auto"
+                          >
+                            <Receipt className="w-3.5 h-3.5" />
+                            {lang === 'bn' ? 'রশিদ প্রিন্ট' : 'Voucher'}
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => deleteFeeRecord(f.id)}
+                            className="p-1.5 text-red-500 hover:bg-red-50 dark:hover:bg-slate-800 rounded-lg"
+                          >
+                            <Trash2 className="w-4 h-4" />
+                          </button>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* 4. Notices + Targeted Portal Broadcasts */}
+      {activeTab === 'notices' && (
+        <div className="space-y-6">
+          <div className="grid lg:grid-cols-12 gap-6">
+            <form onSubmit={handlePublishNotice} className="lg:col-span-5 bg-white dark:bg-slate-900 p-6 rounded-3xl border border-slate-200 dark:border-slate-800 space-y-3 h-fit">
+              <h4 className="font-extrabold text-base">{lang === 'bn' ? 'নতুন নোটিশ প্রকাশ করুন' : 'Publish Public School Notice'}</h4>
+              <input required value={newNotice.titleBn} onChange={(e) => setNewNotice((p) => ({ ...p, titleBn: e.target.value }))} placeholder="শিরোনাম (বাংলা)" className="w-full px-4 py-2.5 rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-sm" />
+              <input value={newNotice.titleEn} onChange={(e) => setNewNotice((p) => ({ ...p, titleEn: e.target.value }))} placeholder="Title (English)" className="w-full px-4 py-2.5 rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-sm" />
+              <select value={newNotice.category} onChange={(e) => setNewNotice((p) => ({ ...p, category: e.target.value as 'General' | 'Admission' | 'Exam' | 'Holiday' }))} className="w-full px-4 py-2.5 rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-sm font-bold">
+                <option value="General">General</option>
+                <option value="Exam">Exam</option>
+                <option value="Admission">Admission</option>
+                <option value="Holiday">Holiday</option>
+              </select>
+              <textarea required rows={3} value={newNotice.descBn} onChange={(e) => setNewNotice((p) => ({ ...p, descBn: e.target.value }))} placeholder="বিবরণ (বাংলা)" className="w-full px-4 py-2.5 rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-sm" />
+              <textarea rows={2} value={newNotice.descEn} onChange={(e) => setNewNotice((p) => ({ ...p, descEn: e.target.value }))} placeholder="Description (English)" className="w-full px-4 py-2.5 rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-sm" />
+              <button type="submit" className="w-full py-3 rounded-xl bg-emerald-700 hover:bg-emerald-800 text-white text-xs font-bold">
+                {lang === 'bn' ? 'নোটিশ প্রকাশ করুন' : 'Publish Notice'}
+              </button>
+            </form>
+
+            {/* Targeted Portal Alert Broadcast Composer */}
+            <form
+              onSubmit={async (e) => {
+                e.preventDefault();
+                if (!broadcastForm.title.trim() || !broadcastForm.message.trim()) return;
+                await addPortalNotification({
+                  id: `pn-${Date.now()}`,
+                  title: broadcastForm.title.trim(),
+                  message: broadcastForm.message.trim(),
+                  targetRole: broadcastForm.targetRole,
+                  classId: broadcastForm.classId,
+                  priority: broadcastForm.priority,
+                  senderName: user?.name || 'Teacher',
+                  createdDate: todayStr,
+                });
+                setBroadcastForm((p) => ({ ...p, title: '', message: '' }));
+                notify(lang === 'bn' ? 'টার্গেটেড পোর্টাল ঘোষণা পাঠানো হয়েছে!' : 'Targeted portal alert sent!');
+              }}
+              className="lg:col-span-7 bg-white dark:bg-slate-900 p-6 rounded-3xl border border-slate-200 dark:border-slate-800 space-y-3 h-fit"
+            >
+              <div className="flex items-center gap-2">
+                <Megaphone className="w-4 h-4 text-emerald-700 dark:text-emerald-400" />
+                <h4 className="font-extrabold text-base">{lang === 'bn' ? 'টার্গেটেড পোর্টাল ঘোষণা (শিক্ষার্থী/অভিভাবক)' : 'Send Targeted Student / Parent Alert'}</h4>
+              </div>
+              <div className="grid grid-cols-3 gap-2">
+                <select value={broadcastForm.targetRole} onChange={(e) => setBroadcastForm((p) => ({ ...p, targetRole: e.target.value as 'all' | 'student' | 'parent' }))} className="px-3 py-2.5 rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-xs font-bold">
+                  <option value="all">{lang === 'bn' ? 'সবাই' : 'All Portals'}</option>
+                  <option value="student">{lang === 'bn' ? 'শুধু শিক্ষার্থী' : 'Students Only'}</option>
+                  <option value="parent">{lang === 'bn' ? 'শুধু অভিভাবক' : 'Parents Only'}</option>
+                </select>
+                <select value={broadcastForm.classId} onChange={(e) => setBroadcastForm((p) => ({ ...p, classId: e.target.value }))} className="px-3 py-2.5 rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-xs font-bold">
+                  <option value="all">{lang === 'bn' ? 'সব শ্রেণী' : 'All Classes'}</option>
+                  {['6', '7', '8', '9', '10'].map((c) => <option key={c} value={c}>Class {c}</option>)}
+                </select>
+                <select value={broadcastForm.priority} onChange={(e) => setBroadcastForm((p) => ({ ...p, priority: e.target.value as 'normal' | 'urgent' }))} className="px-3 py-2.5 rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-xs font-bold">
+                  <option value="normal">{lang === 'bn' ? 'সাধারণ' : 'Normal'}</option>
+                  <option value="urgent">{lang === 'bn' ? 'জরুরি' : 'Urgent'}</option>
+                </select>
+              </div>
+              <input required value={broadcastForm.title} onChange={(e) => setBroadcastForm((p) => ({ ...p, title: e.target.value }))} placeholder={lang === 'bn' ? 'ঘোষণার শিরোনাম' : 'Alert Title'} className="w-full px-4 py-2.5 rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-sm" />
+              <textarea required rows={2} value={broadcastForm.message} onChange={(e) => setBroadcastForm((p) => ({ ...p, message: e.target.value }))} placeholder={lang === 'bn' ? 'বিস্তারিত বার্তা লিখুন...' : 'Alert message...'} className="w-full px-4 py-2.5 rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-sm" />
+              <button type="submit" className="w-full py-2.5 rounded-xl bg-slate-900 dark:bg-emerald-700 hover:bg-emerald-800 text-white text-xs font-bold">
+                {lang === 'bn' ? 'পোর্টাল ঘোষণা পাঠান' : 'Send Portal Alert'}
+              </button>
+
+              {portalNotifications.length > 0 && (
+                <div className="pt-3 border-t border-slate-100 dark:border-slate-800 space-y-2 max-h-52 overflow-y-auto">
+                  {portalNotifications.slice(0, 6).map((pn) => (
+                    <div key={pn.id} className="p-3 rounded-xl bg-slate-50 dark:bg-slate-800 flex items-start justify-between gap-2 text-xs">
+                      <div>
+                        <p className="font-bold text-emerald-700 dark:text-emerald-400 uppercase">
+                          {pn.targetRole} · Class {pn.classId || 'all'} · {pn.priority} · {pn.createdDate}
+                        </p>
+                        <p className="font-bold text-slate-900 dark:text-white mt-0.5">{pn.title}</p>
+                      </div>
+                      <button type="button" onClick={() => deletePortalNotification(pn.id)} className="text-red-500 p-1"><Trash2 className="w-3.5 h-3.5" /></button>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </form>
+          </div>
+
+          <div className="space-y-3">
             <div className="relative">
               <Search className="w-4 h-4 text-slate-400 absolute left-3.5 top-1/2 -translate-y-1/2" />
               <input value={noticeSearch} onChange={(e) => setNoticeSearch(e.target.value)} placeholder={lang === 'bn' ? 'নোটিশ খুঁজুন...' : 'Search notices...'} className="w-full pl-10 pr-4 py-2.5 rounded-xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 text-sm" />
             </div>
-            {notices
-              .filter((n) => !noticeSearch.trim() || t(n.title).toLowerCase().includes(noticeSearch.trim().toLowerCase()))
-              .map((n) => (
-                <div key={n.id} className="bg-white dark:bg-slate-900 p-4 rounded-2xl border border-slate-200 dark:border-slate-800">
-                  <div className="flex justify-between text-xs text-slate-400">
-                    <span className="font-bold text-emerald-700 dark:text-emerald-400">{n.category}</span>
-                    <span>{n.date}</span>
+            <div className="grid md:grid-cols-2 gap-3">
+              {notices
+                .filter((n) => !noticeSearch.trim() || t(n.title).toLowerCase().includes(noticeSearch.trim().toLowerCase()))
+                .map((n) => (
+                  <div key={n.id} className="bg-white dark:bg-slate-900 p-4 rounded-2xl border border-slate-200 dark:border-slate-800">
+                    <div className="flex justify-between text-xs text-slate-400">
+                      <span className="font-bold text-emerald-700 dark:text-emerald-400">{n.category}</span>
+                      <span className="tabular-nums">{n.date}</span>
+                    </div>
+                    <h5 className="font-bold text-sm mt-1">{t(n.title)}</h5>
+                    <p className="text-xs text-slate-500 mt-1">{t(n.description)}</p>
                   </div>
-                  <h5 className="font-bold text-sm mt-1">{t(n.title)}</h5>
-                  <p className="text-xs text-slate-500 mt-1">{t(n.description)}</p>
-                </div>
-              ))}
+                ))}
+            </div>
           </div>
         </div>
       )}
@@ -828,8 +1261,9 @@ export const TeacherPortal: React.FC = () => {
                 <div key={st.id} className="py-2.5 flex items-center justify-between text-xs">
                   <span><b>#{st.roll}</b> {st.name} ({st.section})</span>
                   <div className="flex gap-1">
-                    <button onClick={() => { setEditingStudent(st); setStudentForm({ roll: st.roll, name: st.name, section: st.section, guardianMobile: st.guardianMobile }); }} className="p-1.5 text-blue-600"><Pencil className="w-3.5 h-3.5" /></button>
-                    <button onClick={() => deleteStudent(st.id)} className="p-1.5 text-red-600"><Trash2 className="w-3.5 h-3.5" /></button>
+                    <button type="button" onClick={() => setIdCardStudent(st)} title={lang === 'bn' ? 'আইডি ও প্রবেশপত্র' : 'ID & Admit Card'} className="p-1.5 text-emerald-700 dark:text-emerald-400"><IdCard className="w-3.5 h-3.5" /></button>
+                    <button type="button" onClick={() => { setEditingStudent(st); setStudentForm({ roll: st.roll, name: st.name, section: st.section, guardianMobile: st.guardianMobile }); }} className="p-1.5 text-blue-600"><Pencil className="w-3.5 h-3.5" /></button>
+                    <button type="button" onClick={() => deleteStudent(st.id)} className="p-1.5 text-red-600"><Trash2 className="w-3.5 h-3.5" /></button>
                   </div>
                 </div>
               ))}
@@ -868,6 +1302,93 @@ export const TeacherPortal: React.FC = () => {
               ))}
             </div>
           </div>
+
+          {/* Dynamic Class Routine Editor (Phase 4) */}
+          {activeClassRoutine && (
+            <div className="lg:col-span-12 bg-white dark:bg-slate-900 p-6 rounded-3xl border border-slate-200 dark:border-slate-800 space-y-4">
+              <div className="flex flex-wrap items-center justify-between gap-3">
+                <div className="flex items-center gap-2">
+                  <Clock className="w-4 h-4 text-emerald-700 dark:text-emerald-400" />
+                  <h4 className="font-extrabold text-base">
+                    {lang === 'bn' ? `সাপ্তাহিক ক্লাস রুটিন ব্যবস্থাপনা — Class ${manageClassId}` : `Weekly Class Routine Editor — Class ${manageClassId}`}
+                  </h4>
+                </div>
+                <select
+                  value={routineDayIdx}
+                  onChange={(e) => setRoutineDayIdx(Number(e.target.value))}
+                  className="px-3.5 py-2 rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-xs font-bold"
+                >
+                  {activeClassRoutine.schedule.map((d, idx) => (
+                    <option key={idx} value={idx}>{t(d.day)}</option>
+                  ))}
+                </select>
+              </div>
+
+              <form
+                onSubmit={(e) => {
+                  e.preventDefault();
+                  if (!newPeriodForm.subjectEn.trim() && !newPeriodForm.subjectBn.trim()) return;
+                  const nextSchedule = activeClassRoutine.schedule.map((d, idx) =>
+                    idx === routineDayIdx
+                      ? {
+                          ...d,
+                          periods: [
+                            ...d.periods,
+                            {
+                              time: newPeriodForm.time.trim() || '01:45 PM',
+                              subject: {
+                                bn: newPeriodForm.subjectBn.trim() || newPeriodForm.subjectEn.trim(),
+                                en: newPeriodForm.subjectEn.trim() || newPeriodForm.subjectBn.trim(),
+                              },
+                              teacher: {
+                                bn: newPeriodForm.teacherBn.trim() || user?.name || 'শিক্ষক',
+                                en: newPeriodForm.teacherEn.trim() || user?.name || 'Teacher',
+                              },
+                            },
+                          ],
+                        }
+                      : d
+                  );
+                  saveClassRoutine({ ...activeClassRoutine, schedule: nextSchedule });
+                  setNewPeriodForm((p) => ({ ...p, subjectBn: '', subjectEn: '', teacherBn: '', teacherEn: '' }));
+                  notify(lang === 'bn' ? 'ক্লাস পিরিয়ড যুক্ত হয়েছে!' : 'Class period added to live timetable!');
+                }}
+                className="grid grid-cols-2 sm:grid-cols-5 gap-2"
+              >
+                <input required value={newPeriodForm.time} onChange={(e) => setNewPeriodForm((p) => ({ ...p, time: e.target.value }))} placeholder="Time (e.g. 01:45 PM)" className="px-3 py-2 rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-xs font-bold" />
+                <input required value={newPeriodForm.subjectEn} onChange={(e) => setNewPeriodForm((p) => ({ ...p, subjectEn: e.target.value }))} placeholder="Subject (EN)" className="px-3 py-2 rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-xs" />
+                <input value={newPeriodForm.subjectBn} onChange={(e) => setNewPeriodForm((p) => ({ ...p, subjectBn: e.target.value }))} placeholder="বিষয় (বাংলা)" className="px-3 py-2 rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-xs" />
+                <input value={newPeriodForm.teacherEn} onChange={(e) => setNewPeriodForm((p) => ({ ...p, teacherEn: e.target.value, teacherBn: e.target.value }))} placeholder="Teacher Name" className="px-3 py-2 rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-xs" />
+                <button type="submit" className="px-3 py-2 rounded-xl bg-emerald-700 text-white text-xs font-bold flex items-center justify-center gap-1">
+                  <Plus className="w-3.5 h-3.5" /> {lang === 'bn' ? 'পিরিয়ড যোগ' : 'Add Period'}
+                </button>
+              </form>
+
+              <div className="grid sm:grid-cols-2 lg:grid-cols-4 gap-2.5">
+                {(activeClassRoutine.schedule[routineDayIdx]?.periods || []).map((pr, pIdx) => (
+                  <div key={pIdx} className="p-3 rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 flex items-center justify-between gap-2 text-xs">
+                    <div className="min-w-0">
+                      <p className="font-bold text-emerald-700 dark:text-emerald-400 tabular-nums">{pr.time}</p>
+                      <p className="font-extrabold truncate">{t(pr.subject)}</p>
+                      <p className="text-slate-500 truncate">{t(pr.teacher)}</p>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        const nextSchedule = activeClassRoutine.schedule.map((d, idx) =>
+                          idx === routineDayIdx ? { ...d, periods: d.periods.filter((_, i) => i !== pIdx) } : d
+                        );
+                        saveClassRoutine({ ...activeClassRoutine, schedule: nextSchedule });
+                      }}
+                      className="text-red-500 p-1 shrink-0"
+                    >
+                      <Trash2 className="w-3.5 h-3.5" />
+                    </button>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
 
           {/* Pending Parent-Student Verification Requests */}
           {parentLinks.length > 0 && (
@@ -1120,6 +1641,19 @@ export const TeacherPortal: React.FC = () => {
             </div>
           ))}
         </div>
+      )}
+
+      <FeeReceiptModal fee={activeReceipt} onClose={() => setActiveReceipt(null)} />
+      {idCardStudent && (
+        <StudentIdAdmitCard
+          open={Boolean(idCardStudent)}
+          onClose={() => setIdCardStudent(null)}
+          studentName={idCardStudent.name}
+          classId={idCardStudent.classId}
+          roll={idCardStudent.roll}
+          section={idCardStudent.section}
+          guardianMobile={idCardStudent.guardianMobile}
+        />
       )}
     </div>
   );

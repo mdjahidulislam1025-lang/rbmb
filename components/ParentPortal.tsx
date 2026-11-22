@@ -18,6 +18,7 @@ import {
   Printer,
   Download,
   Megaphone,
+  IdCard,
 } from 'lucide-react';
 import { useApp } from '../App';
 import { FeeRecord } from '../types';
@@ -25,6 +26,7 @@ import { calculateOverallGpa } from '../utils/security';
 import { exportCsv } from '../utils/exportUtils';
 import { AcademicReportCard } from './AcademicReportCard';
 import { FeeReceiptModal } from './FeeReceiptModal';
+import { StudentIdAdmitCard } from './StudentIdAdmitCard';
 
 const { useState, useMemo, useEffect } = React;
 const { Link } = RouterDom;
@@ -61,6 +63,7 @@ export const ParentPortal: React.FC = () => {
   const [toast, setToast] = useState<string | null>(null);
   const [reportCardOpen, setReportCardOpen] = useState(false);
   const [activeReceipt, setActiveReceipt] = useState<FeeRecord | null>(null);
+  const [idCardOpen, setIdCardOpen] = useState(false);
 
   const [msgForm, setMsgForm] = useState({
     teacherName: teachers[0] ? t(teachers[0].name) : 'Md. Abdul Karim',
@@ -307,16 +310,24 @@ export const ParentPortal: React.FC = () => {
             )}
           </div>
 
-          <div className="flex gap-2 text-xs font-bold">
+          <div className="flex flex-wrap gap-2 text-xs font-bold">
+            <button
+              type="button"
+              onClick={() => setIdCardOpen(true)}
+              className="px-4 py-2.5 rounded-xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 hover:border-emerald-500 flex items-center gap-1.5 whitespace-nowrap"
+            >
+              <IdCard className="w-3.5 h-3.5 text-emerald-700 dark:text-emerald-400" />
+              {lang === 'bn' ? 'সন্তানের আইডি ও প্রবেশপত্র' : 'ID & Admit Card'}
+            </button>
             <Link
               to="/routine"
-              className="px-4 py-2.5 rounded-xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 hover:border-emerald-500"
+              className="px-4 py-2.5 rounded-xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 hover:border-emerald-500 whitespace-nowrap"
             >
               {lang === 'bn' ? 'ক্লাস রুটিন' : 'Class Routine'}
             </Link>
             <Link
               to="/ebooks"
-              className="px-4 py-2.5 rounded-xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 hover:border-emerald-500 flex items-center gap-1.5"
+              className="px-4 py-2.5 rounded-xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 hover:border-emerald-500 flex items-center gap-1.5 whitespace-nowrap"
             >
               <BookOpen className="w-3.5 h-3.5" />
               {lang === 'bn' ? 'ডিজিটাল লাইব্রেরি' : 'Library'}
@@ -813,6 +824,15 @@ export const ParentPortal: React.FC = () => {
         attendancePct={attendancePct}
       />
       <FeeReceiptModal fee={activeReceipt} onClose={() => setActiveReceipt(null)} />
+      <StudentIdAdmitCard
+        open={idCardOpen}
+        onClose={() => setIdCardOpen(false)}
+        studentName={matchedChild?.name || user?.linkedChildName || `Student #${childRoll}`}
+        classId={childClass}
+        roll={childRoll.trim() || '01'}
+        section={matchedChild?.section || 'A'}
+        guardianMobile={matchedChild?.guardianMobile}
+      />
     </div>
   );
 };

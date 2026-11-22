@@ -10,17 +10,17 @@ import {
   MapPin,
   ClipboardList,
 } from 'lucide-react';
-import { CLASS_ROUTINES, TRANSLATIONS } from '../constants';
+import { TRANSLATIONS } from '../constants';
 import { useApp } from '../App';
 
 const { Link } = RouterDom;
 
 const Routine: React.FC = () => {
-  const { lang, t, examRoutines } = useApp();
+  const { lang, t, examRoutines, classRoutines } = useApp();
   const [routineTab, setRoutineTab] = React.useState<'class' | 'exam'>('class');
-  const [selectedClassId, setSelectedClassId] = React.useState(CLASS_ROUTINES[0].classId);
+  const [selectedClassId, setSelectedClassId] = React.useState(classRoutines[0]?.classId || '6');
 
-  const selectedRoutine = CLASS_ROUTINES.find((r) => r.classId === selectedClassId);
+  const selectedRoutine = classRoutines.find((r) => r.classId === selectedClassId) || classRoutines[0];
 
   const filteredExamRoutines = React.useMemo(
     () => examRoutines.filter((r) => r.classId === selectedClassId),
@@ -116,7 +116,7 @@ const Routine: React.FC = () => {
         </div>
 
         <div className="flex overflow-x-auto gap-2 pb-1">
-          {CLASS_ROUTINES.map((routine) => (
+          {classRoutines.map((routine) => (
             <button
               key={routine.classId}
               onClick={() => setSelectedClassId(routine.classId)}

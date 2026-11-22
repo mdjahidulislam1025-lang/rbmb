@@ -560,6 +560,18 @@ service cloud.firestore {
         && data.createdAt is timestamp;
     }
 
+    function isValidClassRoutine(data) {
+      return data.keys().hasAll(['classId', 'className', 'schedule', 'isPublic', 'createdAt', 'updatedAt'])
+        && data.keys().hasOnly(['classId', 'className', 'schedule', 'isPublic', 'createdAt', 'updatedAt'])
+        && data.classId is string && data.classId in ['6', '7', '8', '9', '10']
+        && isLocalizedString(data.className, 100)
+        && data.schedule is list && data.schedule.size() >= 1 && data.schedule.size() <= 7
+        && data.schedule[0] is map
+        && data.isPublic is bool
+        && data.createdAt is timestamp
+        && data.updatedAt is timestamp;
+    }
+
     // Connection test doc
     match /test/{docId} {
       allow get: if docId == 'connection';
@@ -959,6 +971,15 @@ service cloud.firestore {
       allow create: if isTeacher() && isValidId(notifId) && isValidPortalNotification(incoming()) && incoming().id == notifId && incoming().createdAt == request.time;
       allow update: if false;
       allow delete: if isTeacher() && isValidId(notifId);
+    }
+
+    // Dynamic Class Routine Schedules (Teacher & Admin managed, Public read)
+    match /classRoutines/{classId} {
+      allow get: if isValidId(classId) && (existing().isPublic == true || isTeacher());
+      allow list: if existing().isPublic == true || isTeacher();
+      allow create: if isTeacher() && isValidId(classId) && classId in ['6', '7', '8', '9', '10'] && isValidClassRoutine(incoming()) && incoming().classId == classId && incoming().createdAt == request.time && incoming().updatedAt == request.time;
+      allow update: if isTeacher() && isValidId(classId) && classId in ['6', '7', '8', '9', '10'] && isValidClassRoutine(incoming()) && incoming().classId == existing().classId && incoming().createdAt == existing().createdAt && incoming().updatedAt == request.time;
+      allow delete: if isAdmin() && isValidId(classId);
     }
   }
 }

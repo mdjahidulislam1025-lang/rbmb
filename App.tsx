@@ -53,12 +53,14 @@ import {
   INITIAL_ALUMNI,
   INITIAL_FEE_RECORDS,
   INITIAL_PORTAL_NOTIFICATIONS,
+  CLASS_ROUTINES,
 } from './constants';
 import {
   Language,
   ThemeMode,
   UserRole as BaseUserRole,
   SchoolSettings,
+  ClassRoutine,
   Notice,
   NewsArticle,
   CampusEvent,
@@ -292,6 +294,9 @@ interface AppContextType {
   examRoutines: ExamRoutineItem[];
   addExamRoutine: (item: ExamRoutineItem) => void;
   deleteExamRoutine: (id: string) => void;
+  classRoutines: ClassRoutine[];
+  saveClassRoutine: (routine: ClassRoutine) => void;
+  resetClassRoutines: () => void;
   subjects: SchoolSubject[];
   addSubject: (sub: SchoolSubject) => void;
   deleteSubject: (id: string) => void;
@@ -658,6 +663,7 @@ const App: React.FC = () => {
   const [onlineExams, setOnlineExams] = useState<OnlineExamType[]>(() => safeLocalGet('db_online_exams', INITIAL_ONLINE_EXAMS));
   const [examAttempts, setExamAttempts] = useState<ExamAttempt[]>(() => safeLocalGet('db_exam_attempts', []));
   const [examRoutines, setExamRoutines] = useState<ExamRoutineItem[]>(() => safeLocalGet('db_exam_routines', INITIAL_EXAM_ROUTINES));
+  const [classRoutines, setClassRoutines] = useState<ClassRoutine[]>(() => safeLocalGet('db_class_routines', CLASS_ROUTINES));
   const [subjects, setSubjects] = useState<SchoolSubject[]>(() => safeLocalGet('db_subjects', INITIAL_SUBJECTS));
   const [parentMessages, setParentMessages] = useState<ParentMessage[]>(() => safeLocalGet('db_parent_messages', []));
   const [parentLinks, setParentLinks] = useState<ParentStudentLink[]>(() => safeLocalGet('db_parent_links', []));
@@ -1340,6 +1346,24 @@ const App: React.FC = () => {
       (err) => safeListenerError(err, OperationType.LIST, 'subjects')
     );
 
+    const unsubClassRoutines = onSnapshot(
+      query(collection(db, 'classRoutines'), where('isPublic', '==', true)),
+      (snap) => {
+        if (!snap.empty) {
+          const byId = new Map<string, ClassRoutine>();
+          CLASS_ROUTINES.forEach((cr) => byId.set(cr.classId, cr));
+          snap.docs.forEach((d) => {
+            const cr = d.data() as ClassRoutine;
+            if (cr?.classId) byId.set(cr.classId, cr);
+          });
+          const merged = Array.from(byId.values()).sort((a, b) => Number(a.classId) - Number(b.classId));
+          setClassRoutines(merged);
+          safeLocalSet('db_class_routines', merged);
+        }
+      },
+      (err) => safeListenerError(err, OperationType.LIST, 'classRoutines')
+    );
+
     return () => {
       unsubSettings();
       unsubNotices();
@@ -1353,6 +1377,7 @@ const App: React.FC = () => {
       unsubOnlineExams();
       unsubExamRoutines();
       unsubSubjects();
+      unsubClassRoutines();
     };
   }, []);
 
@@ -3402,6 +3427,53 @@ const App: React.FC = () => {
     syncDocDelete('examRoutines', sanitizeFirestoreId(id), true);
   };
 
+  // Dynamic Class Routines
+  const saveClassRoutine = (routine: ClassRoutine) => {
+    const cleanClassId = sanitizeFirestoreId(routine.classId);
+    const exists = classRoutines.some((r) => r.classId === cleanClassId);
+    const clean: ClassRoutine = { ...routine, classId: cleanClassId, isPublic: true };
+    const updated = exists
+      ? classRoutines.map((r) => (r.classId === cleanClassId ? clean : r))
+      : [...classRoutines, clean];
+    setClassRoutines(updated);
+    persistLocal('db_class_routines', updated);
+    syncDocUpsert(
+      'classRoutines',
+      cleanClassId,
+      {
+        classId: cleanClassId,
+        className: { bn: clean.className.bn.slice(0, 100), en: clean.className.en.slice(0, 100) },
+        schedule: clean.schedule,
+        isPublic: true,
+      },
+      exists,
+      true
+    );
+    logAuditEvent('ROUTINE_UPDATED', 'classRoutines', cleanClassId, `Updated weekly timetable for Class ${cleanClassId}`);
+  };
+
+  const resetClassRoutines = () => {
+    setClassRoutines(CLASS_ROUTINES);
+    persistLocal('db_class_routines', CLASS_ROUTINES);
+    if (isCloudTeacher) {
+      CLASS_ROUTINES.forEach((cr) => {
+        syncDocUpsert(
+          'classRoutines',
+          cr.classId,
+          {
+            classId: cr.classId,
+            className: cr.className,
+            schedule: cr.schedule,
+            isPublic: true,
+          },
+          true,
+          true
+        );
+      });
+    }
+    logAuditEvent('ROUTINE_UPDATED', 'classRoutines', 'all', 'Reset weekly class routines to default template');
+  };
+
   // Subjects
   const addSubject = (sub: SchoolSubject) => {
     const id = sanitizeFirestoreId(sub.id);
@@ -4171,6 +4243,7 @@ const App: React.FC = () => {
       onlineExams,
       examAttempts,
       examRoutines,
+      classRoutines,
       subjects,
       parentMessages,
       alumni,
@@ -4272,6 +4345,10 @@ const App: React.FC = () => {
       if (data.examRoutines) {
         setExamRoutines(data.examRoutines);
         safeLocalSet('db_exam_routines', data.examRoutines);
+      }
+      if (data.classRoutines) {
+        setClassRoutines(data.classRoutines);
+        safeLocalSet('db_class_routines', data.classRoutines);
       }
       if (data.subjects) {
         setSubjects(data.subjects);
@@ -4465,6 +4542,9 @@ Available Features: Online Admission (/admission), Online MCQ Exams (/exams), Di
         examRoutines,
         addExamRoutine,
         deleteExamRoutine,
+        classRoutines,
+        saveClassRoutine,
+        resetClassRoutines,
         subjects,
         addSubject,
         deleteSubject,

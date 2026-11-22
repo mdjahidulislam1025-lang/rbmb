@@ -251,5 +251,21 @@ export const DIRTY_DOZEN_CASES: DirtyDozenCase[] = [
     expected: 'PERMISSION_DENIED',
     reason: 'Only verified teachers or admins may publish portal_notifications',
   },
+  {
+    id: 31,
+    name: 'Anonymous Class Routine Overwrite',
+    collection: 'classRoutines',
+    operation: 'create',
+    expected: 'PERMISSION_DENIED',
+    reason: 'Only verified teachers or admins may create or modify classRoutines',
+  },
+  {
+    id: 32,
+    name: 'Student Tampering Class Routine',
+    collection: 'classRoutines',
+    operation: 'update',
+    expected: 'PERMISSION_DENIED',
+    reason: 'Students cannot alter weekly class timetables in classRoutines',
+  },
 ];
 

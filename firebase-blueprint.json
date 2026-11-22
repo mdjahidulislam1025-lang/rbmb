@@ -612,6 +612,20 @@
         "createdAt": { "type": "string", "format": "date-time" }
       },
       "required": ["id", "title", "message", "targetRole", "priority", "senderName", "createdDate", "createdAt"]
+    },
+    "ClassRoutine": {
+      "title": "ClassRoutine",
+      "description": "Weekly class timetable per class managed by teachers and admins.",
+      "type": "object",
+      "properties": {
+        "classId": { "type": "string", "enum": ["6", "7", "8", "9", "10"] },
+        "className": { "$ref": "#/entities/LocalizedString" },
+        "schedule": { "type": "array" },
+        "isPublic": { "type": "boolean" },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["classId", "className", "schedule", "isPublic", "createdAt", "updatedAt"]
     }
   },
   "firestore": {
@@ -738,6 +752,10 @@
     "/portal_notifications/{notifId}": {
       "schema": { "$ref": "#/entities/PortalNotification" },
       "description": "Targeted role and class portal alerts."
+    },
+    "/classRoutines/{classId}": {
+      "schema": { "$ref": "#/entities/ClassRoutine" },
+      "description": "Editable weekly class schedules per class."
     }
   }
 }
