@@ -250,7 +250,7 @@ const Admission: React.FC = () => {
 
           <div className="bg-white dark:bg-slate-900 rounded-[2.5rem] shadow-2xl border border-slate-100 dark:border-slate-800 overflow-hidden">
             <div className="bg-green-700 p-10 text-white">
-              <span className="inline-block bg-white/20 px-4 py-1.5 rounded-full text-[11px] font-black uppercase tracking-wider">
+              <span className="inline-block bg-white/15 px-3 py-1 rounded-lg text-[11px] font-black uppercase tracking-wider">
                 Admission Portal 2026
               </span>
               <h1 className="text-3xl md:text-4xl font-black mt-3">
@@ -448,7 +448,7 @@ const Admission: React.FC = () => {
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-12 space-y-14 no-print">
         {/* Hero */}
         <section className="text-center space-y-6">
-          <div className="inline-flex items-center gap-2 bg-green-100 dark:bg-green-950 text-green-700 dark:text-green-300 px-5 py-2 rounded-full text-xs font-black uppercase tracking-widest">
+          <div className="inline-flex items-center gap-2 bg-green-100 dark:bg-green-950 text-green-700 dark:text-green-300 px-3.5 py-1.5 rounded-lg text-xs font-black uppercase tracking-widest">
             <AlertCircle className="w-4 h-4" /> Admission Open 2026
           </div>
           <h1 className="text-4xl md:text-6xl font-black text-green-900 dark:text-white tracking-tight">
@@ -633,7 +633,7 @@ const Admission: React.FC = () => {
 
           <div className="lg:col-span-2 space-y-6">
             <div className="bg-green-700 text-white p-8 rounded-[2.5rem] shadow-2xl space-y-6">
-              <span className="bg-white/20 inline-block px-4 py-1 rounded-full text-[11px] font-black uppercase tracking-wider">
+              <span className="bg-white/15 inline-block px-3 py-1 rounded-lg text-[11px] font-black uppercase tracking-wider">
                 Portal Live 2026
               </span>
               <h2 className="text-3xl font-black leading-tight">ভর্তি হতে আজই আবেদন করুন</h2>

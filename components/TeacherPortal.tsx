@@ -26,14 +26,27 @@ import {
   Megaphone,
   IdCard,
   Clock,
+  Sparkles,
+  Loader2,
 } from 'lucide-react';
 import { useApp } from '../App';
 import { CLASSES, CLASS_SUBJECTS, EXAM_TERMS } from '../constants';
-import { AttendanceStatus, ExamMark, FeeCategory, FeeRecord, HomeworkItem, LibraryCategory, PaymentMethod, SchoolStudent } from '../types';
+import {
+  AttendanceStatus,
+  ExamMark,
+  FeeCategory,
+  FeeRecord,
+  HomeworkItem,
+  LibraryCategory,
+  ExamQuestion,
+  PaymentMethod,
+  SchoolStudent,
+} from '../types';
 import { calculateGrade, isSafeHttpUrl } from '../utils/security';
 import { exportCsv } from '../utils/exportUtils';
 import { FeeReceiptModal } from './FeeReceiptModal';
 import { StudentIdAdmitCard } from './StudentIdAdmitCard';
+import { StudentCertificateModal } from './StudentCertificateModal';
 
 const { useState, useEffect, useMemo } = React;
 
@@ -109,6 +122,7 @@ export const TeacherPortal: React.FC = () => {
   const [toast, setToast] = useState<string | null>(null);
   const [activeReceipt, setActiveReceipt] = useState<FeeRecord | null>(null);
   const [idCardStudent, setIdCardStudent] = useState<SchoolStudent | null>(null);
+  const [certStudent, setCertStudent] = useState<SchoolStudent | null>(null);
   const todayStr = new Date().toISOString().split('T')[0];
 
   const notify = (msg: string) => {
@@ -355,9 +369,77 @@ export const TeacherPortal: React.FC = () => {
     correctIndex: 0,
     explanation: '',
   });
+  const [draftMcqQuestions, setDraftMcqQuestions] = useState<ExamQuestion[]>([]);
+  const [aiGeneratingMcq, setAiGeneratingMcq] = useState(false);
+  const [aiMcqError, setAiMcqError] = useState<string | null>(null);
+
+  const handleGenerateAiMcqs = async () => {
+    setAiGeneratingMcq(true);
+    setAiMcqError(null);
+    try {
+      const res = await fetch('/api/ai-study-helper', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          mode: 'generate_mcq',
+          classId: mcqForm.classId,
+          subject: mcqForm.subject.trim() || 'General Science',
+          topic: mcqForm.chapter.trim(),
+          lang,
+          count: 4,
+        }),
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        setAiMcqError(
+          data?.error ||
+            (lang === 'bn' ? 'AI প্রশ্ন তৈরি করতে ব্যর্থ হয়েছে।' : 'Failed to generate AI MCQ draft.')
+        );
+        return;
+      }
+      if (Array.isArray(data?.questions)) {
+        setDraftMcqQuestions((prev) => [...prev, ...data.questions]);
+        notify(
+          lang === 'bn'
+            ? `${data.questions.length}টি MCQ প্রশ্ন ড্রাফটে যুক্ত হয়েছে!`
+            : `Added ${data.questions.length} AI questions to quiz draft!`
+        );
+      }
+    } catch {
+      setAiMcqError(lang === 'bn' ? 'সার্ভারে সংযোগ করা যায়নি।' : 'Could not reach AI generator service.');
+    } finally {
+      setAiGeneratingMcq(false);
+    }
+  };
+
+  const handleAddDraftQuestion = () => {
+    if (!mcqForm.question.trim()) return;
+    setDraftMcqQuestions((prev) => [
+      ...prev,
+      {
+        id: `q-${Date.now()}`,
+        question: mcqForm.question.trim(),
+        options: [mcqForm.opt0.trim(), mcqForm.opt1.trim(), mcqForm.opt2.trim(), mcqForm.opt3.trim()],
+        correctIndex: mcqForm.correctIndex,
+        explanation: mcqForm.explanation.trim(),
+      },
+    ]);
+    setMcqForm((p) => ({ ...p, question: '', opt0: '', opt1: '', opt2: '', opt3: '', explanation: '' }));
+  };
+
   const handleCreateMcqExam = (e: React.FormEvent) => {
     e.preventDefault();
-    if (!mcqForm.titleEn.trim() || !mcqForm.question.trim()) return;
+    const combinedQuestions: ExamQuestion[] = [...draftMcqQuestions];
+    if (mcqForm.question.trim() && mcqForm.opt0.trim() && mcqForm.opt1.trim()) {
+      combinedQuestions.push({
+        id: `q-${Date.now()}`,
+        question: mcqForm.question.trim(),
+        options: [mcqForm.opt0.trim(), mcqForm.opt1.trim(), mcqForm.opt2.trim(), mcqForm.opt3.trim()],
+        correctIndex: mcqForm.correctIndex,
+        explanation: mcqForm.explanation.trim(),
+      });
+    }
+    if (!mcqForm.titleEn.trim() || combinedQuestions.length === 0) return;
     addOnlineExam({
       id: `exam-${Date.now()}`,
       title: { bn: mcqForm.titleBn.trim() || mcqForm.titleEn.trim(), en: mcqForm.titleEn.trim() },
@@ -369,16 +451,9 @@ export const TeacherPortal: React.FC = () => {
       createdBy: user?.name || 'Teacher',
       date: todayStr,
       isPublic: true,
-      questions: [
-        {
-          id: 'q1',
-          question: mcqForm.question.trim(),
-          options: [mcqForm.opt0.trim(), mcqForm.opt1.trim(), mcqForm.opt2.trim(), mcqForm.opt3.trim()],
-          correctIndex: mcqForm.correctIndex,
-          explanation: mcqForm.explanation.trim(),
-        },
-      ],
+      questions: combinedQuestions,
     });
+    setDraftMcqQuestions([]);
     setMcqForm((p) => ({ ...p, titleBn: '', titleEn: '', question: '', opt0: '', opt1: '', opt2: '', opt3: '', explanation: '' }));
     notify(lang === 'bn' ? 'অনলাইন MCQ পরীক্ষা তৈরি হয়েছে!' : 'Online MCQ exam published!');
   };
@@ -1262,6 +1337,7 @@ export const TeacherPortal: React.FC = () => {
                   <span><b>#{st.roll}</b> {st.name} ({st.section})</span>
                   <div className="flex gap-1">
                     <button type="button" onClick={() => setIdCardStudent(st)} title={lang === 'bn' ? 'আইডি ও প্রবেশপত্র' : 'ID & Admit Card'} className="p-1.5 text-emerald-700 dark:text-emerald-400"><IdCard className="w-3.5 h-3.5" /></button>
+                    <button type="button" onClick={() => setCertStudent(st)} title={lang === 'bn' ? 'প্রত্যয়নপত্র ও সনদ' : 'Certificate'} className="p-1.5 text-purple-700 dark:text-purple-400"><Award className="w-3.5 h-3.5" /></button>
                     <button type="button" onClick={() => { setEditingStudent(st); setStudentForm({ roll: st.roll, name: st.name, section: st.section, guardianMobile: st.guardianMobile }); }} className="p-1.5 text-blue-600"><Pencil className="w-3.5 h-3.5" /></button>
                     <button type="button" onClick={() => deleteStudent(st.id)} className="p-1.5 text-red-600"><Trash2 className="w-3.5 h-3.5" /></button>
                   </div>
@@ -1445,11 +1521,33 @@ export const TeacherPortal: React.FC = () => {
         </div>
       )}
 
-      {/* 7. Create Online MCQ Exam */}
+      {/* 7. Create Online MCQ Exam (with AI Question Draft Generator) */}
       {activeTab === 'online-exams' && (
         <div className="grid lg:grid-cols-12 gap-6">
           <form onSubmit={handleCreateMcqExam} className="lg:col-span-6 bg-white dark:bg-slate-900 p-6 rounded-3xl border border-slate-200 dark:border-slate-800 space-y-3">
-            <h4 className="font-extrabold text-base">{lang === 'bn' ? 'অনলাইন MCQ পরীক্ষা তৈরি করুন' : 'Create Online MCQ Quiz'}</h4>
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <h4 className="font-extrabold text-base">{lang === 'bn' ? 'অনলাইন MCQ পরীক্ষা তৈরি করুন' : 'Create Online MCQ Quiz'}</h4>
+              <button
+                type="button"
+                disabled={aiGeneratingMcq}
+                onClick={handleGenerateAiMcqs}
+                className="px-3 py-1.5 rounded-xl bg-slate-900 dark:bg-emerald-700 hover:bg-emerald-800 text-white text-xs font-bold inline-flex items-center gap-1.5 disabled:opacity-50"
+              >
+                {aiGeneratingMcq ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Sparkles className="w-3.5 h-3.5" />}
+                {aiGeneratingMcq
+                  ? lang === 'bn'
+                    ? 'তৈরি হচ্ছে...'
+                    : 'Generating...'
+                  : lang === 'bn'
+                  ? 'AI দিয়ে ৪টি প্রশ্ন তৈরি'
+                  : 'AI Generate 4 MCQs'}
+              </button>
+            </div>
+            {aiMcqError && (
+              <p className="text-xs font-semibold text-amber-700 dark:text-amber-300 bg-amber-50 dark:bg-amber-950/40 border border-amber-200 dark:border-amber-800 p-3 rounded-xl">
+                {aiMcqError}
+              </p>
+            )}
             <div className="grid grid-cols-2 gap-3">
               <input value={mcqForm.titleBn} onChange={(e) => setMcqForm((p) => ({ ...p, titleBn: e.target.value }))} placeholder="শিরোনাম (বাংলা)" className="px-3.5 py-2.5 rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-sm" />
               <input required value={mcqForm.titleEn} onChange={(e) => setMcqForm((p) => ({ ...p, titleEn: e.target.value }))} placeholder="Title (English)" className="px-3.5 py-2.5 rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-sm" />
@@ -1459,17 +1557,45 @@ export const TeacherPortal: React.FC = () => {
                 {['6', '7', '8', '9', '10'].map((c) => <option key={c} value={c}>Class {c}</option>)}
               </select>
               <input value={mcqForm.subject} onChange={(e) => setMcqForm((p) => ({ ...p, subject: e.target.value }))} placeholder="Subject" className="px-3 py-2.5 rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-xs font-bold" />
+              <input value={mcqForm.chapter} onChange={(e) => setMcqForm((p) => ({ ...p, chapter: e.target.value }))} placeholder="Chapter / Topic" className="px-3 py-2.5 rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-xs font-bold" />
+            </div>
+            <div className="grid grid-cols-2 gap-2">
               <select value={mcqForm.mode} onChange={(e) => setMcqForm((p) => ({ ...p, mode: e.target.value as 'exam' | 'practice' }))} className="px-3 py-2.5 rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-xs font-bold">
                 <option value="exam">Timed Exam</option>
                 <option value="practice">Practice</option>
               </select>
+              <input type="number" min={1} max={180} value={mcqForm.durationMinutes} onChange={(e) => setMcqForm((p) => ({ ...p, durationMinutes: Number(e.target.value) }))} placeholder="Minutes" className="px-3 py-2.5 rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-xs font-bold tabular-nums" />
             </div>
-            <input required value={mcqForm.question} onChange={(e) => setMcqForm((p) => ({ ...p, question: e.target.value }))} placeholder="Question text..." className="w-full px-3.5 py-2.5 rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-sm font-semibold" />
+
+            {draftMcqQuestions.length > 0 && (
+              <div className="p-3.5 rounded-2xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 space-y-2 max-h-52 overflow-y-auto">
+                <p className="text-[11px] font-extrabold uppercase text-emerald-700 dark:text-emerald-400">
+                  {lang === 'bn' ? `প্রস্তুতকৃত প্রশ্ন (${draftMcqQuestions.length}টি)` : `Draft Questions (${draftMcqQuestions.length})`}
+                </p>
+                {draftMcqQuestions.map((dq, dIdx) => (
+                  <div key={dq.id} className="p-2.5 rounded-xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 flex items-start justify-between gap-2 text-xs">
+                    <div className="min-w-0">
+                      <p className="font-bold truncate">Q{dIdx + 1}. {dq.question}</p>
+                      <p className="text-[11px] text-slate-400 truncate">Ans: {dq.options[dq.correctIndex]}</p>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => setDraftMcqQuestions((prev) => prev.filter((item) => item.id !== dq.id))}
+                      className="text-red-500 p-1 shrink-0"
+                    >
+                      <Trash2 className="w-3.5 h-3.5" />
+                    </button>
+                  </div>
+                ))}
+              </div>
+            )}
+
+            <input required={draftMcqQuestions.length === 0} value={mcqForm.question} onChange={(e) => setMcqForm((p) => ({ ...p, question: e.target.value }))} placeholder={draftMcqQuestions.length > 0 ? 'Add another manual question (optional)...' : 'Question text...'} className="w-full px-3.5 py-2.5 rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-sm font-semibold" />
             <div className="grid grid-cols-2 gap-2">
-              <input required value={mcqForm.opt0} onChange={(e) => setMcqForm((p) => ({ ...p, opt0: e.target.value }))} placeholder="Option A" className="px-3 py-2 rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-xs" />
-              <input required value={mcqForm.opt1} onChange={(e) => setMcqForm((p) => ({ ...p, opt1: e.target.value }))} placeholder="Option B" className="px-3 py-2 rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-xs" />
-              <input required value={mcqForm.opt2} onChange={(e) => setMcqForm((p) => ({ ...p, opt2: e.target.value }))} placeholder="Option C" className="px-3 py-2 rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-xs" />
-              <input required value={mcqForm.opt3} onChange={(e) => setMcqForm((p) => ({ ...p, opt3: e.target.value }))} placeholder="Option D" className="px-3 py-2 rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-xs" />
+              <input required={draftMcqQuestions.length === 0 || Boolean(mcqForm.question.trim())} value={mcqForm.opt0} onChange={(e) => setMcqForm((p) => ({ ...p, opt0: e.target.value }))} placeholder="Option A" className="px-3 py-2 rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-xs" />
+              <input required={draftMcqQuestions.length === 0 || Boolean(mcqForm.question.trim())} value={mcqForm.opt1} onChange={(e) => setMcqForm((p) => ({ ...p, opt1: e.target.value }))} placeholder="Option B" className="px-3 py-2 rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-xs" />
+              <input required={draftMcqQuestions.length === 0} value={mcqForm.opt2} onChange={(e) => setMcqForm((p) => ({ ...p, opt2: e.target.value }))} placeholder="Option C" className="px-3 py-2 rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-xs" />
+              <input required={draftMcqQuestions.length === 0} value={mcqForm.opt3} onChange={(e) => setMcqForm((p) => ({ ...p, opt3: e.target.value }))} placeholder="Option D" className="px-3 py-2 rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-xs" />
             </div>
             <div className="grid grid-cols-2 gap-2">
               <select value={mcqForm.correctIndex} onChange={(e) => setMcqForm((p) => ({ ...p, correctIndex: Number(e.target.value) }))} className="px-3 py-2 rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-xs font-bold">
@@ -1480,9 +1606,22 @@ export const TeacherPortal: React.FC = () => {
               </select>
               <input value={mcqForm.explanation} onChange={(e) => setMcqForm((p) => ({ ...p, explanation: e.target.value }))} placeholder="Explanation (optional)" className="px-3 py-2 rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-xs" />
             </div>
-            <button type="submit" className="w-full py-3 rounded-xl bg-emerald-700 hover:bg-emerald-800 text-white text-xs font-bold">
-              {lang === 'bn' ? 'পরীক্ষা প্রকাশ করুন' : 'Publish MCQ Quiz'}
-            </button>
+            <div className="flex gap-2">
+              {mcqForm.question.trim() && (
+                <button
+                  type="button"
+                  onClick={handleAddDraftQuestion}
+                  className="px-4 py-3 rounded-xl bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-xs font-bold inline-flex items-center gap-1"
+                >
+                  <Plus className="w-3.5 h-3.5" /> {lang === 'bn' ? 'ড্রাফটে যোগ' : 'Add to List'}
+                </button>
+              )}
+              <button type="submit" className="flex-1 py-3 rounded-xl bg-emerald-700 hover:bg-emerald-800 text-white text-xs font-bold">
+                {lang === 'bn'
+                  ? `পরীক্ষা প্রকাশ করুন (${draftMcqQuestions.length + (mcqForm.question.trim() ? 1 : 0)} প্রশ্ন)`
+                  : `Publish MCQ Quiz (${draftMcqQuestions.length + (mcqForm.question.trim() ? 1 : 0)} MCQs)`}
+              </button>
+            </div>
           </form>
 
           <div className="lg:col-span-6 space-y-3">
@@ -1653,6 +1792,16 @@ export const TeacherPortal: React.FC = () => {
           roll={idCardStudent.roll}
           section={idCardStudent.section}
           guardianMobile={idCardStudent.guardianMobile}
+        />
+      )}
+      {certStudent && (
+        <StudentCertificateModal
+          open={Boolean(certStudent)}
+          onClose={() => setCertStudent(null)}
+          studentName={certStudent.name}
+          classId={certStudent.classId}
+          roll={certStudent.roll}
+          section={certStudent.section}
         />
       )}
     </div>

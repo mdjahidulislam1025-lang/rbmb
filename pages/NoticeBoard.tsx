@@ -15,6 +15,8 @@ import {
   Newspaper,
   CalendarDays,
   MapPin,
+  Printer,
+  GraduationCap,
 } from 'lucide-react';
 import { CAMPUS_BRAND, TRANSLATIONS } from '../constants';
 import { useApp } from '../App';
@@ -58,6 +60,7 @@ const NoticeBoard: React.FC<NoticeBoardProps> = ({ initialTab = 'notices' }) => 
   const [editingNotice, setEditingNotice] = useState<Notice | null>(null);
   const [editingNews, setEditingNews] = useState<NewsArticle | null>(null);
   const [editingEvent, setEditingEvent] = useState<CampusEvent | null>(null);
+  const [printableNotice, setPrintableNotice] = useState<Notice | null>(null);
   const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
 
   useEffect(() => {
@@ -426,7 +429,8 @@ const NoticeBoard: React.FC<NoticeBoardProps> = ({ initialTab = 'notices' }) => 
 
                   <div className="flex flex-col gap-2 w-full md:w-auto shrink-0">
                     <button
-                      onClick={() => window.print()}
+                      type="button"
+                      onClick={() => setPrintableNotice(notice)}
                       className="flex items-center justify-center gap-2 bg-slate-900 dark:bg-emerald-700 text-white px-4 py-2.5 rounded-xl font-bold text-xs uppercase tracking-wider hover:bg-emerald-700 transition-colors"
                     >
                       <Download className="w-4 h-4" /> Print / PDF
@@ -903,6 +907,82 @@ const NoticeBoard: React.FC<NoticeBoardProps> = ({ initialTab = 'notices' }) => 
                 </div>
               </form>
             )}
+          </div>
+        </div>
+      )}
+
+      {/* Official Printable Notice Circular Modal */}
+      {printableNotice && (
+        <div className="fixed inset-0 z-[220] flex items-center justify-center p-4 overflow-y-auto">
+          <div className="fixed inset-0 bg-slate-950/75 backdrop-blur-sm no-print" onClick={() => setPrintableNotice(null)} />
+          <div className="relative bg-white dark:bg-slate-900 w-full max-w-2xl rounded-2xl shadow-2xl border border-slate-200 dark:border-slate-800 overflow-hidden my-auto">
+            <div className="no-print flex items-center justify-between px-6 py-4 bg-slate-50 dark:bg-slate-800 border-b border-slate-200 dark:border-slate-700">
+              <span className="text-xs font-extrabold uppercase tracking-wider text-slate-600 dark:text-slate-300">
+                {lang === 'bn' ? 'অফিসিয়াল নোটিশ প্রিভিউ' : 'Official Notice Circular Preview'}
+              </span>
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => window.print()}
+                  className="px-4 py-2 rounded-lg bg-emerald-700 hover:bg-emerald-800 text-white text-xs font-bold inline-flex items-center gap-1.5"
+                >
+                  <Printer className="w-3.5 h-3.5" />
+                  {lang === 'bn' ? 'প্রিন্ট / PDF' : 'Print / PDF'}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setPrintableNotice(null)}
+                  className="p-1.5 rounded-lg text-slate-500 hover:bg-slate-200 dark:hover:bg-slate-700"
+                >
+                  <X className="w-4 h-4" />
+                </button>
+              </div>
+            </div>
+
+            <div id="printable-notice" className="p-8 sm:p-10 bg-white dark:bg-slate-950 text-slate-900 dark:text-slate-100 space-y-6">
+              <div className="text-center border-b-2 border-slate-900 dark:border-slate-700 pb-5 space-y-1">
+                <div className="inline-flex items-center justify-center w-11 h-11 rounded-xl bg-emerald-800 text-white mb-1">
+                  <GraduationCap className="w-5 h-5" />
+                </div>
+                <p className="text-[11px] font-bold uppercase tracking-widest text-emerald-700 dark:text-emerald-400">
+                  {settings.shortName || 'RBMB Digital Campus'} · Est. 1958
+                </p>
+                <h2 className="text-2xl font-black">{t(settings.name)}</h2>
+                <p className="text-xs text-slate-500 dark:text-slate-400 tabular-nums">
+                  {t(settings.location)} · EIIN: {settings.eiin} · {settings.phone}
+                </p>
+                <div className="pt-2">
+                  <span className="inline-block border border-slate-900 dark:border-slate-600 px-4 py-0.5 text-xs font-black uppercase tracking-widest">
+                    {lang === 'bn' ? 'অফিসিয়াল বিজ্ঞপ্তি' : 'OFFICIAL NOTICE CIRCULAR'}
+                  </span>
+                </div>
+              </div>
+
+              <div className="flex items-center justify-between text-xs font-mono-code font-bold text-slate-500 tabular-nums">
+                <span>Memo No: RBMB/{printableNotice.category.toUpperCase()}/{printableNotice.id.slice(-6)}</span>
+                <span>Date: {printableNotice.date}</span>
+              </div>
+
+              <div className="space-y-4 py-2">
+                <h3 className="text-xl font-black leading-snug text-slate-900 dark:text-white">
+                  {t(printableNotice.title)}
+                </h3>
+                <p className="text-sm sm:text-base leading-relaxed text-slate-700 dark:text-slate-300 whitespace-pre-line">
+                  {t(printableNotice.description)}
+                </p>
+              </div>
+
+              <div className="flex justify-end pt-10">
+                <div className="text-center border-t border-slate-400 dark:border-slate-600 px-6 pt-2 text-xs">
+                  <p className="font-black text-slate-900 dark:text-white">
+                    {t(settings.headTeacherName) || (lang === 'bn' ? 'প্রধান শিক্ষক' : 'Head Teacher')}
+                  </p>
+                  <p className="text-slate-500 font-semibold">
+                    {lang === 'bn' ? 'প্রধান শিক্ষক, রাণীর বাজার মডেল উচ্চ বিদ্যালয়' : 'Head Teacher, RBMB Digital Campus'}
+                  </p>
+                </div>
+              </div>
+            </div>
           </div>
         </div>
       )}

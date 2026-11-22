@@ -1,7 +1,7 @@
 import express from 'express';
 import path from 'path';
 import { fileURLToPath } from 'url';
-import { GoogleGenAI } from '@google/genai';
+import { GoogleGenAI, Type } from '@google/genai';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -74,6 +74,133 @@ Only answer questions relevant to school info, admissions, class routines, exams
     } catch (err: unknown) {
       const errMsg = err instanceof Error ? err.message : 'Failed to generate AI response.';
       console.error('Server AI assistant error:', errMsg);
+      res.status(500).json({ error: errMsg });
+    }
+  });
+
+  // Server-side Gemini AI Study Tutor & NCTB MCQ Generator (Phase 5)
+  app.post('/api/ai-study-helper', async (req, res) => {
+    const mode = req.body?.mode === 'generate_mcq' ? 'generate_mcq' : 'explain';
+    const rawClass = typeof req.body?.classId === 'string' ? req.body.classId.trim() : '9';
+    const classId = ['6', '7', '8', '9', '10'].includes(rawClass) ? rawClass : '9';
+    const subject = typeof req.body?.subject === 'string' ? req.body.subject.trim().slice(0, 80) : 'General Science';
+    const topic = typeof req.body?.topic === 'string' ? req.body.topic.trim().slice(0, 160) : '';
+    const question = typeof req.body?.question === 'string' ? req.body.question.trim().slice(0, 1000) : '';
+    const lang = req.body?.lang === 'en' ? 'en' : 'bn';
+    const rawCount = Number(req.body?.count);
+    const count = Number.isFinite(rawCount) ? Math.max(1, Math.min(5, Math.round(rawCount))) : 3;
+
+    if (mode === 'explain' && !question && !topic) {
+      res.status(400).json({ error: 'Topic or question is required.' });
+      return;
+    }
+    if (mode === 'generate_mcq' && !subject) {
+      res.status(400).json({ error: 'Subject is required for MCQ generation.' });
+      return;
+    }
+
+    const apiKey = process.env.GEMINI_API_KEY;
+    if (!apiKey || apiKey === 'PLACEHOLDER_API_KEY') {
+      res.status(503).json({
+        error:
+          lang === 'bn'
+            ? 'সার্ভারে GEMINI_API_KEY সেট করা নেই। Settings > Secrets থেকে API Key যুক্ত করলে AI Study Lab ও MCQ জেনারেটর চালু হবে।'
+            : 'GEMINI_API_KEY is not configured on the server. Add your key in Settings > Secrets to enable AI Study Lab & Quiz Generator.',
+      });
+      return;
+    }
+
+    try {
+      const ai = new GoogleGenAI({
+        apiKey,
+        httpOptions: {
+          headers: {
+            'User-Agent': 'aistudio-build',
+          },
+        },
+      });
+
+      if (mode === 'generate_mcq') {
+        const systemInstruction = `You are a senior secondary school teacher creating NCTB (Bangladesh Secondary Curriculum) Class ${classId} MCQ questions for Rani Bazar Model High School.
+Write all questions, 4 options, and short explanations in ${lang === 'bn' ? 'Bangla (বাংলা)' : 'English'} (use clear terminology appropriate for Bangladeshi Class ${classId} students).
+Each question must have exactly 4 distinct options and 1 clear correctIndex (0, 1, 2, or 3).`;
+
+        const prompt = `Create ${count} syllabus-aligned multiple-choice questions for Class ${classId}, Subject: "${subject}"${topic ? `, Chapter/Topic: "${topic}"` : ''}.`;
+
+        const response = await ai.models.generateContent({
+          model: 'gemini-4-hydrogen',
+          contents: prompt,
+          config: {
+            systemInstruction,
+            responseMimeType: 'application/json',
+            responseSchema: {
+              type: Type.ARRAY,
+              items: {
+                type: Type.OBJECT,
+                properties: {
+                  question: { type: Type.STRING },
+                  options: {
+                    type: Type.ARRAY,
+                    items: { type: Type.STRING },
+                  },
+                  correctIndex: { type: Type.INTEGER },
+                  explanation: { type: Type.STRING },
+                },
+                required: ['question', 'options', 'correctIndex', 'explanation'],
+              },
+            },
+          },
+        });
+
+        const parsed = JSON.parse(response.text || '[]');
+        if (!Array.isArray(parsed) || parsed.length === 0) {
+          res.status(502).json({ error: 'Model returned an empty question list.' });
+          return;
+        }
+
+        const sanitized = parsed.slice(0, 5).map((q: Record<string, unknown>, idx: number) => {
+          const opts = Array.isArray(q.options)
+            ? q.options.slice(0, 4).map((o) => String(o || '').trim())
+            : [];
+          while (opts.length < 4) opts.push(`Option ${opts.length + 1}`);
+          const rawIdx = Number(q.correctIndex);
+          const correctIndex = Number.isInteger(rawIdx) && rawIdx >= 0 && rawIdx < 4 ? rawIdx : 0;
+          return {
+            id: `ai-q-${Date.now()}-${idx}`,
+            question: String(q.question || '').trim(),
+            options: opts,
+            correctIndex,
+            explanation: String(q.explanation || '').trim(),
+          };
+        });
+
+        res.json({ questions: sanitized });
+        return;
+      }
+
+      const systemInstruction = `You are a patient, encouraging high school academic tutor at Rani Bazar Model High School (EIIN 105842), Bangladesh.
+Teach according to the Bangladesh NCTB Class ${classId} curriculum for Subject "${subject}".
+Respond in ${lang === 'bn' ? 'clear Bangla (বাংলা) with standard technical terms' : 'clear, structured English'}.
+Structure your lesson explanation cleanly into:
+1. Core Concept (মূল ধারণা)
+2. Step-by-Step Breakdown or Worked Example (ধাপে ধাপে ব্যাখ্যা / উদাহরণ)
+3. Quick Exam Tips / Key Formula (পরীক্ষার জন্য গুরুত্বপূর্ণ টিপস)`;
+
+      const prompt = `Class ${classId} · Subject: ${subject}${topic ? ` · Topic: ${topic}` : ''}
+Student question / request: ${question || `Explain "${topic}" clearly with an example.`}`;
+
+      const response = await ai.models.generateContent({
+        model: 'gemini-4-hydrogen',
+        contents: prompt,
+        config: {
+          systemInstruction,
+        },
+      });
+
+      res.json({ reply: response.text || '' });
+    } catch (err: unknown) {
+      const errMsg = err instanceof Error ? err.message : 'Failed to process AI study request.';
+      console.error('Server AI study helper error:', errMsg);
       res.status(500).json({ error: errMsg });
     }
   });

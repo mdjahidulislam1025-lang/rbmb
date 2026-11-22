@@ -82,12 +82,16 @@
   body:has(#printable-calendar) > *:not(#root),
   body:has(#printable-report-card) > *:not(#root),
   body:has(#printable-fee-receipt) > *:not(#root),
-  body:has(#printable-id-admit-card) > *:not(#root) {
+  body:has(#printable-id-admit-card) > *:not(#root),
+  body:has(#printable-certificate) > *:not(#root),
+  body:has(#printable-notice) > *:not(#root) {
     display: none !important;
   }
   body:has(#printable-report-card) #root,
   body:has(#printable-fee-receipt) #root,
-  body:has(#printable-id-admit-card) #root {
+  body:has(#printable-id-admit-card) #root,
+  body:has(#printable-certificate) #root,
+  body:has(#printable-notice) #root {
     background: white !important;
     color: black !important;
   }
@@ -95,7 +99,9 @@
   #printable-calendar,
   #printable-report-card,
   #printable-fee-receipt,
-  #printable-id-admit-card {
+  #printable-id-admit-card,
+  #printable-certificate,
+  #printable-notice {
     display: block !important;
     width: 100%;
     max-width: 100%;

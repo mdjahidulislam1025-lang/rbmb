@@ -20,19 +20,33 @@ import {
   Download,
   Megaphone,
   IdCard,
+  Sparkles,
+  Loader2,
+  AlertCircle,
 } from 'lucide-react';
 import { useApp } from '../App';
-import { FeeRecord } from '../types';
+import { CLASS_SUBJECTS } from '../constants';
+import { FeeRecord, ExamQuestion } from '../types';
 import { calculateOverallGpa, isSafeHttpUrl } from '../utils/security';
 import { exportCsv } from '../utils/exportUtils';
 import { AcademicReportCard } from './AcademicReportCard';
 import { FeeReceiptModal } from './FeeReceiptModal';
 import { StudentIdAdmitCard } from './StudentIdAdmitCard';
+import { StudentCertificateModal } from './StudentCertificateModal';
 
 const { useState, useMemo, useEffect } = React;
 const { Link } = RouterDom;
 
-type StudentTab = 'homework' | 'marks' | 'progress' | 'attendance' | 'fees' | 'materials' | 'leave' | 'notices';
+type StudentTab =
+  | 'homework'
+  | 'marks'
+  | 'progress'
+  | 'attendance'
+  | 'fees'
+  | 'materials'
+  | 'ai-tutor'
+  | 'leave'
+  | 'notices';
 
 export const StudentPortal: React.FC = () => {
   const {
@@ -64,6 +78,26 @@ export const StudentPortal: React.FC = () => {
   const [reportCardOpen, setReportCardOpen] = useState(false);
   const [activeReceipt, setActiveReceipt] = useState<FeeRecord | null>(null);
   const [idCardOpen, setIdCardOpen] = useState(false);
+  const [certificateOpen, setCertificateOpen] = useState(false);
+
+  // Phase 5: AI Study Lab state
+  const [studyMode, setStudyMode] = useState<'explain' | 'generate_mcq'>('explain');
+  const [studySubject, setStudySubject] = useState<string>(CLASS_SUBJECTS[selectedClassId]?.[0] || 'Mathematics');
+  const [studyTopic, setStudyTopic] = useState('');
+  const [studyQuestion, setStudyQuestion] = useState('');
+  const [studyLoading, setStudyLoading] = useState(false);
+  const [studyError, setStudyError] = useState<string | null>(null);
+  const [studyExplanation, setStudyExplanation] = useState<string | null>(null);
+  const [practiceQuestions, setPracticeQuestions] = useState<ExamQuestion[]>([]);
+  const [practiceAnswers, setPracticeAnswers] = useState<Record<string, number>>({});
+  const [practiceSubmitted, setPracticeSubmitted] = useState(false);
+
+  useEffect(() => {
+    const subs = CLASS_SUBJECTS[selectedClassId] || ['Mathematics'];
+    if (!subs.includes(studySubject)) {
+      setStudySubject(subs[0]);
+    }
+  }, [selectedClassId, studySubject]);
 
   useEffect(() => {
     if (user?.linkedChildClass) setSelectedClassId(user.linkedChildClass);
@@ -231,6 +265,62 @@ export const StudentPortal: React.FC = () => {
     notify(lang === 'bn' ? 'ছুটির আবেদন শিক্ষকের কাছে পাঠানো হয়েছে!' : 'Leave application sent to teacher!');
   };
 
+  const handleRunStudyLab = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (studyMode === 'explain' && !studyTopic.trim() && !studyQuestion.trim()) {
+      setStudyError(lang === 'bn' ? 'অধ্যায় বা প্রশ্ন লিখুন।' : 'Please enter a topic or question.');
+      return;
+    }
+    setStudyLoading(true);
+    setStudyError(null);
+    if (studyMode === 'explain') {
+      setStudyExplanation(null);
+    } else {
+      setPracticeQuestions([]);
+      setPracticeAnswers({});
+      setPracticeSubmitted(false);
+    }
+
+    try {
+      const res = await fetch('/api/ai-study-helper', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          mode: studyMode,
+          classId: selectedClassId,
+          subject: studySubject,
+          topic: studyTopic.trim(),
+          question: studyQuestion.trim(),
+          lang,
+          count: 4,
+        }),
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        setStudyError(
+          data?.error ||
+            (lang === 'bn'
+              ? 'AI Study Lab থেকে উত্তর পাওয়া যায়নি।'
+              : 'Unable to fetch AI Study Lab response.')
+        );
+        return;
+      }
+      if (studyMode === 'explain') {
+        setStudyExplanation(data?.reply || '');
+      } else if (Array.isArray(data?.questions)) {
+        setPracticeQuestions(data.questions);
+      }
+    } catch {
+      setStudyError(
+        lang === 'bn'
+          ? 'সার্ভারের সাথে সংযোগ করতে সমস্যা হয়েছে। পরে আবার চেষ্টা করুন।'
+          : 'Could not reach the study assistant server. Please try again.'
+      );
+    } finally {
+      setStudyLoading(false);
+    }
+  };
+
   return (
     <div className="space-y-6">
       {toast && (
@@ -288,6 +378,14 @@ export const StudentPortal: React.FC = () => {
             <IdCard className="w-3.5 h-3.5 text-emerald-700 dark:text-emerald-400" />
             {lang === 'bn' ? 'আইডি ও প্রবেশপত্র' : 'ID & Admit Card'}
           </button>
+          <button
+            type="button"
+            onClick={() => setCertificateOpen(true)}
+            className="px-4 py-2.5 rounded-xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 hover:border-emerald-500 flex items-center gap-1.5 whitespace-nowrap"
+          >
+            <Award className="w-3.5 h-3.5 text-emerald-700 dark:text-emerald-400" />
+            {lang === 'bn' ? 'প্রত্যয়নপত্র ও সনদ' : 'Certificates'}
+          </button>
           <Link
             to="/exams"
             className="px-4 py-2.5 rounded-xl bg-emerald-700 hover:bg-emerald-800 text-white flex items-center gap-1.5 whitespace-nowrap"
@@ -341,6 +439,7 @@ export const StudentPortal: React.FC = () => {
           { id: 'attendance', label: lang === 'bn' ? 'উপস্থিতি' : 'Attendance', icon: ClipboardCheck },
           { id: 'fees', label: lang === 'bn' ? 'ফি ও রশিদ' : 'Fees & Receipts', icon: Receipt },
           { id: 'materials', label: lang === 'bn' ? 'বই ও নোটস' : 'Study Materials', icon: FileText },
+          { id: 'ai-tutor', label: lang === 'bn' ? 'AI স্টাডি ল্যাব' : 'AI Study Lab', icon: Sparkles },
           { id: 'leave', label: lang === 'bn' ? 'ছুটির আবেদন' : 'Apply Leave', icon: CalendarPlus },
           { id: 'notices', label: lang === 'bn' ? 'নোটিশ' : 'Notices', icon: Bell },
         ].map((tab) => {
@@ -739,6 +838,263 @@ export const StudentPortal: React.FC = () => {
         </div>
       )}
 
+      {/* AI Study Lab (Topic Explainer & Practice MCQ Generator) */}
+      {activeTab === 'ai-tutor' && (
+        <div className="grid lg:grid-cols-12 gap-6">
+          <form
+            onSubmit={handleRunStudyLab}
+            className="lg:col-span-5 bg-white dark:bg-slate-900 p-6 rounded-3xl border border-slate-200 dark:border-slate-800 space-y-4 h-fit"
+          >
+            <div className="flex items-center justify-between gap-2">
+              <div className="flex items-center gap-2">
+                <Sparkles className="w-4 h-4 text-emerald-700 dark:text-emerald-400" />
+                <h4 className="font-extrabold text-base">
+                  {lang === 'bn' ? 'NCTB স্টাডি ও অনুশীলন ল্যাব' : 'NCTB AI Study Lab'}
+                </h4>
+              </div>
+              <span className="text-[11px] font-bold px-2.5 py-0.5 rounded-lg bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 tabular-nums">
+                Class {selectedClassId}
+              </span>
+            </div>
+
+            <div className="grid grid-cols-2 gap-1.5 p-1 rounded-xl bg-slate-100 dark:bg-slate-800">
+              <button
+                type="button"
+                onClick={() => {
+                  setStudyMode('explain');
+                  setStudyError(null);
+                }}
+                className={`py-2 rounded-lg text-xs font-bold transition-colors ${
+                  studyMode === 'explain'
+                    ? 'bg-white dark:bg-slate-900 text-emerald-700 dark:text-emerald-300 shadow-sm'
+                    : 'text-slate-500 dark:text-slate-300'
+                }`}
+              >
+                {lang === 'bn' ? 'টপিক ব্যাখ্যা' : 'Topic Explainer'}
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  setStudyMode('generate_mcq');
+                  setStudyError(null);
+                }}
+                className={`py-2 rounded-lg text-xs font-bold transition-colors ${
+                  studyMode === 'generate_mcq'
+                    ? 'bg-white dark:bg-slate-900 text-emerald-700 dark:text-emerald-300 shadow-sm'
+                    : 'text-slate-500 dark:text-slate-300'
+                }`}
+              >
+                {lang === 'bn' ? 'অনুশীলন MCQ কুইজ' : 'Practice MCQ Quiz'}
+              </button>
+            </div>
+
+            <div>
+              <label className="block text-[11px] font-bold uppercase text-slate-400 mb-1">
+                {lang === 'bn' ? 'বিষয়' : 'Subject'}
+              </label>
+              <select
+                value={studySubject}
+                onChange={(e) => setStudySubject(e.target.value)}
+                className="w-full px-3.5 py-2.5 rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-sm font-bold"
+              >
+                {(CLASS_SUBJECTS[selectedClassId] || ['Bangla', 'English', 'Mathematics', 'Science', 'ICT']).map(
+                  (sub) => (
+                    <option key={sub} value={sub}>
+                      {sub}
+                    </option>
+                  )
+                )}
+              </select>
+            </div>
+
+            <div>
+              <label className="block text-[11px] font-bold uppercase text-slate-400 mb-1">
+                {lang === 'bn' ? 'অধ্যায় বা টপিক' : 'Chapter or Topic'}
+              </label>
+              <input
+                value={studyTopic}
+                onChange={(e) => setStudyTopic(e.target.value)}
+                placeholder={
+                  lang === 'bn'
+                    ? 'যেমন: পিথাগোরাসের উপপাদ্য / আলোর প্রতিসরণ / Tense'
+                    : 'e.g. Pythagoras Theorem, Photosynthesis, Tense'
+                }
+                className="w-full px-3.5 py-2.5 rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-sm"
+              />
+            </div>
+
+            {studyMode === 'explain' && (
+              <div>
+                <label className="block text-[11px] font-bold uppercase text-slate-400 mb-1">
+                  {lang === 'bn' ? 'আপনার প্রশ্ন (ঐচ্ছিক)' : 'Specific Question (optional)'}
+                </label>
+                <textarea
+                  rows={3}
+                  value={studyQuestion}
+                  onChange={(e) => setStudyQuestion(e.target.value)}
+                  placeholder={
+                    lang === 'bn'
+                      ? 'উদাহরণসহ সহজ ভাষায় বুঝিয়ে দিন...'
+                      : 'Ask any syllabus question or request a step-by-step worked example...'
+                  }
+                  className="w-full px-3.5 py-2.5 rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-sm"
+                />
+              </div>
+            )}
+
+            <button
+              type="submit"
+              disabled={studyLoading}
+              className="w-full py-3 rounded-xl bg-emerald-700 hover:bg-emerald-800 text-white text-xs font-bold inline-flex items-center justify-center gap-2 disabled:opacity-50"
+            >
+              {studyLoading ? <Loader2 className="w-4 h-4 animate-spin" /> : <Sparkles className="w-4 h-4" />}
+              {studyLoading
+                ? lang === 'bn'
+                  ? 'প্রস্তুত হচ্ছে...'
+                  : 'Generating...'
+                : studyMode === 'explain'
+                ? lang === 'bn'
+                  ? 'ব্যাখ্যা দেখুন'
+                  : 'Explain Topic'
+                : lang === 'bn'
+                ? '৪টি অনুশীলন MCQ তৈরি করুন'
+                : 'Generate 4 Practice MCQs'}
+            </button>
+          </form>
+
+          <div className="lg:col-span-7 space-y-4">
+            {studyError && (
+              <div className="p-4 rounded-2xl bg-amber-50 dark:bg-amber-950/40 border border-amber-200 dark:border-amber-800 text-amber-800 dark:text-amber-300 text-xs font-semibold flex items-start gap-2.5">
+                <AlertCircle className="w-4 h-4 shrink-0 mt-0.5" />
+                <span>{studyError}</span>
+              </div>
+            )}
+
+            {studyMode === 'explain' && (
+              <div className="bg-white dark:bg-slate-900 p-6 rounded-3xl border border-slate-200 dark:border-slate-800 min-h-[260px]">
+                {studyExplanation ? (
+                  <div className="space-y-3">
+                    <div className="flex items-center justify-between border-b border-slate-100 dark:border-slate-800 pb-3">
+                      <span className="text-xs font-extrabold uppercase text-emerald-700 dark:text-emerald-400">
+                        Class {selectedClassId} · {studySubject}
+                      </span>
+                      <span className="text-[11px] font-bold text-slate-400">
+                        {lang === 'bn' ? 'এআই টিউটর নোট' : 'Tutor Breakdown'}
+                      </span>
+                    </div>
+                    <div className="text-sm text-slate-700 dark:text-slate-200 whitespace-pre-wrap leading-relaxed">
+                      {studyExplanation}
+                    </div>
+                  </div>
+                ) : (
+                  <div className="h-full flex flex-col items-center justify-center text-center py-12 space-y-2 text-slate-400">
+                    <Sparkles className="w-8 h-8 text-emerald-600/60" />
+                    <p className="text-sm font-bold">
+                      {lang === 'bn'
+                        ? 'বাম পাশে বিষয় ও অধ্যায় লিখে ব্যাখ্যা বা উদাহরণ অনুরোধ করুন।'
+                        : 'Enter any chapter or syllabus question on the left to see a structured explanation.'}
+                    </p>
+                  </div>
+                )}
+              </div>
+            )}
+
+            {studyMode === 'generate_mcq' && (
+              <div className="space-y-3">
+                {practiceQuestions.length === 0 ? (
+                  <div className="bg-white dark:bg-slate-900 p-12 rounded-3xl border border-slate-200 dark:border-slate-800 text-center space-y-2 text-slate-400">
+                    <Trophy className="w-8 h-8 mx-auto text-emerald-600/60" />
+                    <p className="text-sm font-bold">
+                      {lang === 'bn'
+                        ? 'আপনার শ্রেণীর যেকোনো অধ্যায়ের উপর তাৎক্ষণিক ৪টি MCQ অনুশীলন কুইজ তৈরি করুন।'
+                        : 'Generate an interactive 4-question practice quiz for any NCTB chapter.'}
+                    </p>
+                  </div>
+                ) : (
+                  <>
+                    {practiceQuestions.map((q, idx) => {
+                      const chosen = practiceAnswers[q.id];
+                      return (
+                        <div
+                          key={q.id}
+                          className="bg-white dark:bg-slate-900 p-5 rounded-2xl border border-slate-200 dark:border-slate-800 space-y-3"
+                        >
+                          <p className="font-bold text-sm text-slate-900 dark:text-white">
+                            <span className="text-emerald-700 dark:text-emerald-400 tabular-nums mr-1.5">
+                              Q{idx + 1}.
+                            </span>
+                            {q.question}
+                          </p>
+                          <div className="grid sm:grid-cols-2 gap-2">
+                            {q.options.map((opt, oIdx) => {
+                              const isSelected = chosen === oIdx;
+                              const isCorrect = q.correctIndex === oIdx;
+                              let cls =
+                                'bg-slate-50 dark:bg-slate-800 border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-200';
+                              if (practiceSubmitted) {
+                                if (isCorrect) {
+                                  cls =
+                                    'bg-emerald-50 dark:bg-emerald-950/60 border-emerald-500 text-emerald-800 dark:text-emerald-300';
+                                } else if (isSelected) {
+                                  cls =
+                                    'bg-red-50 dark:bg-red-950/60 border-red-400 text-red-700 dark:text-red-300';
+                                }
+                              } else if (isSelected) {
+                                cls =
+                                  'bg-emerald-700 border-emerald-700 text-white';
+                              }
+                              return (
+                                <button
+                                  key={oIdx}
+                                  type="button"
+                                  disabled={practiceSubmitted}
+                                  onClick={() => setPracticeAnswers((p) => ({ ...p, [q.id]: oIdx }))}
+                                  className={`p-3 rounded-xl border text-left text-xs font-semibold transition-colors ${cls}`}
+                                >
+                                  {String.fromCharCode(65 + oIdx)}. {opt}
+                                </button>
+                              );
+                            })}
+                          </div>
+                          {practiceSubmitted && q.explanation && (
+                            <p className="text-xs text-slate-600 dark:text-slate-300 bg-slate-50 dark:bg-slate-800 p-3 rounded-xl">
+                              <strong>{lang === 'bn' ? 'ব্যাখ্যা:' : 'Explanation:'}</strong> {q.explanation}
+                            </p>
+                          )}
+                        </div>
+                      );
+                    })}
+                    <div className="flex flex-wrap items-center justify-between gap-3 bg-white dark:bg-slate-900 p-4 rounded-2xl border border-slate-200 dark:border-slate-800">
+                      {practiceSubmitted ? (
+                        <p className="text-sm font-black text-emerald-700 dark:text-emerald-400 tabular-nums">
+                          {lang === 'bn' ? 'আপনার স্কোর:' : 'Your Score:'}{' '}
+                          {practiceQuestions.filter((q) => practiceAnswers[q.id] === q.correctIndex).length} /{' '}
+                          {practiceQuestions.length}
+                        </p>
+                      ) : (
+                        <p className="text-xs text-slate-500 font-semibold">
+                          {lang === 'bn'
+                            ? 'উত্তর নির্বাচন করে নিচে ফলাফল যাচাই করুন।'
+                            : 'Select answers above then check your score.'}
+                        </p>
+                      )}
+                      <button
+                        type="button"
+                        onClick={() => setPracticeSubmitted(true)}
+                        disabled={practiceSubmitted}
+                        className="px-5 py-2 rounded-xl bg-emerald-700 hover:bg-emerald-800 text-white text-xs font-bold disabled:opacity-40"
+                      >
+                        {lang === 'bn' ? 'উত্তর যাচাই করুন' : 'Check Answers'}
+                      </button>
+                    </div>
+                  </>
+                )}
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+
       {/* Leave */}
       {activeTab === 'leave' && (
         <div className="grid lg:grid-cols-12 gap-6">
@@ -894,6 +1250,16 @@ export const StudentPortal: React.FC = () => {
         roll={selectedRoll.trim() || '01'}
         section={matchedStudent?.section || 'A'}
         guardianMobile={matchedStudent?.guardianMobile}
+      />
+      <StudentCertificateModal
+        open={certificateOpen}
+        onClose={() => setCertificateOpen(false)}
+        studentName={matchedStudent?.name || user?.name || 'Student'}
+        classId={selectedClassId}
+        roll={selectedRoll.trim() || '01'}
+        section={matchedStudent?.section || 'A'}
+        gpa={gpaSummary.gpa}
+        attendancePct={attendancePct}
       />
     </div>
   );

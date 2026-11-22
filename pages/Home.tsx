@@ -230,7 +230,7 @@ const Home: React.FC = () => {
                 {t(settings.name)}
               </h1>
 
-              <div className="space-y-1.5 border-l-2 border-emerald-400 pl-4">
+              <div className="space-y-1.5">
                 <p className="text-base md:text-lg font-bold text-yellow-300">
                   {t(settings.tagline || CAMPUS_TAGLINE)}
                 </p>

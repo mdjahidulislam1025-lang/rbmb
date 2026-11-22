@@ -27,6 +27,7 @@ import { exportCsv } from '../utils/exportUtils';
 import { AcademicReportCard } from './AcademicReportCard';
 import { FeeReceiptModal } from './FeeReceiptModal';
 import { StudentIdAdmitCard } from './StudentIdAdmitCard';
+import { StudentCertificateModal } from './StudentCertificateModal';
 
 const { useState, useMemo, useEffect } = React;
 const { Link } = RouterDom;
@@ -64,6 +65,7 @@ export const ParentPortal: React.FC = () => {
   const [reportCardOpen, setReportCardOpen] = useState(false);
   const [activeReceipt, setActiveReceipt] = useState<FeeRecord | null>(null);
   const [idCardOpen, setIdCardOpen] = useState(false);
+  const [certificateOpen, setCertificateOpen] = useState(false);
 
   const [msgForm, setMsgForm] = useState({
     teacherName: teachers[0] ? t(teachers[0].name) : 'Md. Abdul Karim',
@@ -318,6 +320,14 @@ export const ParentPortal: React.FC = () => {
             >
               <IdCard className="w-3.5 h-3.5 text-emerald-700 dark:text-emerald-400" />
               {lang === 'bn' ? 'সন্তানের আইডি ও প্রবেশপত্র' : 'ID & Admit Card'}
+            </button>
+            <button
+              type="button"
+              onClick={() => setCertificateOpen(true)}
+              className="px-4 py-2.5 rounded-xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 hover:border-emerald-500 flex items-center gap-1.5 whitespace-nowrap"
+            >
+              <Award className="w-3.5 h-3.5 text-emerald-700 dark:text-emerald-400" />
+              {lang === 'bn' ? 'প্রত্যয়নপত্র / সনদ' : 'Certificates'}
             </button>
             <Link
               to="/routine"
@@ -832,6 +842,16 @@ export const ParentPortal: React.FC = () => {
         roll={childRoll.trim() || '01'}
         section={matchedChild?.section || 'A'}
         guardianMobile={matchedChild?.guardianMobile}
+      />
+      <StudentCertificateModal
+        open={certificateOpen}
+        onClose={() => setCertificateOpen(false)}
+        studentName={matchedChild?.name || user?.linkedChildName || `Student #${childRoll}`}
+        classId={childClass}
+        roll={childRoll.trim() || '01'}
+        section={matchedChild?.section || 'A'}
+        gpa={gpaStats.gpa}
+        attendancePct={attendancePct}
       />
     </div>
   );

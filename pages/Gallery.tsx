@@ -177,7 +177,7 @@ const Gallery: React.FC = () => {
                   </div>
                 )}
                 {item.category && (
-                  <span className="absolute top-3 left-3 bg-black/60 backdrop-blur-md text-white text-[10px] font-black uppercase px-3 py-1 rounded-full">
+                  <span className="absolute top-3 left-3 bg-black/65 backdrop-blur-md text-white text-[10px] font-black uppercase px-2.5 py-1 rounded-lg">
                     {item.category}
                   </span>
                 )}
