@@ -44,6 +44,7 @@ import {
   ExamQuestion,
   PaymentMethod,
   SchoolStudent,
+  Teacher,
 } from '../types';
 import { calculateGrade, isSafeHttpUrl } from '../utils/security';
 import { exportCsv } from '../utils/exportUtils';
@@ -51,6 +52,7 @@ import { compressImageFile } from '../utils/imageUtils';
 import { FeeReceiptModal } from './FeeReceiptModal';
 import { StudentIdAdmitCard, CardMode } from './StudentIdAdmitCard';
 import { StudentCertificateModal } from './StudentCertificateModal';
+import { TeacherIdCardModal } from './TeacherIdCardModal';
 
 const { useState, useEffect, useMemo } = React;
 
@@ -82,6 +84,9 @@ export const TeacherPortal: React.FC = () => {
     addStudent,
     updateStudent,
     deleteStudent,
+    teachers,
+    updateTeacher,
+    updateUser,
     attendanceRecords,
     saveAttendance,
     homeworkList,
@@ -128,7 +133,37 @@ export const TeacherPortal: React.FC = () => {
   const [idCardStudent, setIdCardStudent] = useState<SchoolStudent | null>(null);
   const [idCardMode, setIdCardMode] = useState<CardMode>('admit');
   const [certStudent, setCertStudent] = useState<SchoolStudent | null>(null);
+  const [teacherIdCardOpen, setTeacherIdCardOpen] = useState(false);
   const todayStr = new Date().toISOString().split('T')[0];
+
+  const matchedTeacherIdx = useMemo(() => {
+    const uName = (user?.name || '').trim().toLowerCase();
+    if (!uName) return -1;
+    return teachers.findIndex(
+      (tc) =>
+        tc.name.en.trim().toLowerCase() === uName ||
+        tc.name.bn.trim().toLowerCase() === uName
+    );
+  }, [teachers, user?.name]);
+
+  const resolvedTeacherCardProfile: Teacher = useMemo(() => {
+    if (matchedTeacherIdx !== -1) {
+      const matched = teachers[matchedTeacherIdx];
+      return { ...matched, photo: matched.photo || user?.photo || '' };
+    }
+    return {
+      id: user?.userId || `t-${teachers.length + 1}`,
+      name: { bn: user?.name || 'শিক্ষক', en: user?.name || 'Teacher' },
+      designation: {
+        bn: user?.designation || 'সহকারী শিক্ষক',
+        en: user?.designation || 'Assistant Teacher',
+      },
+      subject: { bn: 'সাধারণ বিভাগ', en: 'Faculty Member' },
+      qualification: { bn: 'আরবিএমবি ডিজিটাল ক্যাম্পাস', en: 'Rani Bazar Model High School' },
+      photo: user?.photo || '',
+      isPublic: true,
+    };
+  }, [matchedTeacherIdx, teachers, user]);
 
   const openStudentCard = (st: SchoolStudent, mode: CardMode) => {
     setIdCardMode(mode);
@@ -601,14 +636,24 @@ export const TeacherPortal: React.FC = () => {
               : 'Local storage mode — connect Google to sync to cloud.'}
           </span>
         </div>
-        {!isCloudTeacher && (
+        <div className="flex flex-wrap items-center gap-2">
           <button
-            onClick={() => void signInWithGoogle()}
-            className="px-4 py-2 rounded-xl bg-slate-900 text-white text-xs font-bold"
+            type="button"
+            onClick={() => setTeacherIdCardOpen(true)}
+            className="px-4 py-2 rounded-xl bg-emerald-700 hover:bg-emerald-800 text-white text-xs font-bold inline-flex items-center gap-2 shadow-sm transition-colors"
           >
-            Google Sync
+            <IdCard className="w-4 h-4" />
+            <span>{lang === 'bn' ? 'আমার শিক্ষক আইডি কার্ড' : 'My Teacher ID Card'}</span>
           </button>
-        )}
+          {!isCloudTeacher && (
+            <button
+              onClick={() => void signInWithGoogle()}
+              className="px-4 py-2 rounded-xl bg-slate-900 text-white text-xs font-bold"
+            >
+              Google Sync
+            </button>
+          )}
+        </div>
       </div>
 
       {/* Tabs */}
@@ -1887,6 +1932,23 @@ export const TeacherPortal: React.FC = () => {
           section={certStudent.section}
         />
       )}
+      <TeacherIdCardModal
+        open={teacherIdCardOpen}
+        onClose={() => setTeacherIdCardOpen(false)}
+        teacher={resolvedTeacherCardProfile}
+        teacherIndex={matchedTeacherIdx !== -1 ? matchedTeacherIdx : teachers.length}
+        allTeachers={user?.role === 'admin' ? teachers : undefined}
+        phoneOverride={user?.phone}
+        onSavePhoto={(teacherId, photoDataUrl) => {
+          if (user?.role === 'admin') {
+            const target = teachers.find((tc) => tc.id === teacherId);
+            if (target) updateTeacher({ ...target, photo: photoDataUrl });
+          } else if (user) {
+            updateUser({ ...user, photo: photoDataUrl });
+          }
+          notify(lang === 'bn' ? 'শিক্ষকের ছবি সংরক্ষিত হয়েছে!' : 'Teacher photo saved!');
+        }}
+      />
     </div>
   );
 };

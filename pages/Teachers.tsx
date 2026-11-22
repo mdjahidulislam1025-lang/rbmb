@@ -1,21 +1,24 @@
 import * as React from 'react';
-import { GraduationCap, Camera, Trash2, PlusCircle, ShieldCheck, X, Save, Upload, Pencil } from 'lucide-react';
+import { GraduationCap, Camera, Trash2, PlusCircle, ShieldCheck, X, Save, Upload, Pencil, IdCard } from 'lucide-react';
 import { TRANSLATIONS, SCHOOL_NAME } from '../constants';
 import { useApp } from '../App';
 import { Teacher } from '../types';
 import { compressImageFile } from '../utils/imageUtils';
+import { TeacherIdCardModal } from '../components/TeacherIdCardModal';
 
 const { useState, useRef } = React;
 
 const Teachers: React.FC = () => {
-  const { lang, t, user, teachers, addTeacher, updateTeacher, deleteTeacher } = useApp();
+  const { lang, t, user, teachers, addTeacher, updateTeacher, deleteTeacher, updateUser } = useApp();
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingItem, setEditingItem] = useState<Teacher | null>(null);
   const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
   const [photoBase64, setPhotoBase64] = useState('');
+  const [selectedIdTeacher, setSelectedIdTeacher] = useState<{ teacher: Teacher; index: number } | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const isAdmin = user?.role === 'admin';
+  const canIssueTeacherId = isAdmin || user?.role === 'teacher';
 
   const handlePhotoUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -87,18 +90,30 @@ const Teachers: React.FC = () => {
             Dedicated Educators of {t(SCHOOL_NAME)}
           </p>
         </div>
-        {isAdmin && (
-          <button
-            onClick={handleOpenAdd}
-            className="flex items-center gap-2 bg-green-700 text-white px-6 py-3.5 rounded-2xl font-black uppercase tracking-wider text-xs hover:bg-green-800 shadow-lg transition-all"
-          >
-            <PlusCircle className="w-4 h-4" /> {lang === 'bn' ? 'নতুন শিক্ষক যোগ করুন' : 'Add New Teacher'}
-          </button>
-        )}
+        <div className="flex flex-wrap items-center gap-3">
+          {canIssueTeacherId && teachers.length > 0 && (
+            <button
+              type="button"
+              onClick={() => setSelectedIdTeacher({ teacher: teachers[0], index: 0 })}
+              className="flex items-center gap-2 bg-white dark:bg-slate-900 border border-emerald-300 dark:border-emerald-700 text-emerald-800 dark:text-emerald-300 px-5 py-3.5 rounded-2xl font-black uppercase tracking-wider text-xs hover:bg-emerald-50 dark:hover:bg-emerald-950/60 shadow-sm transition-all"
+            >
+              <IdCard className="w-4 h-4" />
+              {lang === 'bn' ? `শিক্ষক আইডি কার্ড (${teachers.length})` : `All Teacher ID Cards (${teachers.length})`}
+            </button>
+          )}
+          {isAdmin && (
+            <button
+              onClick={handleOpenAdd}
+              className="flex items-center gap-2 bg-green-700 text-white px-6 py-3.5 rounded-2xl font-black uppercase tracking-wider text-xs hover:bg-green-800 shadow-lg transition-all"
+            >
+              <PlusCircle className="w-4 h-4" /> {lang === 'bn' ? 'নতুন শিক্ষক যোগ করুন' : 'Add New Teacher'}
+            </button>
+          )}
+        </div>
       </div>
 
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
-        {teachers.map((teacher) => {
+        {teachers.map((teacher, idx) => {
           const displayName = t(teacher.name);
           return (
             <div
@@ -184,6 +199,16 @@ const Teachers: React.FC = () => {
                     <span>{t(teacher.designation)}</span>
                   </div>
                 </div>
+                {canIssueTeacherId && (
+                  <button
+                    type="button"
+                    onClick={() => setSelectedIdTeacher({ teacher, index: idx })}
+                    className="w-full py-2.5 px-3 rounded-xl bg-emerald-700 hover:bg-emerald-800 text-white text-xs font-bold inline-flex items-center justify-center gap-1.5 transition-colors"
+                  >
+                    <IdCard className="w-4 h-4" />
+                    {lang === 'bn' ? 'শিক্ষক আইডি কার্ড' : 'Teacher ID Card'}
+                  </button>
+                )}
               </div>
             </div>
           );
@@ -288,6 +313,35 @@ const Teachers: React.FC = () => {
             </form>
           </div>
         </div>
+      )}
+
+      {selectedIdTeacher && (
+        <TeacherIdCardModal
+          open={Boolean(selectedIdTeacher)}
+          onClose={() => setSelectedIdTeacher(null)}
+          teacher={selectedIdTeacher.teacher}
+          teacherIndex={selectedIdTeacher.index}
+          allTeachers={teachers}
+          onSavePhoto={
+            isAdmin
+              ? (teacherId, photoDataUrl) => {
+                  const target = teachers.find((tc) => tc.id === teacherId);
+                  if (target) updateTeacher({ ...target, photo: photoDataUrl });
+                }
+              : user?.role === 'teacher'
+              ? (teacherId, photoDataUrl) => {
+                  const target = teachers.find((tc) => tc.id === teacherId);
+                  if (
+                    target &&
+                    (target.name.en.trim().toLowerCase() === user.name.trim().toLowerCase() ||
+                      target.name.bn.trim().toLowerCase() === user.name.trim().toLowerCase())
+                  ) {
+                    updateUser({ ...user, photo: photoDataUrl });
+                  }
+                }
+              : undefined
+          }
+        />
       )}
     </div>
   );
