@@ -19,6 +19,8 @@ import {
   Download,
   Megaphone,
   IdCard,
+  ClipboardList,
+  FileBadge2,
 } from 'lucide-react';
 import { useApp } from '../App';
 import { FeeRecord } from '../types';
@@ -26,7 +28,7 @@ import { calculateOverallGpa } from '../utils/security';
 import { exportCsv } from '../utils/exportUtils';
 import { AcademicReportCard } from './AcademicReportCard';
 import { FeeReceiptModal } from './FeeReceiptModal';
-import { StudentIdAdmitCard } from './StudentIdAdmitCard';
+import { StudentIdAdmitCard, CardMode } from './StudentIdAdmitCard';
 import { StudentCertificateModal } from './StudentCertificateModal';
 
 const { useState, useMemo, useEffect } = React;
@@ -65,7 +67,13 @@ export const ParentPortal: React.FC = () => {
   const [reportCardOpen, setReportCardOpen] = useState(false);
   const [activeReceipt, setActiveReceipt] = useState<FeeRecord | null>(null);
   const [idCardOpen, setIdCardOpen] = useState(false);
+  const [idCardMode, setIdCardMode] = useState<CardMode>('admit');
   const [certificateOpen, setCertificateOpen] = useState(false);
+
+  const openCardModal = (mode: CardMode) => {
+    setIdCardMode(mode);
+    setIdCardOpen(true);
+  };
 
   const [msgForm, setMsgForm] = useState({
     teacherName: teachers[0] ? t(teachers[0].name) : 'Md. Abdul Karim',
@@ -315,11 +323,27 @@ export const ParentPortal: React.FC = () => {
           <div className="flex flex-wrap gap-2 text-xs font-bold">
             <button
               type="button"
-              onClick={() => setIdCardOpen(true)}
-              className="px-4 py-2.5 rounded-xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 hover:border-emerald-500 flex items-center gap-1.5 whitespace-nowrap"
+              onClick={() => openCardModal('admit')}
+              className="px-3.5 py-2.5 rounded-xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 hover:border-emerald-500 flex items-center gap-1.5 whitespace-nowrap"
+            >
+              <ClipboardList className="w-3.5 h-3.5 text-emerald-700 dark:text-emerald-400" />
+              {lang === 'bn' ? 'অ্যাডমিট কার্ড' : 'Admit Card'}
+            </button>
+            <button
+              type="button"
+              onClick={() => openCardModal('reg')}
+              className="px-3.5 py-2.5 rounded-xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 hover:border-emerald-500 flex items-center gap-1.5 whitespace-nowrap"
+            >
+              <FileBadge2 className="w-3.5 h-3.5 text-emerald-700 dark:text-emerald-400" />
+              {lang === 'bn' ? 'রেজিস্ট্রেশন কার্ড' : 'Reg Card'}
+            </button>
+            <button
+              type="button"
+              onClick={() => openCardModal('id')}
+              className="px-3.5 py-2.5 rounded-xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 hover:border-emerald-500 flex items-center gap-1.5 whitespace-nowrap"
             >
               <IdCard className="w-3.5 h-3.5 text-emerald-700 dark:text-emerald-400" />
-              {lang === 'bn' ? 'সন্তানের আইডি ও প্রবেশপত্র' : 'ID & Admit Card'}
+              {lang === 'bn' ? 'আইডি কার্ড' : 'ID Card'}
             </button>
             <button
               type="button"
@@ -841,7 +865,12 @@ export const ParentPortal: React.FC = () => {
         classId={childClass}
         roll={childRoll.trim() || '01'}
         section={matchedChild?.section || 'A'}
-        guardianMobile={matchedChild?.guardianMobile}
+        guardianMobile={matchedChild?.guardianMobile || user?.phone}
+        guardianName={matchedChild?.guardianName || user?.name}
+        photoUrl={matchedChild?.photo}
+        registrationDate={matchedChild?.registrationDate}
+        session={matchedChild?.session}
+        initialMode={idCardMode}
       />
       <StudentCertificateModal
         open={certificateOpen}

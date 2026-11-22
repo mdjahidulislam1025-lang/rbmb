@@ -207,7 +207,7 @@ interface AppContextType {
   isCloudTeacher: boolean;
   cloudUsers: CloudUserProfile[];
   updateCloudUserRole: (uid: string, role: BaseUserRole) => Promise<void>;
-  signInWithGoogle: () => Promise<boolean>;
+  signInWithGoogle: () => Promise<{ ok: boolean; error?: string; code?: string; isAdmin?: boolean }>;
   signInWithEmail: (email: string, password: string) => Promise<{ ok: boolean; error?: string; needsVerification?: boolean }>;
   registerWithEmail: (payload: {
     name: string;
@@ -808,13 +808,13 @@ const App: React.FC = () => {
     const savedUser = safeLocalGet<AuthUser | null>('school_user', null);
     if (savedUser && savedUser.role !== 'admin') {
       setUser(stripPlaintextPassword(savedUser));
-    } else if (savedUser?.role === 'admin') {
+    } else if (savedUser?.role === 'admin' && !auth.currentUser) {
       localStorage.removeItem('school_user');
     }
     testFirestoreConnection();
   }, []);
 
-  const syncFirebaseUserSession = async (fbUser: FirebaseUser | null) => {
+  const syncFirebaseUserSession = async (fbUser: FirebaseUser | null): Promise<AuthUser | null> => {
     const seq = ++authSeqRef.current;
     setResolvedUid(null);
 
@@ -823,7 +823,7 @@ const App: React.FC = () => {
       setIsCloudAdmin(false);
       setIsCloudTeacher(false);
       setCloudUsers([]);
-      return;
+      return null;
     }
 
     const isVerified = fbUser.emailVerified === true;
@@ -833,7 +833,7 @@ const App: React.FC = () => {
       setCloudUsers([]);
       setFirebaseUser(fbUser);
       setResolvedUid(fbUser.uid);
-      return;
+      return null;
     }
 
     const isBootstrap = fbUser.email?.toLowerCase() === BOOTSTRAPPED_ADMIN_EMAIL.toLowerCase();
@@ -848,10 +848,12 @@ const App: React.FC = () => {
       }
     }
 
-    if (authSeqRef.current !== seq) return;
+    if (authSeqRef.current !== seq) return null;
 
     let resolvedRole: BaseUserRole = adminStatus ? 'admin' : 'student';
     let extraChild: Partial<AuthUser> = {};
+    let syncedName = fbUser.displayName || fbUser.email || 'User';
+    let syncedPhoto = fbUser.photoURL || '';
 
     const pendingKey = `pending_profile_${fbUser.uid}`;
     const pendingProfile = safeLocalGet<{
@@ -875,6 +877,8 @@ const App: React.FC = () => {
         resolvedRole = initialRole;
         const safeName = (pendingProfile?.name || fbUser.displayName || fbUser.email || 'User').slice(0, 150);
         const safePhoto = (pendingProfile?.photo || fbUser.photoURL || '').slice(0, 600000);
+        syncedName = safeName;
+        syncedPhoto = safePhoto;
         await setDoc(userRef, {
           uid: sanitizeFirestoreId(fbUser.uid),
           name: safeName,
@@ -897,6 +901,8 @@ const App: React.FC = () => {
         const d = userSnap.data();
         const docRole = d.role as BaseUserRole;
         resolvedRole = adminStatus ? 'admin' : (docRole || 'student');
+        syncedName = pendingProfile?.name || d.name || syncedName;
+        syncedPhoto = pendingProfile?.photo || d.photo || syncedPhoto;
         extraChild = {
           ...(d.linkedChildClass ? { linkedChildClass: d.linkedChildClass } : {}),
           ...(d.linkedChildRoll ? { linkedChildRoll: d.linkedChildRoll } : {}),
@@ -910,30 +916,28 @@ const App: React.FC = () => {
         }
         if (pendingProfile) localStorage.removeItem(pendingKey);
       }
-
-      if (authSeqRef.current !== seq) return;
-
-      const userSnapAfter = userSnap.exists() ? userSnap.data() : null;
-      const syncedAuthUser: AuthUser = {
-        role: resolvedRole,
-        name: pendingProfile?.name || userSnapAfter?.name || fbUser.displayName || fbUser.email || 'User',
-        userId: fbUser.uid,
-        email: fbUser.email || '',
-        photo: pendingProfile?.photo || userSnapAfter?.photo || fbUser.photoURL || '',
-        ...extraChild,
-      };
-      setUser(syncedAuthUser);
-      safeLocalSet('school_user', syncedAuthUser);
     } catch (err) {
-      console.warn('User profile sync skipped:', err);
+      console.warn('User profile Firestore sync fallback active:', err);
     }
 
-    if (authSeqRef.current !== seq) return;
+    if (authSeqRef.current !== seq) return null;
 
+    const syncedAuthUser: AuthUser = {
+      role: resolvedRole,
+      name: syncedName,
+      userId: fbUser.uid,
+      email: fbUser.email || '',
+      photo: syncedPhoto,
+      ...extraChild,
+    };
+
+    setUser(syncedAuthUser);
+    safeLocalSet('school_user', syncedAuthUser);
     setIsCloudAdmin(adminStatus);
     setIsCloudTeacher(adminStatus || resolvedRole === 'teacher');
     setFirebaseUser(fbUser);
     setResolvedUid(fbUser.uid);
+    return syncedAuthUser;
   };
 
   // Firebase Authentication & Admin/Teacher/Parent Role Detection
@@ -1771,13 +1775,75 @@ const App: React.FC = () => {
     setTimeout(() => setDbStatus('synced'), 300);
   };
 
-  const signInWithGoogle = async (): Promise<boolean> => {
+  const signInWithGoogle = async (): Promise<{ ok: boolean; error?: string; code?: string; isAdmin?: boolean }> => {
     try {
-      await signInWithPopup(auth, googleProvider);
-      return true;
-    } catch (err) {
-      console.error('Google Sign-In failed:', err);
-      return false;
+      const cred = await signInWithPopup(auth, googleProvider);
+      const synced = await syncFirebaseUserSession(cred.user);
+      return { ok: true, isAdmin: synced?.role === 'admin' };
+    } catch (err: unknown) {
+      const code = (err as { code?: string })?.code || '';
+      const rawMsg = err instanceof Error ? err.message : '';
+      const host = typeof window !== 'undefined' ? window.location.hostname : '';
+      console.error('Google Sign-In failed:', code, rawMsg, err);
+
+      if (code === 'auth/unauthorized-domain') {
+        return {
+          ok: false,
+          code,
+          error:
+            lang === 'bn'
+              ? `এই ডোমেইন (${host}) Firebase Console > Authentication > Settings > Authorized domains-এ যুক্ত নেই। অনুগ্রহ করে "${host}" যুক্ত করুন।`
+              : `Domain "${host}" is not authorized in Firebase Console > Authentication > Settings > Authorized domains. Please add "${host}".`,
+        };
+      }
+      if (code === 'auth/popup-blocked') {
+        return {
+          ok: false,
+          code,
+          error:
+            lang === 'bn'
+              ? 'ব্রাউজার বা প্রিভিউ iframe Google পপ-আপ ব্লক করেছে। পপ-আপ Allow করুন অথবা প্রিভিউয়ের "Open in new tab" দিয়ে খুলে লগইন করুন।'
+              : 'Browser blocked the Google Sign-In popup. Allow popups or open the app in a new tab to sign in.',
+        };
+      }
+      if (code === 'auth/popup-closed-by-user' || code === 'auth/cancelled-popup-request') {
+        return {
+          ok: false,
+          code,
+          error:
+            lang === 'bn'
+              ? 'Google লগইন পপ-আপ সম্পূর্ণ হওয়ার আগেই বন্ধ হয়ে গেছে। আবার চেষ্টা করুন।'
+              : 'Google Sign-In popup was closed before finishing. Please try again.',
+        };
+      }
+      if (code === 'auth/operation-not-allowed') {
+        return {
+          ok: false,
+          code,
+          error:
+            lang === 'bn'
+              ? 'Firebase Console > Authentication > Sign-in method-এ Google প্রোভাইডার চালু নেই। অনুগ্রহ করে Google Sign-In এনাবল করুন।'
+              : 'Google Sign-In provider is not enabled in Firebase Console > Authentication > Sign-in method.',
+        };
+      }
+      if (code === 'auth/network-request-failed') {
+        return {
+          ok: false,
+          code,
+          error:
+            lang === 'bn'
+              ? 'ইন্টারনেট বা Firebase সার্ভারের সাথে সংযোগ পাওয়া যাচ্ছে না।'
+              : 'Network error while connecting to Google Auth. Check your connection.',
+        };
+      }
+      return {
+        ok: false,
+        code,
+        error:
+          lang === 'bn'
+            ? `Google লগইন ব্যর্থ হয়েছে${code ? ` (${code})` : ''}।`
+            : `Google Sign-In failed${code ? ` (${code})` : ''}.`,
+      };
     }
   };
 
@@ -1785,8 +1851,10 @@ const App: React.FC = () => {
     email: string,
     password: string
   ): Promise<{ ok: boolean; error?: string; needsVerification?: boolean }> => {
+    const cleanEmail = email.trim();
+    const isBootstrapEmail = cleanEmail.toLowerCase() === BOOTSTRAPPED_ADMIN_EMAIL.toLowerCase();
     try {
-      const cred = await signInWithEmailAndPassword(auth, email.trim(), password);
+      const cred = await signInWithEmailAndPassword(auth, cleanEmail, password);
       await cred.user.reload();
       if (!cred.user.emailVerified) {
         setFirebaseUser(cred.user);
@@ -1804,6 +1872,15 @@ const App: React.FC = () => {
     } catch (err: unknown) {
       const code = (err as { code?: string })?.code || '';
       if (code === 'auth/invalid-credential' || code === 'auth/wrong-password' || code === 'auth/user-not-found') {
+        if (isBootstrapEmail) {
+          return {
+            ok: false,
+            error:
+              lang === 'bn'
+                ? 'এই Gmail অ্যাকাউন্টটি Google Sign-In দিয়ে যুক্ত — পাসওয়ার্ড ছাড়াই সরাসরি উপরের "Google দিয়ে অ্যাডমিন লগইন" বাটনে ক্লিক করে প্রবেশ করুন।'
+                : 'This Gmail uses Google Sign-In — click the "Continue with Google (Admin Gmail)" button above to sign in directly without a password.',
+          };
+        }
         return {
           ok: false,
           error: lang === 'bn' ? 'ভুল ইমেইল বা পাসওয়ার্ড।' : 'Invalid email or password.',
@@ -1814,8 +1891,8 @@ const App: React.FC = () => {
           ok: false,
           error:
             lang === 'bn'
-              ? 'Firebase Console-এ Email/Password লগইন সক্রিয় করুন।'
-              : 'Email/Password sign-in is disabled in Firebase Console.',
+              ? 'Email/Password লগইন চালু নেই। সরাসরি "Google দিয়ে লগইন" বাটন ব্যবহার করুন।'
+              : 'Email/Password sign-in is disabled. Please use the Google Sign-In button.',
         };
       }
       return {
@@ -2929,6 +3006,10 @@ const App: React.FC = () => {
         classId: clean.classId,
         section: clean.section.slice(0, 40),
         guardianMobile: clean.guardianMobile.slice(0, 30),
+        ...(clean.guardianName ? { guardianName: clean.guardianName.trim().slice(0, 150) } : {}),
+        ...(clean.photo ? { photo: clean.photo.slice(0, 600000) } : {}),
+        ...(clean.registrationDate ? { registrationDate: clean.registrationDate.trim().slice(0, 32) } : {}),
+        ...(clean.session ? { session: clean.session.trim().slice(0, 16) } : {}),
         ...(clean.studentUid ? { studentUid: sanitizeFirestoreId(clean.studentUid) } : {}),
         ...(allowedUids.length > 0 ? { allowedUids } : {}),
       },
@@ -2963,6 +3044,10 @@ const App: React.FC = () => {
         classId: clean.classId,
         section: clean.section.slice(0, 40),
         guardianMobile: clean.guardianMobile.slice(0, 30),
+        ...(clean.guardianName ? { guardianName: clean.guardianName.trim().slice(0, 150) } : {}),
+        ...(clean.photo ? { photo: clean.photo.slice(0, 600000) } : {}),
+        ...(clean.registrationDate ? { registrationDate: clean.registrationDate.trim().slice(0, 32) } : {}),
+        ...(clean.session ? { session: clean.session.trim().slice(0, 16) } : {}),
         ...(clean.studentUid ? { studentUid: sanitizeFirestoreId(clean.studentUid) } : {}),
         ...(allowedUids.length > 0 ? { allowedUids } : {}),
       },

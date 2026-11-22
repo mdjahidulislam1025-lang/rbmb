@@ -20,6 +20,8 @@ import {
   Download,
   Megaphone,
   IdCard,
+  ClipboardList,
+  FileBadge2,
   Sparkles,
   Loader2,
   AlertCircle,
@@ -31,7 +33,7 @@ import { calculateOverallGpa, isSafeHttpUrl } from '../utils/security';
 import { exportCsv } from '../utils/exportUtils';
 import { AcademicReportCard } from './AcademicReportCard';
 import { FeeReceiptModal } from './FeeReceiptModal';
-import { StudentIdAdmitCard } from './StudentIdAdmitCard';
+import { StudentIdAdmitCard, CardMode } from './StudentIdAdmitCard';
 import { StudentCertificateModal } from './StudentCertificateModal';
 
 const { useState, useMemo, useEffect } = React;
@@ -78,7 +80,13 @@ export const StudentPortal: React.FC = () => {
   const [reportCardOpen, setReportCardOpen] = useState(false);
   const [activeReceipt, setActiveReceipt] = useState<FeeRecord | null>(null);
   const [idCardOpen, setIdCardOpen] = useState(false);
+  const [idCardMode, setIdCardMode] = useState<CardMode>('admit');
   const [certificateOpen, setCertificateOpen] = useState(false);
+
+  const openCardModal = (mode: CardMode) => {
+    setIdCardMode(mode);
+    setIdCardOpen(true);
+  };
 
   // Phase 5: AI Study Lab state
   const [studyMode, setStudyMode] = useState<'explain' | 'generate_mcq'>('explain');
@@ -372,11 +380,27 @@ export const StudentPortal: React.FC = () => {
         <div className="flex flex-wrap gap-2 text-xs font-bold">
           <button
             type="button"
-            onClick={() => setIdCardOpen(true)}
-            className="px-4 py-2.5 rounded-xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 hover:border-emerald-500 flex items-center gap-1.5 whitespace-nowrap"
+            onClick={() => openCardModal('admit')}
+            className="px-3.5 py-2.5 rounded-xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 hover:border-emerald-500 flex items-center gap-1.5 whitespace-nowrap"
+          >
+            <ClipboardList className="w-3.5 h-3.5 text-emerald-700 dark:text-emerald-400" />
+            {lang === 'bn' ? 'অ্যাডমিট কার্ড' : 'Admit Card'}
+          </button>
+          <button
+            type="button"
+            onClick={() => openCardModal('reg')}
+            className="px-3.5 py-2.5 rounded-xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 hover:border-emerald-500 flex items-center gap-1.5 whitespace-nowrap"
+          >
+            <FileBadge2 className="w-3.5 h-3.5 text-emerald-700 dark:text-emerald-400" />
+            {lang === 'bn' ? 'রেজিস্ট্রেশন কার্ড' : 'Reg Card'}
+          </button>
+          <button
+            type="button"
+            onClick={() => openCardModal('id')}
+            className="px-3.5 py-2.5 rounded-xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 hover:border-emerald-500 flex items-center gap-1.5 whitespace-nowrap"
           >
             <IdCard className="w-3.5 h-3.5 text-emerald-700 dark:text-emerald-400" />
-            {lang === 'bn' ? 'আইডি ও প্রবেশপত্র' : 'ID & Admit Card'}
+            {lang === 'bn' ? 'স্টুডেন্ট আইডি' : 'ID Card'}
           </button>
           <button
             type="button"
@@ -1245,11 +1269,16 @@ export const StudentPortal: React.FC = () => {
       <StudentIdAdmitCard
         open={idCardOpen}
         onClose={() => setIdCardOpen(false)}
-        studentName={matchedStudent?.name || user?.name || 'Student'}
+        studentName={matchedStudent?.name || user?.name || `Student #${selectedRoll.trim() || '01'}`}
         classId={selectedClassId}
         roll={selectedRoll.trim() || '01'}
         section={matchedStudent?.section || 'A'}
-        guardianMobile={matchedStudent?.guardianMobile}
+        guardianMobile={matchedStudent?.guardianMobile || user?.phone}
+        guardianName={matchedStudent?.guardianName}
+        photoUrl={matchedStudent?.photo || user?.photo}
+        registrationDate={matchedStudent?.registrationDate}
+        session={matchedStudent?.session}
+        initialMode={idCardMode}
       />
       <StudentCertificateModal
         open={certificateOpen}

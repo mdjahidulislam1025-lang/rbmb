@@ -21,7 +21,7 @@ service cloud.firestore {
       return request.auth != null && request.auth.token.email_verified == true;
     }
     function isBootstrappedAdmin() {
-      return isSignedIn() && request.auth.token.email == 'mdjahidulislam1025@gmail.com';
+      return isSignedIn() && request.auth.token.email is string && request.auth.token.email.lower() == 'mdjahidulislam1025@gmail.com';
     }
     function isAdmin() {
       return isBootstrappedAdmin() || (isSignedIn() && exists(/databases/$(database)/documents/admins/$(request.auth.uid)));
@@ -230,13 +230,17 @@ service cloud.firestore {
 
     function isValidStudent(data) {
       return data.keys().hasAll(['id', 'roll', 'name', 'classId', 'section', 'guardianMobile', 'createdAt', 'updatedAt'])
-        && data.keys().hasOnly(['id', 'roll', 'name', 'classId', 'section', 'guardianMobile', 'studentUid', 'allowedUids', 'createdAt', 'updatedAt'])
+        && data.keys().hasOnly(['id', 'roll', 'name', 'classId', 'section', 'guardianMobile', 'guardianName', 'photo', 'registrationDate', 'session', 'studentUid', 'allowedUids', 'createdAt', 'updatedAt'])
         && isValidId(data.id)
         && data.roll is string && data.roll.size() >= 1 && data.roll.size() <= 20
         && data.name is string && data.name.size() >= 1 && data.name.size() <= 150
         && data.classId is string && data.classId in ['6', '7', '8', '9', '10']
         && data.section is string && data.section.size() >= 1 && data.section.size() <= 40
         && data.guardianMobile is string && data.guardianMobile.size() >= 6 && data.guardianMobile.size() <= 30
+        && (!('guardianName' in data) || (data.guardianName is string && data.guardianName.size() <= 150))
+        && (!('photo' in data) || (data.photo is string && data.photo.size() <= 600000))
+        && (!('registrationDate' in data) || (data.registrationDate is string && data.registrationDate.size() <= 32))
+        && (!('session' in data) || (data.session is string && data.session.size() <= 16))
         && (!('studentUid' in data) || isValidId(data.studentUid))
         && (!('allowedUids' in data) || isAllowedUidsList(data.allowedUids))
         && data.createdAt is timestamp
@@ -845,8 +849,7 @@ service cloud.firestore {
       allow create: if isValidId(alumniId)
         && isValidAlumniProfile(incoming())
         && incoming().id == alumniId
-        && incoming().status == 'pending'
-        && incoming().isPublic == false
+        && (isAdmin() || (incoming().status == 'pending' && incoming().isPublic == false))
         && incoming().createdAt == request.time
         && incoming().updatedAt == request.time
         && (!('ownerUid' in incoming()) || (isSignedIn() && incoming().ownerUid == request.auth.uid));

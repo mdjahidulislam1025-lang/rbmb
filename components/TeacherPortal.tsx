@@ -25,6 +25,9 @@ import {
   Download,
   Megaphone,
   IdCard,
+  ClipboardList,
+  FileBadge2,
+  Camera,
   Clock,
   Sparkles,
   Loader2,
@@ -44,8 +47,9 @@ import {
 } from '../types';
 import { calculateGrade, isSafeHttpUrl } from '../utils/security';
 import { exportCsv } from '../utils/exportUtils';
+import { compressImageFile } from '../utils/imageUtils';
 import { FeeReceiptModal } from './FeeReceiptModal';
-import { StudentIdAdmitCard } from './StudentIdAdmitCard';
+import { StudentIdAdmitCard, CardMode } from './StudentIdAdmitCard';
 import { StudentCertificateModal } from './StudentCertificateModal';
 
 const { useState, useEffect, useMemo } = React;
@@ -122,8 +126,14 @@ export const TeacherPortal: React.FC = () => {
   const [toast, setToast] = useState<string | null>(null);
   const [activeReceipt, setActiveReceipt] = useState<FeeRecord | null>(null);
   const [idCardStudent, setIdCardStudent] = useState<SchoolStudent | null>(null);
+  const [idCardMode, setIdCardMode] = useState<CardMode>('admit');
   const [certStudent, setCertStudent] = useState<SchoolStudent | null>(null);
   const todayStr = new Date().toISOString().split('T')[0];
+
+  const openStudentCard = (st: SchoolStudent, mode: CardMode) => {
+    setIdCardMode(mode);
+    setIdCardStudent(st);
+  };
 
   const notify = (msg: string) => {
     setToast(msg);
@@ -329,7 +339,15 @@ export const TeacherPortal: React.FC = () => {
   // --- 6. Class & Exam Routine Management ---
   const [manageClassId, setManageClassId] = useState<'6' | '7' | '8' | '9' | '10'>('9');
   const [editingStudent, setEditingStudent] = useState<SchoolStudent | null>(null);
-  const [studentForm, setStudentForm] = useState({ roll: '', name: '', section: 'A', guardianMobile: '' });
+  const [studentForm, setStudentForm] = useState({
+    roll: '',
+    name: '',
+    section: 'A',
+    guardianMobile: '',
+    guardianName: '',
+    photo: '',
+    registrationDate: '2026-01-15',
+  });
   const [routineForm, setRoutineForm] = useState({
     examTerm: EXAM_TERMS[1].id,
     classId: '9',
@@ -348,7 +366,15 @@ export const TeacherPortal: React.FC = () => {
     } else {
       addStudent({ id: `st-${manageClassId}-${Date.now()}`, classId: manageClassId, ...studentForm });
     }
-    setStudentForm({ roll: '', name: '', section: 'A', guardianMobile: '' });
+    setStudentForm({
+      roll: '',
+      name: '',
+      section: 'A',
+      guardianMobile: '',
+      guardianName: '',
+      photo: '',
+      registrationDate: '2026-01-15',
+    });
     notify(lang === 'bn' ? 'শিক্ষার্থীর তথ্য সংরক্ষণ হয়েছে!' : 'Student record saved!');
   };
 
@@ -577,7 +603,7 @@ export const TeacherPortal: React.FC = () => {
         </div>
         {!isCloudTeacher && (
           <button
-            onClick={signInWithGoogle}
+            onClick={() => void signInWithGoogle()}
             className="px-4 py-2 rounded-xl bg-slate-900 text-white text-xs font-bold"
           >
             Google Sync
@@ -1317,28 +1343,65 @@ export const TeacherPortal: React.FC = () => {
       {activeTab === 'classes' && (
         <div className="grid lg:grid-cols-12 gap-6">
           <div className="lg:col-span-7 bg-white dark:bg-slate-900 p-6 rounded-3xl border border-slate-200 dark:border-slate-800 space-y-4">
-            <div className="flex items-center justify-between">
-              <h4 className="font-extrabold text-base">{lang === 'bn' ? 'শিক্ষার্থী তালিকা ও পরিচালনা' : 'Student Roster Management'}</h4>
-              <select value={manageClassId} onChange={(e) => setManageClassId(e.target.value as '6' | '7' | '8' | '9' | '10')} className="px-3 py-2 rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-xs font-bold">
-                {CLASSES.map((c) => <option key={c.classId} value={c.classId}>Class {c.classId}</option>)}
-              </select>
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <h4 className="font-extrabold text-base">{lang === 'bn' ? 'শিক্ষার্থী তালিকা ও কার্ড' : 'Student Roster & Cards'}</h4>
+              <div className="flex items-center gap-2">
+                <select value={manageClassId} onChange={(e) => setManageClassId(e.target.value as '6' | '7' | '8' | '9' | '10')} className="px-3 py-2 rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-xs font-bold">
+                  {CLASSES.map((c) => <option key={c.classId} value={c.classId}>Class {c.classId}</option>)}
+                </select>
+                {students.some((s) => s.classId === manageClassId) && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const list = students.filter((s) => s.classId === manageClassId);
+                      if (list[0]) openStudentCard(list[0], 'admit');
+                    }}
+                    className="px-3 py-2 rounded-xl bg-emerald-700 hover:bg-emerald-800 text-white text-xs font-bold inline-flex items-center gap-1.5 whitespace-nowrap"
+                  >
+                    <ClipboardList className="w-3.5 h-3.5" />
+                    {lang === 'bn' ? 'সব কার্ড দেখুন' : 'Class Cards'}
+                  </button>
+                )}
+              </div>
             </div>
-            <form onSubmit={handleSaveStudent} className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+            <form onSubmit={handleSaveStudent} className="grid grid-cols-2 sm:grid-cols-3 gap-2">
               <input required placeholder="Roll" value={studentForm.roll} onChange={(e) => setStudentForm((p) => ({ ...p, roll: e.target.value }))} className="px-3 py-2 rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-xs font-bold" />
               <input required placeholder="Student Name" value={studentForm.name} onChange={(e) => setStudentForm((p) => ({ ...p, name: e.target.value }))} className="px-3 py-2 rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-xs font-bold" />
               <input required placeholder="Section" value={studentForm.section} onChange={(e) => setStudentForm((p) => ({ ...p, section: e.target.value }))} className="px-3 py-2 rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-xs font-bold" />
-              <button type="submit" className="px-3 py-2 rounded-xl bg-emerald-700 text-white text-xs font-bold flex items-center justify-center gap-1">
-                <Plus className="w-3.5 h-3.5" /> {editingStudent ? 'Save' : 'Add'}
-              </button>
+              <input placeholder={lang === 'bn' ? 'অভিভাবকের নাম' : 'Guardian Name'} value={studentForm.guardianName} onChange={(e) => setStudentForm((p) => ({ ...p, guardianName: e.target.value }))} className="px-3 py-2 rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-xs font-bold" />
+              <input placeholder={lang === 'bn' ? 'অভিভাবকের মোবাইল' : 'Guardian Mobile'} value={studentForm.guardianMobile} onChange={(e) => setStudentForm((p) => ({ ...p, guardianMobile: e.target.value }))} className="px-3 py-2 rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-xs font-bold" />
+              <div className="flex gap-1.5">
+                <label className="px-3 py-2 rounded-xl bg-slate-100 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-xs font-bold flex items-center gap-1 cursor-pointer shrink-0">
+                  <Camera className="w-3.5 h-3.5 text-emerald-700" />
+                  <span>{studentForm.photo ? 'OK' : 'Photo'}</span>
+                  <input
+                    type="file"
+                    accept="image/*"
+                    className="hidden"
+                    onChange={async (e) => {
+                      const f = e.target.files?.[0];
+                      if (f) {
+                        const compressed = await compressImageFile(f, 360, 0.8);
+                        setStudentForm((p) => ({ ...p, photo: compressed }));
+                      }
+                    }}
+                  />
+                </label>
+                <button type="submit" className="flex-1 px-3 py-2 rounded-xl bg-emerald-700 text-white text-xs font-bold flex items-center justify-center gap-1">
+                  <Plus className="w-3.5 h-3.5" /> {editingStudent ? 'Save' : 'Add'}
+                </button>
+              </div>
             </form>
             <div className="divide-y divide-slate-100 dark:divide-slate-800">
               {students.filter((s) => s.classId === manageClassId).map((st) => (
-                <div key={st.id} className="py-2.5 flex items-center justify-between text-xs">
+                <div key={st.id} className="py-2.5 flex flex-wrap items-center justify-between gap-2 text-xs">
                   <span><b>#{st.roll}</b> {st.name} ({st.section})</span>
-                  <div className="flex gap-1">
-                    <button type="button" onClick={() => setIdCardStudent(st)} title={lang === 'bn' ? 'আইডি ও প্রবেশপত্র' : 'ID & Admit Card'} className="p-1.5 text-emerald-700 dark:text-emerald-400"><IdCard className="w-3.5 h-3.5" /></button>
+                  <div className="flex flex-wrap items-center gap-1">
+                    <button type="button" onClick={() => openStudentCard(st, 'admit')} title={lang === 'bn' ? 'অ্যাডমিট কার্ড' : 'Admit Card'} className="px-2 py-1 rounded-lg bg-emerald-50 dark:bg-emerald-950/50 text-emerald-800 dark:text-emerald-300 font-bold inline-flex items-center gap-1"><ClipboardList className="w-3 h-3" /> Admit</button>
+                    <button type="button" onClick={() => openStudentCard(st, 'reg')} title={lang === 'bn' ? 'রেজিস্ট্রেশন কার্ড' : 'Registration Card'} className="px-2 py-1 rounded-lg bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-200 font-bold inline-flex items-center gap-1"><FileBadge2 className="w-3 h-3" /> Reg</button>
+                    <button type="button" onClick={() => openStudentCard(st, 'id')} title={lang === 'bn' ? 'আইডি কার্ড' : 'ID Card'} className="px-2 py-1 rounded-lg bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-200 font-bold inline-flex items-center gap-1"><IdCard className="w-3 h-3" /> ID</button>
                     <button type="button" onClick={() => setCertStudent(st)} title={lang === 'bn' ? 'প্রত্যয়নপত্র ও সনদ' : 'Certificate'} className="p-1.5 text-purple-700 dark:text-purple-400"><Award className="w-3.5 h-3.5" /></button>
-                    <button type="button" onClick={() => { setEditingStudent(st); setStudentForm({ roll: st.roll, name: st.name, section: st.section, guardianMobile: st.guardianMobile }); }} className="p-1.5 text-blue-600"><Pencil className="w-3.5 h-3.5" /></button>
+                    <button type="button" onClick={() => { setEditingStudent(st); setStudentForm({ roll: st.roll, name: st.name, section: st.section, guardianMobile: st.guardianMobile, guardianName: st.guardianName || '', photo: st.photo || '', registrationDate: st.registrationDate || '2026-01-15' }); }} className="p-1.5 text-blue-600"><Pencil className="w-3.5 h-3.5" /></button>
                     <button type="button" onClick={() => deleteStudent(st.id)} className="p-1.5 text-red-600"><Trash2 className="w-3.5 h-3.5" /></button>
                   </div>
                 </div>
@@ -1792,6 +1855,26 @@ export const TeacherPortal: React.FC = () => {
           roll={idCardStudent.roll}
           section={idCardStudent.section}
           guardianMobile={idCardStudent.guardianMobile}
+          guardianName={idCardStudent.guardianName}
+          photoUrl={idCardStudent.photo}
+          registrationDate={idCardStudent.registrationDate}
+          session={idCardStudent.session}
+          initialMode={idCardMode}
+          rosterStudents={students.filter((s) => s.classId === idCardStudent.classId)}
+          onSaveStudentDetails={(updates) => {
+            const target =
+              students.find((s) => s.classId === updates.classId && s.roll === updates.roll) ||
+              idCardStudent;
+            updateStudent({
+              ...target,
+              guardianName: updates.guardianName ?? target.guardianName,
+              guardianMobile: updates.guardianMobile ?? target.guardianMobile,
+              photo: updates.photo ?? target.photo,
+              registrationDate: updates.registrationDate ?? target.registrationDate,
+              session: updates.session ?? target.session,
+            });
+            notify(lang === 'bn' ? 'কার্ডের তথ্য ও ছবি সংরক্ষিত হয়েছে!' : 'Card details saved to student record!');
+          }}
         />
       )}
       {certStudent && (

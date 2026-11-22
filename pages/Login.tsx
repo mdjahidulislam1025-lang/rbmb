@@ -34,22 +34,27 @@ import {
   Megaphone,
   Clock,
   RotateCcw,
+  IdCard,
+  ClipboardList,
+  FileBadge2,
 } from 'lucide-react';
 import { TRANSLATIONS, EXAM_TERMS } from '../constants';
 import { useApp } from '../App';
-import { Notice, Teacher, GalleryItem, EBook, UserRole, FeeCategory, FeeRecord, PaymentMethod } from '../types';
+import { Notice, Teacher, GalleryItem, EBook, UserRole, FeeCategory, FeeRecord, PaymentMethod, SchoolStudent } from '../types';
 import { compressImageFile } from '../utils/imageUtils';
 import { exportCsv } from '../utils/exportUtils';
 import { TeacherPortal } from '../components/TeacherPortal';
 import { StudentPortal } from '../components/StudentPortal';
 import { ParentPortal } from '../components/ParentPortal';
 import { FeeReceiptModal } from '../components/FeeReceiptModal';
+import { StudentIdAdmitCard, CardMode } from '../components/StudentIdAdmitCard';
 
 const { useState, useEffect, useRef, useMemo } = React;
 const { useLocation, Link, useNavigate } = RouterDom;
 
 type ManagementTab =
   | 'analytics'
+  | 'cards'
   | 'fees'
   | 'broadcasts'
   | 'class-routine'
@@ -139,6 +144,7 @@ const Login: React.FC = () => {
     updateTeacherLeaveStatus,
     deleteTeacherLeave,
     students,
+    updateStudent,
     attendanceRecords,
     studentAttendance,
     examMarks,
@@ -184,6 +190,10 @@ const Login: React.FC = () => {
   const [adminToast, setAdminToast] = useState('');
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const [editingItem, setEditingItem] = useState<any>(null);
+  const [adminCardStudent, setAdminCardStudent] = useState<SchoolStudent | null>(null);
+  const [adminCardMode, setAdminCardMode] = useState<CardMode>('admit');
+  const [cardClassFilter, setCardClassFilter] = useState<string>('all');
+  const [cardSearch, setCardSearch] = useState<string>('');
 
   const todayStr = new Date().toISOString().split('T')[0];
 
@@ -519,10 +529,20 @@ const Login: React.FC = () => {
     setError('');
     setAuthNotice('');
     setIsSubmitting(true);
-    const ok = await signInWithGoogle();
+    const res = await signInWithGoogle();
     setIsSubmitting(false);
-    if (ok) navigate('/dashboard');
-    else setError(lang === 'bn' ? 'Google লগইন সম্পন্ন হয়নি।' : 'Google Sign-In failed or cancelled.');
+    if (res.ok) {
+      if (activeTab === 'admin' && !res.isAdmin) {
+        setAuthNotice(
+          lang === 'bn'
+            ? 'আপনি Google দিয়ে লগইন করেছেন, তবে এই Gmail-এ এখনো অ্যাডমিন রোল যুক্ত নেই। অ্যাডমিন অ্যাক্সেসের জন্য mdjahidulislam1025@gmail.com দিয়ে লগইন করুন।'
+            : 'Signed in with Google, but this Gmail does not have Admin privileges yet. Use mdjahidulislam1025@gmail.com for Admin access.'
+        );
+      }
+      navigate('/dashboard');
+    } else {
+      setError(res.error || (lang === 'bn' ? 'Google লগইন সম্পন্ন হয়নি।' : 'Google Sign-In failed or cancelled.'));
+    }
   };
 
   const handlePhotoUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -660,9 +680,64 @@ const Login: React.FC = () => {
   };
 
   if (user) {
+    if (location.pathname.toLowerCase().includes('/login/admin') && user.role !== 'admin') {
+      return (
+        <div className="min-h-[75vh] flex items-center justify-center px-4 py-12 bg-slate-50 dark:bg-slate-950">
+          <div className="w-full max-w-md bg-white dark:bg-slate-900 rounded-3xl shadow-2xl border border-slate-200 dark:border-slate-800 p-8 text-center space-y-5">
+            <div className="inline-flex p-3.5 rounded-2xl bg-amber-100 dark:bg-amber-950/60 text-amber-700 dark:text-amber-300">
+              <ShieldAlert className="w-8 h-8" />
+            </div>
+            <div className="space-y-2">
+              <h1 className="text-xl font-black text-slate-900 dark:text-white">
+                {lang === 'bn' ? 'অ্যাডমিন প্যানেলে সুইচ করুন' : 'Switch to Admin Account'}
+              </h1>
+              <p className="text-xs text-slate-600 dark:text-slate-300 leading-relaxed">
+                {lang === 'bn'
+                  ? `আপনি বর্তমানে "${user.name}" (${user.role}) হিসেবে লগইন করা আছেন। অ্যাডমিন প্যানেলে প্রবেশ করতে আপনার অ্যাডমিন Gmail (mdjahidulislam1025@gmail.com) দিয়ে লগইন করুন।`
+                  : `You are currently signed in as "${user.name}" (${user.role}). Sign in with your Admin Gmail (mdjahidulislam1025@gmail.com) to access the Admin Panel.`}
+              </p>
+            </div>
+            {error && (
+              <div className="p-3 rounded-xl bg-red-50 dark:bg-red-950/60 border border-red-200 dark:border-red-800 text-red-700 dark:text-red-300 text-xs font-bold text-left">
+                {error}
+              </div>
+            )}
+            <div className="space-y-2.5">
+              <button
+                type="button"
+                disabled={isSubmitting}
+                onClick={handleGoogleAuth}
+                className="w-full py-3.5 px-4 rounded-xl bg-emerald-700 hover:bg-emerald-800 text-white text-xs font-extrabold flex items-center justify-center gap-2 shadow-lg transition-all"
+              >
+                <ShieldCheck className="w-4 h-4" />
+                {lang === 'bn' ? 'Google (Gmail) দিয়ে অ্যাডমিন লগইন করুন' : 'Sign in with Google Admin Gmail'}
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  logout();
+                  setError('');
+                }}
+                className="w-full py-3 px-4 rounded-xl bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-800 dark:text-slate-200 text-xs font-bold"
+              >
+                {lang === 'bn' ? 'লগআউট করে অ্যাডমিন লগইন পেজে যান' : 'Log out & Open Admin Login'}
+              </button>
+              <Link
+                to="/dashboard"
+                className="block w-full py-2.5 text-xs font-bold text-emerald-700 dark:text-emerald-400 hover:underline"
+              >
+                {lang === 'bn' ? 'বর্তমান ড্যাশবোর্ডে ফিরে যান' : 'Return to Current Dashboard'}
+              </Link>
+            </div>
+          </div>
+        </div>
+      );
+    }
+
     const allUsers = getUsers();
     const adminTabs: { id: ManagementTab; label: string }[] = [
       { id: 'analytics', label: lang === 'bn' ? 'অ্যানালিটিক্স' : 'Analytics' },
+      { id: 'cards', label: lang === 'bn' ? 'অ্যাডমিট, রেজি ও আইডি' : 'Student Cards' },
       { id: 'fees', label: lang === 'bn' ? 'ফি ও হিসাব' : 'Fee Ledger' },
       { id: 'broadcasts', label: lang === 'bn' ? 'পোর্টাল ঘোষণা' : 'Broadcasts' },
       { id: 'class-routine', label: lang === 'bn' ? 'ক্লাস রুটিন' : 'Class Routine' },
@@ -1833,6 +1908,113 @@ const Login: React.FC = () => {
                   </div>
                 )}
 
+                {managementTab === 'cards' && (
+                  <div className="space-y-4">
+                    <div className="flex flex-wrap items-center justify-between gap-3 bg-slate-50 dark:bg-slate-800/70 p-4 rounded-2xl border border-slate-200 dark:border-slate-700">
+                      <div className="flex flex-wrap items-center gap-2.5">
+                        <select
+                          value={cardClassFilter}
+                          onChange={(e) => setCardClassFilter(e.target.value)}
+                          className="px-3.5 py-2 rounded-xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 text-xs font-bold"
+                        >
+                          <option value="all">{lang === 'bn' ? 'সকল শ্রেণী (৬ষ্ঠ–১০ম)' : 'All Classes (6–10)'}</option>
+                          {['6', '7', '8', '9', '10'].map((c) => (
+                            <option key={c} value={c}>Class {c}</option>
+                          ))}
+                        </select>
+                        <input
+                          value={cardSearch}
+                          onChange={(e) => setCardSearch(e.target.value)}
+                          placeholder={lang === 'bn' ? 'নাম বা রোল দিয়ে খুঁজুন...' : 'Search by name or roll...'}
+                          className="px-3.5 py-2 rounded-xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 text-xs font-semibold min-w-[200px]"
+                        />
+                      </div>
+
+                      {(() => {
+                        const filtered = students.filter(
+                          (st) =>
+                            (cardClassFilter === 'all' || st.classId === cardClassFilter) &&
+                            (!cardSearch.trim() ||
+                              st.name.toLowerCase().includes(cardSearch.trim().toLowerCase()) ||
+                              st.roll.toLowerCase().includes(cardSearch.trim().toLowerCase()))
+                        );
+                        if (filtered.length === 0) return null;
+                        return (
+                          <div className="flex flex-wrap gap-2">
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setAdminCardMode('admit');
+                                setAdminCardStudent(filtered[0]);
+                              }}
+                              className="px-3.5 py-2 rounded-xl bg-emerald-700 hover:bg-emerald-800 text-white text-xs font-bold inline-flex items-center gap-1.5"
+                            >
+                              <ClipboardList className="w-3.5 h-3.5" />
+                              {lang === 'bn' ? `সব অ্যাডমিট (${filtered.length})` : `Open Batch Cards (${filtered.length})`}
+                            </button>
+                          </div>
+                        );
+                      })()}
+                    </div>
+
+                    <div className="divide-y divide-slate-200 dark:divide-slate-800 rounded-2xl border border-slate-200 dark:border-slate-800 overflow-hidden bg-white dark:bg-slate-900">
+                      {students
+                        .filter(
+                          (st) =>
+                            (cardClassFilter === 'all' || st.classId === cardClassFilter) &&
+                            (!cardSearch.trim() ||
+                              st.name.toLowerCase().includes(cardSearch.trim().toLowerCase()) ||
+                              st.roll.toLowerCase().includes(cardSearch.trim().toLowerCase()))
+                        )
+                        .map((st) => (
+                          <div key={st.id} className="p-4 flex flex-wrap items-center justify-between gap-3 text-xs">
+                            <div>
+                              <p className="font-extrabold text-sm text-slate-900 dark:text-white">
+                                #{st.roll} · {st.name}
+                              </p>
+                              <p className="text-slate-500 dark:text-slate-400 font-semibold mt-0.5 tabular-nums">
+                                Class {st.classId} · Section {st.section} · Mobile: {st.guardianMobile}
+                                {st.guardianName ? ` · Guardian: ${st.guardianName}` : ''}
+                              </p>
+                            </div>
+                            <div className="flex flex-wrap items-center gap-1.5">
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  setAdminCardMode('admit');
+                                  setAdminCardStudent(st);
+                                }}
+                                className="px-3 py-1.5 rounded-lg bg-emerald-700 hover:bg-emerald-800 text-white font-bold inline-flex items-center gap-1"
+                              >
+                                <ClipboardList className="w-3.5 h-3.5" /> Admit Card
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  setAdminCardMode('reg');
+                                  setAdminCardStudent(st);
+                                }}
+                                className="px-3 py-1.5 rounded-lg bg-slate-100 dark:bg-slate-800 hover:bg-emerald-50 text-slate-800 dark:text-slate-200 border border-slate-200 dark:border-slate-700 font-bold inline-flex items-center gap-1"
+                              >
+                                <FileBadge2 className="w-3.5 h-3.5 text-emerald-700" /> Reg Card
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  setAdminCardMode('id');
+                                  setAdminCardStudent(st);
+                                }}
+                                className="px-3 py-1.5 rounded-lg bg-slate-100 dark:bg-slate-800 hover:bg-emerald-50 text-slate-800 dark:text-slate-200 border border-slate-200 dark:border-slate-700 font-bold inline-flex items-center gap-1"
+                              >
+                                <IdCard className="w-3.5 h-3.5 text-emerald-700" /> ID Card
+                              </button>
+                            </div>
+                          </div>
+                        ))}
+                    </div>
+                  </div>
+                )}
+
                 {managementTab === 'system' && (
                   <form onSubmit={handleSaveSettings} className="grid sm:grid-cols-2 gap-4 bg-slate-50 dark:bg-slate-800 p-6 rounded-3xl">
                     <input value={systemForm.nameBn} onChange={(e) => setSystemForm((p) => ({ ...p, nameBn: e.target.value }))} placeholder="School Name (BN)" className="px-4 py-2.5 rounded-xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 text-sm" />
@@ -1989,6 +2171,38 @@ const Login: React.FC = () => {
         )}
 
         <FeeReceiptModal fee={activeAdminReceipt} onClose={() => setActiveAdminReceipt(null)} />
+        {adminCardStudent && (
+          <StudentIdAdmitCard
+            open={Boolean(adminCardStudent)}
+            onClose={() => setAdminCardStudent(null)}
+            studentName={adminCardStudent.name}
+            classId={adminCardStudent.classId}
+            roll={adminCardStudent.roll}
+            section={adminCardStudent.section}
+            guardianMobile={adminCardStudent.guardianMobile}
+            guardianName={adminCardStudent.guardianName}
+            photoUrl={adminCardStudent.photo}
+            registrationDate={adminCardStudent.registrationDate}
+            session={adminCardStudent.session}
+            initialMode={adminCardMode}
+            rosterStudents={students.filter(
+              (s) => cardClassFilter === 'all' || s.classId === cardClassFilter
+            )}
+            onSaveStudentDetails={(updates) => {
+              const target =
+                students.find((s) => s.classId === updates.classId && s.roll === updates.roll) ||
+                adminCardStudent;
+              updateStudent({
+                ...target,
+                guardianName: updates.guardianName ?? target.guardianName,
+                guardianMobile: updates.guardianMobile ?? target.guardianMobile,
+                photo: updates.photo ?? target.photo,
+                registrationDate: updates.registrationDate ?? target.registrationDate,
+                session: updates.session ?? target.session,
+              });
+            }}
+          />
+        )}
       </div>
     );
   }
@@ -2073,10 +2287,42 @@ const Login: React.FC = () => {
           )}
 
           {activeTab === 'admin' && (
-            <div className="p-3 rounded-xl bg-amber-50 dark:bg-amber-950/40 border border-amber-200 dark:border-amber-800 text-[11px] font-semibold text-amber-800 dark:text-amber-300">
-              {lang === 'bn'
-                ? 'নিরাপত্তার জন্য অ্যাডমিন পোর্টাল শুধুমাত্র অনুমোদিত Google Cloud Sign-In অথবা ভেরিফায়েড ইমেইল-পাসওয়ার্ডের মাধ্যমে প্রবেশযোগ্য।'
-                : 'For security, Admin portal requires Google Cloud Sign-In or a verified Admin Firebase email.'}
+            <div className="p-4 rounded-2xl bg-emerald-50 dark:bg-emerald-950/50 border border-emerald-200 dark:border-emerald-800 space-y-3">
+              <div className="space-y-1">
+                <p className="text-xs font-extrabold text-emerald-900 dark:text-emerald-200">
+                  {lang === 'bn' ? 'Gmail দিয়ে ১-ক্লিক অ্যাডমিন লগইন' : '1-Click Admin Sign-In with Gmail'}
+                </p>
+                <p className="text-[11px] text-emerald-800/80 dark:text-emerald-300/90 leading-relaxed">
+                  {lang === 'bn'
+                    ? 'অনুমোদিত অ্যাডমিন Gmail (mdjahidulislam1025@gmail.com) দিয়ে পাসওয়ার্ড ছাড়াই সরাসরি প্রবেশ করুন:'
+                    : 'Sign in directly with your authorized Admin Gmail (mdjahidulislam1025@gmail.com):'}
+                </p>
+              </div>
+              <button
+                type="button"
+                disabled={isSubmitting}
+                onClick={handleGoogleAuth}
+                className="w-full py-3.5 px-4 rounded-xl bg-emerald-700 hover:bg-emerald-800 text-white text-xs font-extrabold flex items-center justify-center gap-2 shadow-md transition-all disabled:opacity-60"
+              >
+                <ShieldCheck className="w-4 h-4" />
+                {isSubmitting
+                  ? lang === 'bn'
+                    ? 'লগইন হচ্ছে...'
+                    : 'Signing in...'
+                  : lang === 'bn'
+                  ? 'Google (Gmail) দিয়ে অ্যাডমিন লগইন করুন'
+                  : 'Continue with Google (Admin Gmail)'}
+              </button>
+            </div>
+          )}
+
+          {activeTab === 'admin' && (
+            <div className="flex items-center gap-3 py-1">
+              <div className="h-px flex-1 bg-slate-200 dark:bg-slate-800" />
+              <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400">
+                {lang === 'bn' ? 'অথবা ইমেইল ও পাসওয়ার্ড' : 'Or Email & Password'}
+              </span>
+              <div className="h-px flex-1 bg-slate-200 dark:bg-slate-800" />
             </div>
           )}
 
@@ -2091,7 +2337,7 @@ const Login: React.FC = () => {
                 type="text"
                 value={userId}
                 onChange={(e) => setUserId(e.target.value)}
-                placeholder={activeTab === 'admin' ? 'admin@school.edu' : `name@email.com or ${activeTab}01`}
+                placeholder={activeTab === 'admin' ? 'mdjahidulislam1025@gmail.com' : `name@email.com or ${activeTab}01`}
                 className="w-full pl-10 pr-4 py-3 rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-sm font-semibold outline-none focus:ring-2 focus:ring-emerald-500"
               />
             </div>
@@ -2129,14 +2375,17 @@ const Login: React.FC = () => {
             {lang === 'bn' ? 'প্রবেশ করুন' : 'Sign In'} <ArrowRight className="w-4 h-4" />
           </button>
 
-          <button
-            type="button"
-            onClick={handleGoogleAuth}
-            className="w-full py-3 rounded-xl border border-slate-200 dark:border-slate-700 hover:bg-slate-50 dark:hover:bg-slate-800 text-xs font-bold flex items-center justify-center gap-2"
-          >
-            <ShieldCheck className="w-4 h-4 text-emerald-600" />
-            {lang === 'bn' ? 'Google দিয়ে ক্লাউড লগইন' : 'Continue with Google Cloud'}
-          </button>
+          {activeTab !== 'admin' && (
+            <button
+              type="button"
+              disabled={isSubmitting}
+              onClick={handleGoogleAuth}
+              className="w-full py-3 rounded-xl border border-slate-200 dark:border-slate-700 hover:bg-slate-50 dark:hover:bg-slate-800 text-xs font-bold flex items-center justify-center gap-2"
+            >
+              <ShieldCheck className="w-4 h-4 text-emerald-600" />
+              {lang === 'bn' ? 'Google দিয়ে ক্লাউড লগইন' : 'Continue with Google Cloud'}
+            </button>
+          )}
 
           {/* Non-admin Preview Helpers */}
           <div className="pt-3 border-t border-slate-100 dark:border-slate-800 space-y-2">

@@ -7,7 +7,7 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
 const PORT = Number(process.env.PORT || 3000);
-const isProduction = process.env.NODE_ENV === 'production' || Boolean(process.env.K_SERVICE);
+const isProduction = process.env.NODE_ENV === 'production';
 
 async function startServer() {
   const app = express();
@@ -206,17 +206,79 @@ Student question / request: ${question || `Explain "${topic}" clearly with an ex
   });
 
   if (!isProduction) {
+    // Self-unregister any previously installed Service Worker so dev preview never serves stale dist/ assets
+    app.get('/sw.js', (_req, res) => {
+      res.setHeader('Content-Type', 'application/javascript; charset=utf-8');
+      res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate');
+      res.send(`
+self.addEventListener('install', function () { self.skipWaiting(); });
+self.addEventListener('activate', function (event) {
+  event.waitUntil((async function () {
+    try {
+      var keys = await caches.keys();
+      await Promise.all(keys.map(function (k) { return caches.delete(k); }));
+      await self.registration.unregister();
+      var clients = await self.clients.matchAll({ type: 'window' });
+      clients.forEach(function (client) {
+        if (client && 'navigate' in client) client.navigate(client.url);
+      });
+    } catch (e) {}
+  })());
+});
+`);
+    });
+
     const { createServer: createViteServer } = await import('vite');
     const vite = await createViteServer({
-      server: { middlewareMode: true, hmr: false },
+      server: { middlewareMode: true, hmr: false, ws: false },
       appType: 'spa',
     });
+
+    app.get('/@vite/client', async (_req, res, next) => {
+      try {
+        const result = await vite.transformRequest('/@vite/client');
+        if (result?.code) {
+          const patched = result.code.replace(
+            'transport.connect(createHMRHandler(handleMessage));',
+            '/* HMR disabled: skip WebSocket connect */'
+          );
+          res.setHeader('Content-Type', 'application/javascript; charset=utf-8');
+          res.setHeader('Cache-Control', 'no-cache');
+          res.send(patched);
+          return;
+        }
+      } catch {
+        // Fallback to Vite's default middleware if transform fails
+      }
+      next();
+    });
+
     app.use(vite.middlewares);
   } else {
     const distPath = path.resolve(__dirname, 'dist');
-    app.use(express.static(distPath));
-    app.get('/{*path}', (_req, res) => {
-      res.sendFile(path.join(distPath, 'index.html'));
+    const indexPath = path.join(distPath, 'index.html');
+
+    app.use(
+      express.static(distPath, {
+        setHeaders: (res, filePath) => {
+          if (filePath.endsWith('index.html') || filePath.endsWith('sw.js') || filePath.endsWith('manifest.webmanifest')) {
+            res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate');
+          } else if (filePath.includes(`${path.sep}assets${path.sep}`)) {
+            res.setHeader('Cache-Control', 'public, max-age=31536000, immutable');
+          }
+        },
+      })
+    );
+
+    // Never return index.html for missing JS/CSS assets or API endpoints (prevents MIME-type white screen)
+    app.get('/{*path}', (req, res) => {
+      const reqPath = req.path || '';
+      if (reqPath.startsWith('/api/') || reqPath.startsWith('/assets/') || /\.[a-z0-9]+$/i.test(reqPath)) {
+        res.status(404).end();
+        return;
+      }
+      res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate');
+      res.sendFile(indexPath);
     });
   }
 

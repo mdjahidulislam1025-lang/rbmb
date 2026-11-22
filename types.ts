@@ -227,6 +227,10 @@ export interface SchoolStudent {
   classId: string;
   section: string;
   guardianMobile: string;
+  guardianName?: string;
+  photo?: string;
+  registrationDate?: string;
+  session?: string;
   studentUid?: string;
   allowedUids?: string[];
 }
