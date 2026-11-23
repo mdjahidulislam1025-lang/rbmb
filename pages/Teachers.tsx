@@ -322,6 +322,48 @@ const Teachers: React.FC = () => {
           teacher={selectedIdTeacher.teacher}
           teacherIndex={selectedIdTeacher.index}
           allTeachers={teachers}
+          onSaveProfile={
+            isAdmin
+              ? (updates) => {
+                  const target = teachers.find((tc) => tc.id === updates.id);
+                  if (target) {
+                    updateTeacher({
+                      ...target,
+                      teacherCode: updates.teacherCode,
+                      phone: updates.phone,
+                      bloodGroup: updates.bloodGroup,
+                      cardIssueDate: updates.issueDate,
+                      cardValidUpto: updates.validUpto,
+                      photo: updates.photo ?? target.photo,
+                    });
+                  }
+                }
+              : user?.role === 'teacher'
+              ? (updates) => {
+                  const target = teachers.find((tc) => tc.id === updates.id);
+                  const isOwn =
+                    target &&
+                    (target.name.en.trim().toLowerCase() === user.name.trim().toLowerCase() ||
+                      target.name.bn.trim().toLowerCase() === user.name.trim().toLowerCase());
+                  if (target && isOwn) {
+                    updateTeacher({
+                      ...target,
+                      teacherCode: updates.teacherCode,
+                      phone: updates.phone,
+                      bloodGroup: updates.bloodGroup,
+                      cardIssueDate: updates.issueDate,
+                      cardValidUpto: updates.validUpto,
+                      photo: updates.photo ?? target.photo,
+                    });
+                    void updateUser({
+                      ...user,
+                      ...(updates.phone ? { phone: updates.phone } : {}),
+                      ...(updates.photo ? { photo: updates.photo } : {}),
+                    });
+                  }
+                }
+              : undefined
+          }
           onSavePhoto={
             isAdmin
               ? (teacherId, photoDataUrl) => {
@@ -336,7 +378,7 @@ const Teachers: React.FC = () => {
                     (target.name.en.trim().toLowerCase() === user.name.trim().toLowerCase() ||
                       target.name.bn.trim().toLowerCase() === user.name.trim().toLowerCase())
                   ) {
-                    updateUser({ ...user, photo: photoDataUrl });
+                    void updateUser({ ...user, photo: photoDataUrl });
                   }
                 }
               : undefined

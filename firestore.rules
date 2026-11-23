@@ -116,13 +116,18 @@ service cloud.firestore {
 
     function isValidTeacher(data) {
       return data.keys().hasAll(['id', 'name', 'designation', 'subject', 'qualification', 'photo', 'isPublic', 'createdAt', 'updatedAt'])
-        && data.keys().hasOnly(['id', 'name', 'designation', 'subject', 'qualification', 'photo', 'isPublic', 'createdAt', 'updatedAt'])
+        && data.keys().hasOnly(['id', 'name', 'designation', 'subject', 'qualification', 'photo', 'teacherCode', 'phone', 'bloodGroup', 'cardIssueDate', 'cardValidUpto', 'isPublic', 'createdAt', 'updatedAt'])
         && isValidId(data.id)
         && isLocalizedString(data.name, 200)
         && isLocalizedString(data.designation, 200)
         && isLocalizedString(data.subject, 200)
         && isLocalizedString(data.qualification, 300)
         && data.photo is string && data.photo.size() <= 600000
+        && (!('teacherCode' in data) || (data.teacherCode is string && data.teacherCode.size() <= 40))
+        && (!('phone' in data) || (data.phone is string && data.phone.size() <= 40))
+        && (!('bloodGroup' in data) || (data.bloodGroup is string && data.bloodGroup.size() <= 16))
+        && (!('cardIssueDate' in data) || (data.cardIssueDate is string && data.cardIssueDate.size() <= 32))
+        && (!('cardValidUpto' in data) || (data.cardValidUpto is string && data.cardValidUpto.size() <= 32))
         && data.isPublic is bool
         && data.createdAt is timestamp
         && data.updatedAt is timestamp;
@@ -207,12 +212,24 @@ service cloud.firestore {
 
     function isValidUserProfile(data) {
       return data.keys().hasAll(['uid', 'name', 'email', 'role', 'createdAt', 'updatedAt'])
-        && data.keys().hasOnly(['uid', 'name', 'email', 'role', 'photo', 'linkedChildClass', 'linkedChildRoll', 'linkedChildName', 'createdAt', 'updatedAt'])
+        && data.keys().hasOnly(['uid', 'name', 'email', 'role', 'photo', 'phone', 'designation', 'subject', 'qualification', 'bloodGroup', 'registrationNo', 'guardianName', 'section', 'session', 'relationship', 'linkedStudentId', 'linkedStudentIds', 'linkedChildClass', 'linkedChildRoll', 'linkedChildName', 'createdAt', 'updatedAt'])
         && isValidId(data.uid)
         && data.name is string && data.name.size() >= 1 && data.name.size() <= 150
         && data.email is string && data.email.size() >= 3 && data.email.size() <= 150
         && data.role is string && data.role in ['student', 'teacher', 'parent', 'admin']
         && (!('photo' in data) || (data.photo is string && data.photo.size() <= 600000))
+        && (!('phone' in data) || (data.phone is string && data.phone.size() <= 40))
+        && (!('designation' in data) || (data.designation is string && data.designation.size() <= 150))
+        && (!('subject' in data) || (data.subject is string && data.subject.size() <= 150))
+        && (!('qualification' in data) || (data.qualification is string && data.qualification.size() <= 200))
+        && (!('bloodGroup' in data) || (data.bloodGroup is string && data.bloodGroup.size() <= 16))
+        && (!('registrationNo' in data) || (data.registrationNo is string && data.registrationNo.size() <= 64))
+        && (!('guardianName' in data) || (data.guardianName is string && data.guardianName.size() <= 150))
+        && (!('section' in data) || (data.section is string && data.section.size() <= 40))
+        && (!('session' in data) || (data.session is string && data.session.size() <= 16))
+        && (!('relationship' in data) || (data.relationship is string && data.relationship in ['Father', 'Mother', 'Guardian']))
+        && (!('linkedStudentId' in data) || (data.linkedStudentId is string && data.linkedStudentId.size() <= 128))
+        && (!('linkedStudentIds' in data) || (data.linkedStudentIds is list && data.linkedStudentIds.size() <= 15 && (data.linkedStudentIds.size() == 0 || (data.linkedStudentIds[0] is string && data.linkedStudentIds[0].size() <= 128))))
         && (!('linkedChildClass' in data) || (data.linkedChildClass is string && data.linkedChildClass.size() <= 16))
         && (!('linkedChildRoll' in data) || (data.linkedChildRoll is string && data.linkedChildRoll.size() <= 20))
         && (!('linkedChildName' in data) || (data.linkedChildName is string && data.linkedChildName.size() <= 150))
@@ -230,7 +247,7 @@ service cloud.firestore {
 
     function isValidStudent(data) {
       return data.keys().hasAll(['id', 'roll', 'name', 'classId', 'section', 'guardianMobile', 'createdAt', 'updatedAt'])
-        && data.keys().hasOnly(['id', 'roll', 'name', 'classId', 'section', 'guardianMobile', 'guardianName', 'photo', 'registrationDate', 'session', 'studentUid', 'allowedUids', 'createdAt', 'updatedAt'])
+        && data.keys().hasOnly(['id', 'roll', 'name', 'classId', 'section', 'guardianMobile', 'guardianName', 'photo', 'registrationNo', 'registrationDate', 'session', 'cardIssueDate', 'cardValidUpto', 'bloodGroup', 'admitCardApproved', 'admitCardTerm', 'admitCardApprovedAt', 'studentUid', 'allowedUids', 'createdAt', 'updatedAt'])
         && isValidId(data.id)
         && data.roll is string && data.roll.size() >= 1 && data.roll.size() <= 20
         && data.name is string && data.name.size() >= 1 && data.name.size() <= 150
@@ -239,8 +256,15 @@ service cloud.firestore {
         && data.guardianMobile is string && data.guardianMobile.size() >= 6 && data.guardianMobile.size() <= 30
         && (!('guardianName' in data) || (data.guardianName is string && data.guardianName.size() <= 150))
         && (!('photo' in data) || (data.photo is string && data.photo.size() <= 600000))
+        && (!('registrationNo' in data) || (data.registrationNo is string && data.registrationNo.size() <= 64))
         && (!('registrationDate' in data) || (data.registrationDate is string && data.registrationDate.size() <= 32))
         && (!('session' in data) || (data.session is string && data.session.size() <= 16))
+        && (!('cardIssueDate' in data) || (data.cardIssueDate is string && data.cardIssueDate.size() <= 32))
+        && (!('cardValidUpto' in data) || (data.cardValidUpto is string && data.cardValidUpto.size() <= 32))
+        && (!('bloodGroup' in data) || (data.bloodGroup is string && data.bloodGroup.size() <= 16))
+        && (!('admitCardApproved' in data) || data.admitCardApproved is bool)
+        && (!('admitCardTerm' in data) || (data.admitCardTerm is string && data.admitCardTerm.size() <= 100))
+        && (!('admitCardApprovedAt' in data) || (data.admitCardApprovedAt is string && data.admitCardApprovedAt.size() <= 40))
         && (!('studentUid' in data) || isValidId(data.studentUid))
         && (!('allowedUids' in data) || isAllowedUidsList(data.allowedUids))
         && data.createdAt is timestamp
@@ -404,13 +428,16 @@ service cloud.firestore {
 
     function isValidParentMessage(data) {
       return data.keys().hasAll(['id', 'parentName', 'studentName', 'classId', 'roll', 'teacherName', 'subject', 'message', 'status', 'createdDate', 'createdAt', 'updatedAt'])
-        && data.keys().hasOnly(['id', 'parentName', 'studentName', 'classId', 'roll', 'teacherName', 'subject', 'message', 'reply', 'repliedBy', 'status', 'createdDate', 'ownerUid', 'createdAt', 'updatedAt'])
+        && data.keys().hasOnly(['id', 'parentName', 'studentName', 'classId', 'roll', 'teacherName', 'teacherId', 'teacherCode', 'recipientUid', 'subject', 'message', 'reply', 'repliedBy', 'status', 'createdDate', 'ownerUid', 'createdAt', 'updatedAt'])
         && isValidId(data.id)
         && data.parentName is string && data.parentName.size() >= 1 && data.parentName.size() <= 150
         && data.studentName is string && data.studentName.size() >= 1 && data.studentName.size() <= 150
         && data.classId is string && data.classId in ['6', '7', '8', '9', '10']
         && data.roll is string && data.roll.size() >= 1 && data.roll.size() <= 20
         && data.teacherName is string && data.teacherName.size() >= 1 && data.teacherName.size() <= 150
+        && (!('teacherId' in data) || (data.teacherId is string && data.teacherId.size() <= 128))
+        && (!('teacherCode' in data) || (data.teacherCode is string && data.teacherCode.size() <= 40))
+        && (!('recipientUid' in data) || (data.recipientUid is string && data.recipientUid.size() <= 128))
         && data.subject is string && data.subject.size() >= 1 && data.subject.size() <= 200
         && data.message is string && data.message.size() >= 1 && data.message.size() <= 2000
         && (!('reply' in data) || (data.reply is string && data.reply.size() <= 2000))
@@ -618,10 +645,21 @@ service cloud.firestore {
     }
 
     match /teachers/{teacherId} {
-      allow get: if isValidId(teacherId) && (existing().isPublic == true || isAdmin());
-      allow list: if existing().isPublic == true || isAdmin();
+      allow get: if isValidId(teacherId) && (existing().isPublic == true || isTeacher());
+      allow list: if existing().isPublic == true || isTeacher();
       allow create: if isAdmin() && isValidId(teacherId) && isValidTeacher(incoming()) && incoming().id == teacherId && incoming().createdAt == request.time && incoming().updatedAt == request.time;
-      allow update: if isAdmin() && isValidId(teacherId) && isValidTeacher(incoming()) && incoming().id == existing().id && incoming().createdAt == existing().createdAt && incoming().updatedAt == request.time;
+      allow update: if isValidId(teacherId)
+        && isValidTeacher(incoming())
+        && incoming().id == existing().id
+        && incoming().createdAt == existing().createdAt
+        && incoming().updatedAt == request.time
+        && (
+          isAdmin()
+          || (
+            isTeacher()
+            && incoming().diff(existing()).affectedKeys().hasOnly(['photo', 'teacherCode', 'phone', 'bloodGroup', 'cardIssueDate', 'cardValidUpto', 'updatedAt'])
+          )
+        );
       allow delete: if isAdmin() && isValidId(teacherId);
     }
 
@@ -710,7 +748,13 @@ service cloud.firestore {
           || (
             isOwner(uid)
             && incoming().role == existing().role
-            && incoming().diff(existing()).affectedKeys().hasOnly(['name', 'email', 'photo', 'linkedChildClass', 'linkedChildRoll', 'linkedChildName', 'updatedAt'])
+            && (
+              incoming().diff(existing()).affectedKeys().hasOnly(['name', 'email', 'photo', 'phone', 'designation', 'updatedAt'])
+              || (
+                !('linkedChildClass' in existing())
+                && incoming().diff(existing()).affectedKeys().hasOnly(['name', 'email', 'photo', 'phone', 'designation', 'relationship', 'linkedStudentId', 'linkedStudentIds', 'linkedChildClass', 'linkedChildRoll', 'linkedChildName', 'updatedAt'])
+              )
+            )
           )
         );
       allow delete: if isAdmin() && isValidId(uid);
@@ -823,8 +867,14 @@ service cloud.firestore {
     }
 
     match /parentMessages/{messageId} {
-      allow get: if isValidId(messageId) && ((isSignedIn() && 'ownerUid' in existing() && existing().ownerUid == request.auth.uid) || isTeacher());
-      allow list: if (isSignedIn() && 'ownerUid' in existing() && existing().ownerUid == request.auth.uid) || isTeacher();
+      allow get: if isValidId(messageId) && (
+        (isSignedIn() && 'ownerUid' in existing() && existing().ownerUid == request.auth.uid)
+        || isAdmin()
+        || (isTeacher() && 'recipientUid' in existing() && existing().recipientUid == request.auth.uid)
+      );
+      allow list: if (isSignedIn() && 'ownerUid' in existing() && existing().ownerUid == request.auth.uid)
+        || isAdmin()
+        || (isTeacher() && 'recipientUid' in existing() && existing().recipientUid == request.auth.uid);
       allow create: if isSignedIn()
         && isValidId(messageId)
         && isValidParentMessage(incoming())
@@ -833,7 +883,7 @@ service cloud.firestore {
         && incoming().createdAt == request.time
         && incoming().updatedAt == request.time
         && (!('ownerUid' in incoming()) || incoming().ownerUid == request.auth.uid);
-      allow update: if isTeacher()
+      allow update: if (isAdmin() || (isTeacher() && 'recipientUid' in existing() && existing().recipientUid == request.auth.uid))
         && isValidId(messageId)
         && isValidParentMessage(incoming())
         && incoming().id == existing().id

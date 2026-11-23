@@ -32,6 +32,7 @@ const Admission: React.FC = () => {
   const [isFormOpen, setIsFormOpen] = useState(false);
   const [isSubmitted, setIsSubmitted] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [submitError, setSubmitError] = useState('');
   const [submittedAppId, setSubmittedAppId] = useState('');
   const [statusQuery, setStatusQuery] = useState('');
   const [isCheckingStatus, setIsCheckingStatus] = useState(false);
@@ -79,6 +80,7 @@ const Admission: React.FC = () => {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setIsSubmitting(true);
+    setSubmitError('');
     const appId = `RBHS-${Date.now().toString().slice(-6)}`;
     try {
       await addAdmission({
@@ -91,8 +93,11 @@ const Admission: React.FC = () => {
       setIsSubmitted(true);
     } catch (err) {
       console.error('Admission save failed:', err);
-      setSubmittedAppId(appId);
-      setIsSubmitted(true);
+      setSubmitError(
+        lang === 'bn'
+          ? 'আবেদনটি ক্লাউডে পাঠানো যায়নি (লোকালে সংরক্ষিত হয়েছে)। দয়া করে তথ্য যাচাই করে আবার চেষ্টা করুন।'
+          : 'Could not sync your application to the server. Please verify all fields (e.g. mobile number) and try again.'
+      );
     } finally {
       setIsSubmitting(false);
     }
@@ -427,6 +432,13 @@ const Admission: React.FC = () => {
                   />
                 </div>
               </div>
+
+              {submitError && (
+                <div className="p-4 rounded-xl bg-red-50 dark:bg-red-950/60 border border-red-200 dark:border-red-800 text-red-700 dark:text-red-300 text-sm font-bold flex items-center gap-2">
+                  <AlertCircle className="w-5 h-5 shrink-0" />
+                  <span>{submitError}</span>
+                </div>
+              )}
 
               <button
                 disabled={isSubmitting}

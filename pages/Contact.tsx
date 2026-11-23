@@ -8,6 +8,7 @@ const Contact: React.FC = () => {
   const { lang, t, settings, addContactMessage } = useApp();
   const [isSubmitting, setIsSubmitting] = React.useState(false);
   const [sent, setSent] = React.useState(false);
+  const [submitError, setSubmitError] = React.useState('');
   const [contactForm, setContactForm] = React.useState({
     name: '',
     mobile: '',
@@ -18,6 +19,7 @@ const Contact: React.FC = () => {
   const handleForm = async (e: React.FormEvent) => {
     e.preventDefault();
     setIsSubmitting(true);
+    setSubmitError('');
     try {
       await addContactMessage({
         id: `msg-${Date.now()}`,
@@ -33,7 +35,11 @@ const Contact: React.FC = () => {
       setTimeout(() => setSent(false), 5000);
     } catch (err) {
       console.error('Failed to save contact message:', err);
-      setSent(true);
+      setSubmitError(
+        lang === 'bn'
+          ? 'বার্তাটি সার্ভারে পাঠানো যায়নি। দয়া করে সঠিক তথ্য দিয়ে পুনরায় চেষ্টা করুন।'
+          : 'Could not send your message to the server. Please verify your mobile number and try again.'
+      );
     } finally {
       setIsSubmitting(false);
     }
@@ -209,6 +215,12 @@ const Contact: React.FC = () => {
                     placeholder="Write your message here..."
                   />
                 </div>
+
+                {submitError && (
+                  <div className="p-3.5 rounded-2xl bg-red-50 dark:bg-red-950/60 border border-red-200 dark:border-red-800 text-red-700 dark:text-red-300 text-xs font-bold">
+                    {submitError}
+                  </div>
+                )}
 
                 <button
                   disabled={isSubmitting}

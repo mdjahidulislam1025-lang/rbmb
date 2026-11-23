@@ -53,7 +53,10 @@ export interface StudentIdAdmitCardProps {
   photoUrl?: string;
   registrationDate?: string;
   session?: string;
+  cardIssueDate?: string;
+  cardValidUpto?: string;
   initialMode?: CardMode;
+  allowedModes?: CardMode[];
   rosterStudents?: SchoolStudent[];
   onSaveStudentDetails?: (updates: {
     classId: string;
@@ -63,6 +66,8 @@ export interface StudentIdAdmitCardProps {
     photo?: string;
     registrationDate?: string;
     session?: string;
+    cardIssueDate?: string;
+    cardValidUpto?: string;
   }) => void;
 }
 
@@ -1008,14 +1013,22 @@ export const StudentIdAdmitCard: React.FC<StudentIdAdmitCardProps> = ({
   photoUrl,
   registrationDate,
   session = '2026',
+  cardIssueDate,
+  cardValidUpto,
   initialMode = 'admit',
+  allowedModes,
   rosterStudents,
   onSaveStudentDetails,
 }) => {
   const { lang, t, settings, examRoutines } = useApp();
   const photoInputRef = useRef<HTMLInputElement>(null);
+  const effectiveAllowedModes: CardMode[] =
+    allowedModes && allowedModes.length > 0 ? allowedModes : ['admit', 'reg', 'id'];
+  const safeInitialMode: CardMode = effectiveAllowedModes.includes(initialMode as CardMode)
+    ? (initialMode as CardMode)
+    : effectiveAllowedModes[0];
 
-  const [mode, setMode] = useState<CardMode>(initialMode);
+  const [mode, setMode] = useState<CardMode>(safeInitialMode);
   const [cardLang, setCardLang] = useState<'en' | 'bn'>('en');
   const [selectedTerm, setSelectedTerm] = useState<string>(EXAM_TERMS[3]?.id || EXAM_TERMS[1].id);
   const [showCustomize, setShowCustomize] = useState(false);
@@ -1033,16 +1046,18 @@ export const StudentIdAdmitCard: React.FC<StudentIdAdmitCardProps> = ({
     photoUrl: photoUrl || '',
     session: session || '2026',
     registrationDate: registrationDate || '2026-01-15',
-    issueDate: '2026-01-15',
-    validUpto: '2026-12-31',
+    issueDate: cardIssueDate || '2026-01-15',
+    validUpto: cardValidUpto || '2026-12-31',
   });
 
   // Sync incoming props cleanly whenever modal opens or props change
   useEffect(() => {
-    setMode(initialMode);
+    const allowed: CardMode[] =
+      allowedModes && allowedModes.length > 0 ? allowedModes : ['admit', 'reg', 'id'];
+    setMode(allowed.includes(initialMode as CardMode) ? (initialMode as CardMode) : allowed[0]);
     setPrintAllMode(false);
     setSaveSuccess(false);
-  }, [initialMode, open]);
+  }, [initialMode, open, allowedModes]);
 
   useEffect(() => {
     const key = `${classId}__${roll}`;
@@ -1057,8 +1072,8 @@ export const StudentIdAdmitCard: React.FC<StudentIdAdmitCardProps> = ({
       photoUrl: photoUrl || '',
       session: (session || '2026').trim(),
       registrationDate: (registrationDate || '2026-01-15').trim(),
-      issueDate: '2026-01-15',
-      validUpto: '2026-12-31',
+      issueDate: (cardIssueDate || '2026-01-15').trim(),
+      validUpto: (cardValidUpto || '2026-12-31').trim(),
     });
   }, [
     open,
@@ -1071,6 +1086,8 @@ export const StudentIdAdmitCard: React.FC<StudentIdAdmitCardProps> = ({
     photoUrl,
     registrationDate,
     session,
+    cardIssueDate,
+    cardValidUpto,
     settings.phone,
   ]);
 
@@ -1091,6 +1108,8 @@ export const StudentIdAdmitCard: React.FC<StudentIdAdmitCardProps> = ({
       photoUrl: found.photo || '',
       session: found.session || prev.session || '2026',
       registrationDate: found.registrationDate || prev.registrationDate || '2026-01-15',
+      issueDate: found.cardIssueDate || prev.issueDate || '2026-01-15',
+      validUpto: found.cardValidUpto || prev.validUpto || '2026-12-31',
     }));
   };
 
@@ -1113,7 +1132,7 @@ export const StudentIdAdmitCard: React.FC<StudentIdAdmitCardProps> = ({
     const file = e.target.files?.[0];
     if (!file) return;
     try {
-      const compressed = await compressImageFile(file, 360, 0.8);
+      const compressed = await compressImageFile(file, 450, 0.8, 420000);
       setFormOverrides((prev) => ({ ...prev, photoUrl: compressed }));
       if (onSaveStudentDetails) {
         onSaveStudentDetails({
@@ -1124,6 +1143,8 @@ export const StudentIdAdmitCard: React.FC<StudentIdAdmitCardProps> = ({
           guardianMobile: formOverrides.guardianMobile || undefined,
           registrationDate: formOverrides.registrationDate || undefined,
           session: formOverrides.session || undefined,
+          cardIssueDate: formOverrides.issueDate || undefined,
+          cardValidUpto: formOverrides.validUpto || undefined,
         });
         setSaveSuccess(true);
         setTimeout(() => setSaveSuccess(false), 2500);
@@ -1145,6 +1166,8 @@ export const StudentIdAdmitCard: React.FC<StudentIdAdmitCardProps> = ({
       photo: formOverrides.photoUrl || undefined,
       registrationDate: formOverrides.registrationDate || undefined,
       session: formOverrides.session || undefined,
+      cardIssueDate: formOverrides.issueDate || undefined,
+      cardValidUpto: formOverrides.validUpto || undefined,
     });
     setSaveSuccess(true);
     setTimeout(() => setSaveSuccess(false), 2500);
@@ -1172,8 +1195,8 @@ export const StudentIdAdmitCard: React.FC<StudentIdAdmitCardProps> = ({
           photoUrl: st.photo || '',
           session: st.session || formOverrides.session || '2026',
           registrationDate: st.registrationDate || formOverrides.registrationDate || '2026-01-15',
-          issueDate: formOverrides.issueDate,
-          validUpto: formOverrides.validUpto,
+          issueDate: st.cardIssueDate || formOverrides.issueDate,
+          validUpto: st.cardValidUpto || formOverrides.validUpto,
         }))
       : [formOverrides];
 
@@ -1185,44 +1208,50 @@ export const StudentIdAdmitCard: React.FC<StudentIdAdmitCardProps> = ({
         {/* Top Interactive Toolbar */}
         <div className="no-print flex flex-col gap-3 px-4 sm:px-6 py-3.5 bg-white dark:bg-slate-800/95 border-b border-slate-200 dark:border-slate-700 shrink-0">
           <div className="flex flex-wrap items-center justify-between gap-2.5">
-            {/* 3 System Tabs */}
+            {/* System Tabs filtered by allowedModes */}
             <div className="flex flex-wrap items-center gap-1 p-1 bg-slate-100 dark:bg-slate-900 rounded-xl">
-              <button
-                type="button"
-                onClick={() => setMode('admit')}
-                className={`px-3 py-1.5 rounded-lg text-xs font-bold inline-flex items-center gap-1.5 transition-colors whitespace-nowrap shrink-0 ${
-                  mode === 'admit'
-                    ? 'bg-emerald-700 text-white shadow-sm'
-                    : 'text-slate-600 dark:text-slate-300 hover:text-slate-900'
-                }`}
-              >
-                <ClipboardList className="w-3.5 h-3.5" />
-                {lang === 'bn' ? 'অ্যাডমিট কার্ড' : 'Admit Card'}
-              </button>
-              <button
-                type="button"
-                onClick={() => setMode('reg')}
-                className={`px-3 py-1.5 rounded-lg text-xs font-bold inline-flex items-center gap-1.5 transition-colors whitespace-nowrap shrink-0 ${
-                  mode === 'reg'
-                    ? 'bg-emerald-700 text-white shadow-sm'
-                    : 'text-slate-600 dark:text-slate-300 hover:text-slate-900'
-                }`}
-              >
-                <FileBadge2 className="w-3.5 h-3.5" />
-                {lang === 'bn' ? 'রেজিস্ট্রেশন কার্ড' : 'Registration Card'}
-              </button>
-              <button
-                type="button"
-                onClick={() => setMode('id')}
-                className={`px-3 py-1.5 rounded-lg text-xs font-bold inline-flex items-center gap-1.5 transition-colors whitespace-nowrap shrink-0 ${
-                  mode === 'id'
-                    ? 'bg-emerald-700 text-white shadow-sm'
-                    : 'text-slate-600 dark:text-slate-300 hover:text-slate-900'
-                }`}
-              >
-                <IdCard className="w-3.5 h-3.5" />
-                {lang === 'bn' ? 'আইডি কার্ড (Front & Back)' : 'Student ID Card'}
-              </button>
+              {effectiveAllowedModes.includes('admit') && (
+                <button
+                  type="button"
+                  onClick={() => setMode('admit')}
+                  className={`px-3 py-1.5 rounded-lg text-xs font-bold inline-flex items-center gap-1.5 transition-colors whitespace-nowrap shrink-0 ${
+                    mode === 'admit'
+                      ? 'bg-emerald-700 text-white shadow-sm'
+                      : 'text-slate-600 dark:text-slate-300 hover:text-slate-900'
+                  }`}
+                >
+                  <ClipboardList className="w-3.5 h-3.5" />
+                  {lang === 'bn' ? 'অ্যাডমিট কার্ড' : 'Admit Card'}
+                </button>
+              )}
+              {effectiveAllowedModes.includes('reg') && (
+                <button
+                  type="button"
+                  onClick={() => setMode('reg')}
+                  className={`px-3 py-1.5 rounded-lg text-xs font-bold inline-flex items-center gap-1.5 transition-colors whitespace-nowrap shrink-0 ${
+                    mode === 'reg'
+                      ? 'bg-emerald-700 text-white shadow-sm'
+                      : 'text-slate-600 dark:text-slate-300 hover:text-slate-900'
+                  }`}
+                >
+                  <FileBadge2 className="w-3.5 h-3.5" />
+                  {lang === 'bn' ? 'রেজিস্ট্রেশন কার্ড' : 'Registration Card'}
+                </button>
+              )}
+              {effectiveAllowedModes.includes('id') && (
+                <button
+                  type="button"
+                  onClick={() => setMode('id')}
+                  className={`px-3 py-1.5 rounded-lg text-xs font-bold inline-flex items-center gap-1.5 transition-colors whitespace-nowrap shrink-0 ${
+                    mode === 'id'
+                      ? 'bg-emerald-700 text-white shadow-sm'
+                      : 'text-slate-600 dark:text-slate-300 hover:text-slate-900'
+                  }`}
+                >
+                  <IdCard className="w-3.5 h-3.5" />
+                  {lang === 'bn' ? 'আইডি কার্ড (Front & Back)' : 'Student ID Card'}
+                </button>
+              )}
             </div>
 
             {/* Right Controls */}

@@ -64,6 +64,11 @@ export interface Teacher {
   subject: LocalizedString;
   qualification: LocalizedString;
   photo: string;
+  teacherCode?: string;
+  phone?: string;
+  bloodGroup?: string;
+  cardIssueDate?: string;
+  cardValidUpto?: string;
   isPublic?: boolean;
 }
 
@@ -202,6 +207,16 @@ export interface UserAccount {
   photo?: string;
   phone?: string;
   designation?: string;
+  subject?: string;
+  qualification?: string;
+  bloodGroup?: string;
+  registrationNo?: string;
+  guardianName?: string;
+  section?: string;
+  session?: string;
+  relationship?: 'Father' | 'Mother' | 'Guardian';
+  linkedStudentId?: string;
+  linkedStudentIds?: string[];
   linkedChildClass?: string;
   linkedChildRoll?: string;
   linkedChildName?: string;
@@ -213,6 +228,18 @@ export interface CloudUserProfile {
   email: string;
   role: UserRole;
   photo?: string;
+  phone?: string;
+  designation?: string;
+  subject?: string;
+  qualification?: string;
+  bloodGroup?: string;
+  registrationNo?: string;
+  guardianName?: string;
+  section?: string;
+  session?: string;
+  relationship?: 'Father' | 'Mother' | 'Guardian';
+  linkedStudentId?: string;
+  linkedStudentIds?: string[];
   linkedChildClass?: string;
   linkedChildRoll?: string;
   linkedChildName?: string;
@@ -228,9 +255,17 @@ export interface SchoolStudent {
   section: string;
   guardianMobile: string;
   guardianName?: string;
+  registrationNo?: string;
+  bloodGroup?: string;
+  email?: string;
   photo?: string;
   registrationDate?: string;
   session?: string;
+  cardIssueDate?: string;
+  cardValidUpto?: string;
+  admitCardApproved?: boolean;
+  admitCardTerm?: string;
+  admitCardApprovedAt?: string;
   studentUid?: string;
   allowedUids?: string[];
 }
@@ -351,6 +386,9 @@ export interface ParentMessage {
   classId: string;
   roll: string;
   teacherName: string;
+  teacherId?: string;
+  teacherCode?: string;
+  recipientUid?: string;
   subject: string;
   message: string;
   reply?: string;

@@ -130,8 +130,22 @@ import {
   serverTimestamp,
   writeBatch,
 } from 'firebase/firestore';
-import { sanitizeFirestoreId } from './utils/imageUtils';
-import { hashPassword, verifyPassword } from './utils/security';
+import { sanitizeFirestoreId, clampImageString } from './utils/imageUtils';
+import {
+  hashPassword,
+  verifyPassword,
+  normalizePhoneDigits,
+  phonesMatch,
+  buildStudentRegistrationNo,
+} from './utils/security';
+import {
+  safeLocalGet,
+  safeLocalSet,
+  loadAllIdbKeys,
+  getDirtyKeys,
+  markDirtyKey,
+  clearDirtyKey,
+} from './utils/storage';
 
 const { useState, createContext, useContext, useEffect, useRef, useMemo } = React;
 const { HashRouter: Router, Routes, Route, Link, useNavigate } = RouterDom;
@@ -146,9 +160,53 @@ export interface AuthUser {
   password?: string;
   passwordHash?: string;
   photo?: string;
+  phone?: string;
+  designation?: string;
+  subject?: string;
+  qualification?: string;
+  bloodGroup?: string;
+  registrationNo?: string;
+  guardianName?: string;
+  section?: string;
+  session?: string;
+  relationship?: 'Father' | 'Mother' | 'Guardian';
+  linkedStudentId?: string;
+  linkedStudentIds?: string[];
   linkedChildClass?: string;
   linkedChildRoll?: string;
   linkedChildName?: string;
+}
+
+export interface SelfRegistrationPayload {
+  role: 'student' | 'teacher' | 'parent';
+  name: string;
+  password: string;
+  phone: string;
+  email?: string;
+  photo?: string;
+  bloodGroup?: string;
+  classId?: string;
+  section?: string;
+  roll?: string;
+  session?: string;
+  guardianName?: string;
+  nameBn?: string;
+  designation?: string;
+  subject?: string;
+  qualification?: string;
+  relationship?: 'Father' | 'Mother' | 'Guardian';
+}
+
+export interface SelfRegistrationResult {
+  ok: boolean;
+  error?: string;
+  user?: AuthUser;
+  registrationNo?: string;
+  teacherCode?: string;
+  matchedStudentName?: string;
+  matchedStudentClass?: string;
+  matchedStudentRoll?: string;
+  matchedStudents?: Array<{ name: string; classId: string; roll: string }>;
 }
 
 const DEFAULT_DEMO_PASSWORDS: Record<string, string> = {
@@ -163,20 +221,33 @@ const SEEDED_USER_TEMPLATES: Omit<AuthUser, 'passwordHash'>[] = [
     name: 'মোসাঃ ফাতেমা বেগম',
     role: 'teacher',
     email: 'teacher01@rbhs.edu',
+    phone: '01711-000102',
+    designation: 'সিনিয়র সহকারী শিক্ষক',
+    subject: 'Science & Mathematics',
   },
   {
     userId: 'student01',
     name: 'আরিয়ান করিম (Aryan Karim)',
     role: 'student',
     email: 'student01@rbhs.edu',
+    phone: '01712-667788',
+    registrationNo: 'RBMB-REG-2026-0901',
+    section: 'Science',
+    session: '2026',
+    guardianName: 'মোঃ করিম উদ্দিন',
+    linkedStudentId: 'st-9-1',
     linkedChildClass: '9',
     linkedChildRoll: '01',
+    linkedChildName: 'আরিয়ান করিম (Aryan Karim)',
   },
   {
     userId: 'parent01',
     name: 'মোঃ করিম উদ্দিন (অভিভাবক)',
     role: 'parent',
     email: 'parent01@rbhs.edu',
+    phone: '01712-667788',
+    relationship: 'Father',
+    linkedStudentId: 'st-9-1',
     linkedChildClass: '9',
     linkedChildRoll: '01',
     linkedChildName: 'আরিয়ান করিম (Aryan Karim)',
@@ -225,6 +296,7 @@ interface AppContextType {
   login: (authUser: AuthUser) => void;
   verifyLocalCredentials: (userId: string, password: string, role: BaseUserRole) => Promise<AuthUser | null>;
   register: (newUser: AuthUser) => Promise<boolean>;
+  selfRegisterAccount: (payload: SelfRegistrationPayload) => Promise<SelfRegistrationResult>;
   updateUser: (updatedUser: AuthUser) => Promise<void>;
   deleteUser: (userId: string) => void;
   logout: () => void;
@@ -308,8 +380,8 @@ interface AppContextType {
   reviewParentStudentLink: (linkId: string, status: 'approved' | 'rejected') => Promise<void>;
   deleteParentStudentLink: (linkId: string) => Promise<void>;
   alumni: AlumniProfile[];
-  submitAlumniProfile: (profile: AlumniProfile) => void;
-  updateAlumniStatus: (id: string, status: 'pending' | 'approved') => void;
+  submitAlumniProfile: (profile: AlumniProfile) => Promise<void>;
+  updateAlumniStatus: (id: string, status: 'pending' | 'approved') => Promise<void>;
   deleteAlumniProfile: (id: string) => void;
   teacherLeaves: TeacherLeave[];
   submitTeacherLeave: (leave: TeacherLeave) => void;
@@ -337,10 +409,11 @@ interface AppContextType {
   deletePortalNotification: (id: string) => void;
   auditLogs: AuditLog[];
   settings: SchoolSettings;
-  updateSettings: (newSettings: SchoolSettings) => void;
+  updateSettings: (newSettings: SchoolSettings) => Promise<boolean>;
   exportDatabase: () => void;
   importDatabase: (jsonData: string) => boolean;
   dbStatus: 'synced' | 'syncing' | 'error';
+  lastSyncError: string | null;
 }
 
 const AppContext = createContext<AppContextType | undefined>(undefined);
@@ -351,27 +424,60 @@ export const useApp = () => {
   return context;
 };
 
-const safeLocalGet = <T,>(key: string, fallback: T): T => {
-  try {
-    const saved = localStorage.getItem(key);
-    if (!saved) return fallback;
-    return JSON.parse(saved) as T;
-  } catch {
-    return fallback;
-  }
-};
-
-const safeLocalSet = (key: string, data: unknown) => {
-  try {
-    localStorage.setItem(key, JSON.stringify(data));
-  } catch (e) {
-    console.warn(`localStorage write skipped for ${key}:`, e);
-  }
+const safeLoc = (val?: { bn?: string; en?: string }, fallbackBn = 'তথ্য', fallbackEn = 'Info', maxLen = 300) => {
+  const rawBn = (val?.bn || '').trim();
+  const rawEn = (val?.en || '').trim();
+  const bn = (rawBn || rawEn || fallbackBn).slice(0, maxLen);
+  const en = (rawEn || rawBn || fallbackEn).slice(0, maxLen);
+  return { bn, en };
 };
 
 const stripPlaintextPassword = (u: AuthUser): AuthUser => {
   const { password: _pw, ...rest } = u;
   return rest;
+};
+
+const LEGACY_SCHOOL_NAME_BN = [
+  'রাণীর বাজার মডেল উচ্চ বিদ্যালয়',
+  'রাণীর বাজার মডেল উচ্চ বিদ্যালয়',
+  'রাণীর বাজার মডেল হাই স্কুল',
+];
+const LEGACY_SCHOOL_NAME_EN = [
+  'Rani Bazar Model High School',
+  'Ranir Bazar Model High School',
+];
+
+const normalizeSchoolSettings = (raw?: Partial<SchoolSettings> | null): SchoolSettings => {
+  const base = { ...INITIAL_SETTINGS, ...(raw || {}) };
+  const rawBn = (base.name?.bn || '').trim();
+  const rawEn = (base.name?.en || '').trim();
+  const nextBn =
+    !rawBn || LEGACY_SCHOOL_NAME_BN.some((legacy) => rawBn.includes(legacy) || rawBn.includes('মডেল উচ্চ') || rawBn.includes('মডেল হাই'))
+      ? SCHOOL_NAME.bn
+      : rawBn;
+  const nextEn =
+    !rawEn || LEGACY_SCHOOL_NAME_EN.some((legacy) => rawEn.toLowerCase().includes(legacy.toLowerCase()) || rawEn.toLowerCase().includes('model high'))
+      ? SCHOOL_NAME.en
+      : rawEn;
+
+  const headMsgBn = (base.headTeacherMessage?.bn || '').replace(/রাণীর বাজার মডেল উচ্চ বিদ্যালয়/g, SCHOOL_NAME.bn);
+  const headMsgEn = (base.headTeacherMessage?.en || '').replace(/Rani Bazar Model High School/gi, SCHOOL_NAME.en);
+
+  return {
+    ...base,
+    name: { bn: nextBn, en: nextEn },
+    headTeacherMessage: base.headTeacherMessage
+      ? { bn: headMsgBn, en: headMsgEn }
+      : INITIAL_SETTINGS.headTeacherMessage,
+    schoolPhoto:
+      base.schoolPhoto && !base.schoolPhoto.includes('unsplash.com') && !base.schoolPhoto.includes('picsum.photos')
+        ? base.schoolPhoto
+        : INITIAL_SETTINGS.schoolPhoto,
+    headTeacherPhoto:
+      base.headTeacherPhoto && !base.headTeacherPhoto.includes('unsplash.com') && !base.headTeacherPhoto.includes('picsum.photos')
+        ? base.headTeacherPhoto
+        : INITIAL_SETTINGS.headTeacherPhoto,
+  };
 };
 
 // Global Quick Search Modal rendered inside Router context
@@ -643,7 +749,9 @@ const App: React.FC = () => {
   const [chatMessages, setChatMessages] = useState<ChatMessage[]>([]);
   const [isTyping, setIsTyping] = useState(false);
   const [dbStatus, setDbStatus] = useState<'synced' | 'syncing' | 'error'>('synced');
+  const [lastSyncError, setLastSyncError] = useState<string | null>(null);
   const chatEndRef = useRef<HTMLDivElement>(null);
+  const cloudRoleRef = useRef({ isCloudAdmin: false, isCloudTeacher: false });
 
   const [notices, setNotices] = useState<Notice[]>(() => safeLocalGet('db_notices', INITIAL_NOTICES));
   const [newsList, setNewsList] = useState<NewsArticle[]>(() => safeLocalGet('db_news', INITIAL_NEWS));
@@ -681,18 +789,7 @@ const App: React.FC = () => {
 
   const [settings, setSettings] = useState<SchoolSettings>(() => {
     const saved = safeLocalGet<SchoolSettings>('school_settings', INITIAL_SETTINGS);
-    return {
-      ...INITIAL_SETTINGS,
-      ...saved,
-      schoolPhoto:
-        saved.schoolPhoto && !saved.schoolPhoto.includes('unsplash.com') && !saved.schoolPhoto.includes('picsum.photos')
-          ? saved.schoolPhoto
-          : INITIAL_SETTINGS.schoolPhoto,
-      headTeacherPhoto:
-        saved.headTeacherPhoto && !saved.headTeacherPhoto.includes('unsplash.com') && !saved.headTeacherPhoto.includes('picsum.photos')
-          ? saved.headTeacherPhoto
-          : INITIAL_SETTINGS.headTeacherPhoto,
-    };
+    return normalizeSchoolSettings(saved);
   });
 
   // Theme, Large Text, Lang & Keyboard Shortcuts (Ctrl+K / Cmd+K)
@@ -753,7 +850,9 @@ const App: React.FC = () => {
         } else if (!nextHash && DEFAULT_DEMO_PASSWORDS[u.userId]) {
           nextHash = await hashPassword(DEFAULT_DEMO_PASSWORDS[u.userId]);
         }
-        migrated.push({ ...stripPlaintextPassword(u), ...(nextHash ? { passwordHash: nextHash } : {}) });
+        const tmpl = SEEDED_USER_TEMPLATES.find((tItem) => tItem.userId.toLowerCase() === u.userId.toLowerCase());
+        const mergedSeeded = tmpl ? { ...tmpl, ...u } : u;
+        migrated.push({ ...stripPlaintextPassword(mergedSeeded), ...(nextHash ? { passwordHash: nextHash } : {}) });
       }
       for (const tmpl of SEEDED_USER_TEMPLATES) {
         if (!migrated.some((u) => u.userId.toLowerCase() === tmpl.userId.toLowerCase())) {
@@ -786,6 +885,12 @@ const App: React.FC = () => {
     examRoutines,
     subjects,
     alumni,
+    classRoutines,
+    students,
+    homeworkList,
+    studentLeaves,
+    feeRecords,
+    portalNotifications,
   });
   useEffect(() => {
     latestStateRef.current = {
@@ -801,10 +906,114 @@ const App: React.FC = () => {
       examRoutines,
       subjects,
       alumni,
+      classRoutines,
+      students,
+      homeworkList,
+      studentLeaves,
+      feeRecords,
+      portalNotifications,
     };
-  }, [notices, newsList, eventsList, teachers, ebooks, gallery, holidays, settings, onlineExams, examRoutines, subjects, alumni]);
+  }, [
+    notices,
+    newsList,
+    eventsList,
+    teachers,
+    ebooks,
+    gallery,
+    holidays,
+    settings,
+    onlineExams,
+    examRoutines,
+    subjects,
+    alumni,
+    classRoutines,
+    students,
+    homeworkList,
+    studentLeaves,
+    feeRecords,
+    portalNotifications,
+  ]);
 
   useEffect(() => {
+    cloudRoleRef.current = { isCloudAdmin, isCloudTeacher };
+  }, [isCloudAdmin, isCloudTeacher]);
+
+  // Hydrate durable IndexedDB cache on mount (recovers uploaded photos & datasets that exceeded 5MB localStorage)
+  useEffect(() => {
+    let cancelled = false;
+    const hydrateFromIdb = async () => {
+      const idbData = await loadAllIdbKeys([
+        'school_settings',
+        'db_notices',
+        'db_news',
+        'db_events',
+        'db_teachers',
+        'db_ebooks',
+        'db_gallery',
+        'db_holidays',
+        'admission_applications',
+        'contact_messages',
+        'db_students',
+        'db_attendance',
+        'db_student_attendance',
+        'db_homework',
+        'db_assignment_submissions',
+        'db_exam_marks',
+        'db_online_exams',
+        'db_exam_attempts',
+        'db_exam_routines',
+        'db_class_routines',
+        'db_subjects',
+        'db_parent_messages',
+        'db_parent_links',
+        'db_alumni',
+        'db_teacher_leaves',
+        'db_student_leaves',
+        'db_fee_records',
+        'db_portal_notifications',
+        'db_audit_logs',
+        'registered_users',
+      ]);
+      if (cancelled) return;
+      if (idbData.school_settings) setSettings((prev) => normalizeSchoolSettings({ ...prev, ...(idbData.school_settings as SchoolSettings) }));
+      if (Array.isArray(idbData.db_notices)) setNotices(idbData.db_notices as Notice[]);
+      if (Array.isArray(idbData.db_news)) setNewsList(idbData.db_news as NewsArticle[]);
+      if (Array.isArray(idbData.db_events)) setEventsList(idbData.db_events as CampusEvent[]);
+      if (Array.isArray(idbData.db_teachers)) setTeachers(idbData.db_teachers as Teacher[]);
+      if (Array.isArray(idbData.db_ebooks)) setEbooks(idbData.db_ebooks as EBook[]);
+      if (Array.isArray(idbData.db_gallery)) setGallery(idbData.db_gallery as GalleryItem[]);
+      if (Array.isArray(idbData.db_holidays)) setHolidays(idbData.db_holidays as Holiday[]);
+      if (Array.isArray(idbData.admission_applications)) setAdmissions(idbData.admission_applications as AdmissionApplication[]);
+      if (Array.isArray(idbData.contact_messages)) setContactMessages(idbData.contact_messages as ContactMessage[]);
+      if (Array.isArray(idbData.db_students)) setStudents(idbData.db_students as SchoolStudent[]);
+      if (Array.isArray(idbData.db_attendance)) setAttendanceRecords(idbData.db_attendance as AttendanceRecord[]);
+      if (Array.isArray(idbData.db_student_attendance)) setStudentAttendance(idbData.db_student_attendance as StudentAttendanceRecord[]);
+      if (Array.isArray(idbData.db_homework)) setHomeworkList(idbData.db_homework as HomeworkItem[]);
+      if (Array.isArray(idbData.db_assignment_submissions)) setAssignmentSubmissions(idbData.db_assignment_submissions as AssignmentSubmission[]);
+      if (Array.isArray(idbData.db_exam_marks)) setExamMarks(idbData.db_exam_marks as ExamMark[]);
+      if (Array.isArray(idbData.db_online_exams)) setOnlineExams(idbData.db_online_exams as OnlineExamType[]);
+      if (Array.isArray(idbData.db_exam_attempts)) setExamAttempts(idbData.db_exam_attempts as ExamAttempt[]);
+      if (Array.isArray(idbData.db_exam_routines)) setExamRoutines(idbData.db_exam_routines as ExamRoutineItem[]);
+      if (Array.isArray(idbData.db_class_routines)) setClassRoutines(idbData.db_class_routines as ClassRoutine[]);
+      if (Array.isArray(idbData.db_subjects)) setSubjects(idbData.db_subjects as SchoolSubject[]);
+      if (Array.isArray(idbData.db_parent_messages)) setParentMessages(idbData.db_parent_messages as ParentMessage[]);
+      if (Array.isArray(idbData.db_parent_links)) setParentLinks(idbData.db_parent_links as ParentStudentLink[]);
+      if (Array.isArray(idbData.db_alumni)) setAlumni(idbData.db_alumni as AlumniProfile[]);
+      if (Array.isArray(idbData.db_teacher_leaves)) setTeacherLeaves(idbData.db_teacher_leaves as TeacherLeave[]);
+      if (Array.isArray(idbData.db_student_leaves)) setStudentLeaves(idbData.db_student_leaves as StudentLeave[]);
+      if (Array.isArray(idbData.db_fee_records)) setFeeRecords(idbData.db_fee_records as FeeRecord[]);
+      if (Array.isArray(idbData.db_portal_notifications)) setPortalNotifications(idbData.db_portal_notifications as PortalNotification[]);
+      if (Array.isArray(idbData.db_audit_logs)) setAuditLogs(idbData.db_audit_logs as AuditLog[]);
+      if (Array.isArray(idbData.registered_users) && idbData.registered_users.length > 0) {
+        setRegisteredUsers(
+          (idbData.registered_users as AuthUser[])
+            .filter((u) => u && u.role !== 'admin' && u.userId !== 'admin')
+            .map(stripPlaintextPassword)
+        );
+      }
+    };
+    hydrateFromIdb();
+
     const savedUser = safeLocalGet<AuthUser | null>('school_user', null);
     if (savedUser && savedUser.role !== 'admin') {
       setUser(stripPlaintextPassword(savedUser));
@@ -812,6 +1021,9 @@ const App: React.FC = () => {
       localStorage.removeItem('school_user');
     }
     testFirestoreConnection();
+    return () => {
+      cancelled = true;
+    };
   }, []);
 
   const syncFirebaseUserSession = async (fbUser: FirebaseUser | null): Promise<AuthUser | null> => {
@@ -904,6 +1116,10 @@ const App: React.FC = () => {
         syncedName = pendingProfile?.name || d.name || syncedName;
         syncedPhoto = pendingProfile?.photo || d.photo || syncedPhoto;
         extraChild = {
+          ...(d.phone ? { phone: d.phone } : {}),
+          ...(d.designation ? { designation: d.designation } : {}),
+          ...(d.registrationNo ? { registrationNo: d.registrationNo } : {}),
+          ...(d.linkedStudentId ? { linkedStudentId: d.linkedStudentId } : {}),
           ...(d.linkedChildClass ? { linkedChildClass: d.linkedChildClass } : {}),
           ...(d.linkedChildRoll ? { linkedChildRoll: d.linkedChildRoll } : {}),
           ...(d.linkedChildName ? { linkedChildName: d.linkedChildName } : {}),
@@ -951,6 +1167,8 @@ const App: React.FC = () => {
 
   const safeListenerError = (err: unknown, op: OperationType, path: string) => {
     setDbStatus('error');
+    const msg = err instanceof Error ? err.message : String(err);
+    setLastSyncError(`${path}: ${msg}`);
     try {
       handleFirestoreError(err, op, path);
     } catch {
@@ -958,220 +1176,414 @@ const App: React.FC = () => {
     }
   };
 
-  // Seed Firestore once if Cloud Admin signs in and cloud collections are still empty
+  // Seed each Firestore collection if currently empty (in safe <=12 doc chunks so single failures or 1MB limits never abort other collections)
   useEffect(() => {
     if (!isCloudAdmin || !firebaseUser || resolvedUid !== firebaseUser.uid) return;
     let cancelled = false;
 
+    const commitOpsChunked = async (
+      ops: Array<{ ref: ReturnType<typeof doc>; data: Record<string, unknown> }>
+    ) => {
+      for (let i = 0; i < ops.length; i += 10) {
+        if (cancelled) return;
+        const chunk = ops.slice(i, i + 10);
+        const b = writeBatch(db);
+        chunk.forEach((op) => b.set(op.ref, op.data));
+        await b.commit();
+      }
+    };
+
     const seedCloudIfEmpty = async () => {
       try {
+        const cur = latestStateRef.current;
+        setDbStatus('syncing');
+
         const settingsRef = doc(db, 'settings', 'main');
         const settingsSnap = await getDoc(settingsRef);
-        if (cancelled || settingsSnap.exists()) return;
-
-        setDbStatus('syncing');
-        const cur = latestStateRef.current;
-        const batch = writeBatch(db);
-
-        batch.set(settingsRef, {
-          name: { bn: (cur.settings.name?.bn || SCHOOL_NAME.bn).slice(0, 200), en: (cur.settings.name?.en || SCHOOL_NAME.en).slice(0, 200) },
-          shortName: (cur.settings.shortName || INITIAL_SETTINGS.shortName || 'RBMB Digital Campus').slice(0, 100),
-          tagline: {
-            bn: (cur.settings.tagline?.bn || CAMPUS_TAGLINE.bn).slice(0, 300),
-            en: (cur.settings.tagline?.en || CAMPUS_TAGLINE.en).slice(0, 300),
-          },
-          eiin: (cur.settings.eiin || INITIAL_SETTINGS.eiin).slice(0, 32),
-          phone: (cur.settings.phone || INITIAL_SETTINGS.phone).slice(0, 40),
-          email: (cur.settings.email && cur.settings.email.length >= 3 ? cur.settings.email : INITIAL_SETTINGS.email).slice(0, 150),
-          location: { bn: (cur.settings.location?.bn || INITIAL_SETTINGS.location.bn).slice(0, 300), en: (cur.settings.location?.en || INITIAL_SETTINGS.location.en).slice(0, 300) },
-          ...(cur.settings.schoolPhoto ? { schoolPhoto: cur.settings.schoolPhoto.slice(0, 600000) } : {}),
-          ...(cur.settings.headTeacherName ? { headTeacherName: { bn: cur.settings.headTeacherName.bn.slice(0, 200), en: cur.settings.headTeacherName.en.slice(0, 200) } } : {}),
-          ...(cur.settings.headTeacherMessage ? { headTeacherMessage: { bn: cur.settings.headTeacherMessage.bn.slice(0, 2500), en: cur.settings.headTeacherMessage.en.slice(0, 2500) } } : {}),
-          ...(cur.settings.headTeacherPhoto ? { headTeacherPhoto: cur.settings.headTeacherPhoto.slice(0, 600000) } : {}),
-          latitude: cur.settings.latitude ?? INITIAL_SETTINGS.latitude,
-          longitude: cur.settings.longitude ?? INITIAL_SETTINGS.longitude,
-          updatedAt: serverTimestamp(),
-        });
-
-        cur.notices.forEach((n) => {
-          const id = sanitizeFirestoreId(n.id);
-          batch.set(doc(db, 'notices', id), {
-            id,
-            title: { bn: (n.title?.bn || 'Notice').slice(0, 300), en: (n.title?.en || 'Notice').slice(0, 300) },
-            date: (n.date && n.date.length >= 4 ? n.date : '2026-01-01').slice(0, 32),
-            category: n.category || 'General',
-            description: { bn: (n.description?.bn || '').slice(0, 5000), en: (n.description?.en || '').slice(0, 5000) },
-            ...(n.pdfUrl ? { pdfUrl: n.pdfUrl.slice(0, 2000) } : {}),
-            isPublic: true,
-            createdAt: serverTimestamp(),
+        if (!cancelled && !settingsSnap.exists()) {
+          const sPhoto = clampImageString(cur.settings.schoolPhoto);
+          const hPhoto = clampImageString(cur.settings.headTeacherPhoto);
+          await setDoc(settingsRef, {
+            name: safeLoc(cur.settings.name, SCHOOL_NAME.bn, SCHOOL_NAME.en, 200),
+            shortName: (cur.settings.shortName || INITIAL_SETTINGS.shortName || 'RBMB Digital Campus').slice(0, 100),
+            tagline: safeLoc(cur.settings.tagline, CAMPUS_TAGLINE.bn, CAMPUS_TAGLINE.en, 300),
+            eiin: (cur.settings.eiin || INITIAL_SETTINGS.eiin).slice(0, 32),
+            phone: (cur.settings.phone || INITIAL_SETTINGS.phone).slice(0, 40),
+            email: (cur.settings.email && cur.settings.email.length >= 3 ? cur.settings.email : INITIAL_SETTINGS.email).slice(0, 150),
+            location: safeLoc(cur.settings.location, INITIAL_SETTINGS.location.bn, INITIAL_SETTINGS.location.en, 300),
+            ...(sPhoto ? { schoolPhoto: sPhoto } : {}),
+            ...(cur.settings.headTeacherName ? { headTeacherName: safeLoc(cur.settings.headTeacherName, 'প্রধান শিক্ষক', 'Head Teacher', 200) } : {}),
+            ...(cur.settings.headTeacherMessage ? { headTeacherMessage: safeLoc(cur.settings.headTeacherMessage, 'স্বাগতম।', 'Welcome.', 2500) } : {}),
+            ...(hPhoto ? { headTeacherPhoto: hPhoto } : {}),
+            latitude: cur.settings.latitude ?? INITIAL_SETTINGS.latitude,
+            longitude: cur.settings.longitude ?? INITIAL_SETTINGS.longitude,
             updatedAt: serverTimestamp(),
           });
-        });
+        }
 
-        cur.newsList.forEach((item) => {
-          const id = sanitizeFirestoreId(item.id);
-          batch.set(doc(db, 'news', id), {
-            id,
-            title: { bn: (item.title?.bn || 'News').slice(0, 300), en: (item.title?.en || 'News').slice(0, 300) },
-            summary: { bn: (item.summary?.bn || '').slice(0, 600), en: (item.summary?.en || '').slice(0, 600) },
-            content: { bn: (item.content?.bn || '').slice(0, 5000), en: (item.content?.en || '').slice(0, 5000) },
-            category: item.category || 'Academic',
-            date: (item.date && item.date.length >= 4 ? item.date : '2026-01-01').slice(0, 32),
-            ...(item.imageUrl ? { imageUrl: item.imageUrl.slice(0, 600000) } : {}),
-            ...(item.author ? { author: item.author.slice(0, 150) } : {}),
-            isPublic: true,
-            createdAt: serverTimestamp(),
-            updatedAt: serverTimestamp(),
-          });
-        });
+        const checkEmpty = async (colName: string) => {
+          const snap = await getDocs(query(collection(db, colName), limit(1)));
+          return snap.empty;
+        };
 
-        cur.eventsList.forEach((ev) => {
-          const id = sanitizeFirestoreId(ev.id);
-          batch.set(doc(db, 'events', id), {
-            id,
-            title: { bn: (ev.title?.bn || 'Event').slice(0, 300), en: (ev.title?.en || 'Event').slice(0, 300) },
-            description: { bn: (ev.description?.bn || '').slice(0, 3000), en: (ev.description?.en || '').slice(0, 3000) },
-            date: (ev.date && ev.date.length >= 4 ? ev.date : '2026-01-01').slice(0, 32),
-            time: (ev.time || '10:00 AM').slice(0, 64),
-            location: { bn: (ev.location?.bn || 'Campus').slice(0, 300), en: (ev.location?.en || 'Campus').slice(0, 300) },
-            category: ev.category || 'Academic',
-            isPublic: true,
-            createdAt: serverTimestamp(),
-            updatedAt: serverTimestamp(),
-          });
-        });
+        if (!cancelled && (await checkEmpty('notices'))) {
+          await commitOpsChunked(
+            cur.notices.map((n) => {
+              const id = sanitizeFirestoreId(n.id);
+              return {
+                ref: doc(db, 'notices', id),
+                data: {
+                  id,
+                  title: safeLoc(n.title, 'নোটিশ', 'Notice', 300),
+                  date: (n.date && n.date.length >= 4 ? n.date : '2026-01-01').slice(0, 32),
+                  category: n.category || 'General',
+                  description: safeLoc(n.description, 'বিস্তারিত', 'Details', 5000),
+                  ...(n.pdfUrl ? { pdfUrl: n.pdfUrl.slice(0, 2000) } : {}),
+                  isPublic: true,
+                  createdAt: serverTimestamp(),
+                  updatedAt: serverTimestamp(),
+                },
+              };
+            })
+          );
+        }
 
-        cur.teachers.forEach((teach) => {
-          const id = sanitizeFirestoreId(teach.id);
-          batch.set(doc(db, 'teachers', id), {
-            id,
-            name: { bn: (teach.name?.bn || 'Teacher').slice(0, 200), en: (teach.name?.en || 'Teacher').slice(0, 200) },
-            designation: { bn: (teach.designation?.bn || '').slice(0, 200), en: (teach.designation?.en || '').slice(0, 200) },
-            subject: { bn: (teach.subject?.bn || '').slice(0, 200), en: (teach.subject?.en || '').slice(0, 200) },
-            qualification: { bn: (teach.qualification?.bn || '').slice(0, 300), en: (teach.qualification?.en || '').slice(0, 300) },
-            photo: (teach.photo || '').slice(0, 600000),
-            isPublic: true,
-            createdAt: serverTimestamp(),
-            updatedAt: serverTimestamp(),
-          });
-        });
+        if (!cancelled && (await checkEmpty('news'))) {
+          await commitOpsChunked(
+            cur.newsList.map((item) => {
+              const id = sanitizeFirestoreId(item.id);
+              const img = clampImageString(item.imageUrl);
+              return {
+                ref: doc(db, 'news', id),
+                data: {
+                  id,
+                  title: safeLoc(item.title, 'সংবাদ', 'News', 300),
+                  summary: safeLoc(item.summary, 'সারসংক্ষেপ', 'Summary', 600),
+                  content: safeLoc(item.content, 'বিস্তারিত সংবাদ', 'News content', 5000),
+                  category: item.category || 'Academic',
+                  date: (item.date && item.date.length >= 4 ? item.date : '2026-01-01').slice(0, 32),
+                  ...(img ? { imageUrl: img } : {}),
+                  ...(item.author ? { author: item.author.slice(0, 150) } : {}),
+                  isPublic: true,
+                  createdAt: serverTimestamp(),
+                  updatedAt: serverTimestamp(),
+                },
+              };
+            })
+          );
+        }
 
-        cur.ebooks.forEach((eb) => {
-          const id = sanitizeFirestoreId(eb.id);
-          batch.set(doc(db, 'ebooks', id), {
-            id,
-            title: { bn: (eb.title?.bn || 'Book').slice(0, 300), en: (eb.title?.en || 'Book').slice(0, 300) },
-            classId: (eb.classId || '6').slice(0, 16),
-            className: { bn: (eb.className?.bn || 'Class').slice(0, 100), en: (eb.className?.en || 'Class').slice(0, 100) },
-            subject: (eb.subject || 'General').slice(0, 120),
-            ...(eb.category ? { category: eb.category.slice(0, 40) } : {}),
-            ...(eb.description ? { description: { bn: eb.description.bn.slice(0, 1500), en: eb.description.en.slice(0, 1500) } } : {}),
-            coverUrl: (eb.coverUrl || '').slice(0, 600000),
-            downloadUrl: (eb.downloadUrl || '#').slice(0, 2000),
-            isPublic: true,
-            createdAt: serverTimestamp(),
-            updatedAt: serverTimestamp(),
-          });
-        });
+        if (!cancelled && (await checkEmpty('events'))) {
+          await commitOpsChunked(
+            cur.eventsList.map((ev) => {
+              const id = sanitizeFirestoreId(ev.id);
+              return {
+                ref: doc(db, 'events', id),
+                data: {
+                  id,
+                  title: safeLoc(ev.title, 'অনুষ্ঠান', 'Event', 300),
+                  description: safeLoc(ev.description, 'বিস্তারিত', 'Details', 3000),
+                  date: (ev.date && ev.date.length >= 4 ? ev.date : '2026-01-01').slice(0, 32),
+                  time: (ev.time || '10:00 AM').slice(0, 64),
+                  location: safeLoc(ev.location, 'বিদ্যালয় প্রাঙ্গণ', 'Campus', 300),
+                  category: ev.category || 'Academic',
+                  isPublic: true,
+                  createdAt: serverTimestamp(),
+                  updatedAt: serverTimestamp(),
+                },
+              };
+            })
+          );
+        }
 
-        cur.gallery.forEach((g) => {
-          const id = sanitizeFirestoreId(g.id);
-          batch.set(doc(db, 'gallery', id), {
-            id,
-            url: (g.url || '').slice(0, 600000),
-            caption: { bn: (g.caption?.bn || '').slice(0, 400), en: (g.caption?.en || '').slice(0, 400) },
-            ...(g.mediaType ? { mediaType: g.mediaType } : {}),
-            ...(g.videoUrl ? { videoUrl: g.videoUrl.slice(0, 2000) } : {}),
-            ...(g.category ? { category: g.category.slice(0, 32) } : {}),
-            isPublic: true,
-            createdAt: serverTimestamp(),
-            updatedAt: serverTimestamp(),
-          });
-        });
+        if (!cancelled && (await checkEmpty('teachers'))) {
+          await commitOpsChunked(
+            cur.teachers.map((teach) => {
+              const id = sanitizeFirestoreId(teach.id);
+              return {
+                ref: doc(db, 'teachers', id),
+                data: {
+                  id,
+                  name: safeLoc(teach.name, 'শিক্ষক', 'Teacher', 200),
+                  designation: safeLoc(teach.designation, 'সহকারী শিক্ষক', 'Assistant Teacher', 200),
+                  subject: safeLoc(teach.subject, 'সাধারণ', 'General', 200),
+                  qualification: safeLoc(teach.qualification, 'স্নাতকোত্তর', 'Graduate', 300),
+                  photo: clampImageString(teach.photo),
+                  ...(teach.teacherCode ? { teacherCode: teach.teacherCode.slice(0, 40) } : {}),
+                  ...(teach.phone ? { phone: teach.phone.slice(0, 40) } : {}),
+                  ...(teach.bloodGroup ? { bloodGroup: teach.bloodGroup.slice(0, 16) } : {}),
+                  ...(teach.cardIssueDate ? { cardIssueDate: teach.cardIssueDate.slice(0, 32) } : {}),
+                  ...(teach.cardValidUpto ? { cardValidUpto: teach.cardValidUpto.slice(0, 32) } : {}),
+                  isPublic: true,
+                  createdAt: serverTimestamp(),
+                  updatedAt: serverTimestamp(),
+                },
+              };
+            })
+          );
+        }
 
-        cur.holidays.forEach((h) => {
-          const id = sanitizeFirestoreId(h.id);
-          batch.set(doc(db, 'holidays', id), {
-            id,
-            title: { bn: (h.title?.bn || 'Holiday').slice(0, 300), en: (h.title?.en || 'Holiday').slice(0, 300) },
-            date: (h.date && h.date.length >= 4 ? h.date : '2026-01-01').slice(0, 32),
-            duration: { bn: (h.duration?.bn || '১ দিন').slice(0, 100), en: (h.duration?.en || '1 Day').slice(0, 100) },
-            type: h.type || 'National',
-            isPublic: true,
-            createdAt: serverTimestamp(),
-            updatedAt: serverTimestamp(),
-          });
-        });
+        if (!cancelled && (await checkEmpty('ebooks'))) {
+          await commitOpsChunked(
+            cur.ebooks.map((eb) => {
+              const id = sanitizeFirestoreId(eb.id);
+              return {
+                ref: doc(db, 'ebooks', id),
+                data: {
+                  id,
+                  title: safeLoc(eb.title, 'বই', 'Book', 300),
+                  classId: (eb.classId || '6').slice(0, 16),
+                  className: safeLoc(eb.className, 'শ্রেণী', 'Class', 100),
+                  subject: (eb.subject || 'General').slice(0, 120),
+                  ...(eb.category ? { category: eb.category.slice(0, 40) } : {}),
+                  ...(eb.description ? { description: safeLoc(eb.description, 'বইয়ের বিবরণ', 'Book description', 1500) } : {}),
+                  coverUrl: clampImageString(eb.coverUrl),
+                  downloadUrl: (eb.downloadUrl || '#').slice(0, 2000),
+                  isPublic: true,
+                  createdAt: serverTimestamp(),
+                  updatedAt: serverTimestamp(),
+                },
+              };
+            })
+          );
+        }
 
-        cur.onlineExams.forEach((ex) => {
-          const id = sanitizeFirestoreId(ex.id);
-          batch.set(doc(db, 'onlineExams', id), {
-            id,
-            title: { bn: (ex.title?.bn || 'Exam').slice(0, 300), en: (ex.title?.en || 'Exam').slice(0, 300) },
-            classId: ex.classId,
-            subject: ex.subject.slice(0, 120),
-            chapter: ex.chapter.slice(0, 200),
-            durationMinutes: ex.durationMinutes,
-            mode: ex.mode,
-            questions: ex.questions,
-            createdBy: ex.createdBy.slice(0, 150),
-            date: ex.date.slice(0, 32),
-            isPublic: true,
-            createdAt: serverTimestamp(),
-            updatedAt: serverTimestamp(),
-          });
-        });
+        if (!cancelled && (await checkEmpty('gallery'))) {
+          await commitOpsChunked(
+            cur.gallery
+              .filter((g) => clampImageString(g.url).length > 0)
+              .map((g) => {
+                const id = sanitizeFirestoreId(g.id);
+                return {
+                  ref: doc(db, 'gallery', id),
+                  data: {
+                    id,
+                    url: clampImageString(g.url),
+                    caption: safeLoc(g.caption, 'ক্যাম্পাস ছবি', 'Campus photo', 400),
+                    ...(g.mediaType ? { mediaType: g.mediaType } : {}),
+                    ...(g.videoUrl ? { videoUrl: g.videoUrl.slice(0, 2000) } : {}),
+                    ...(g.category ? { category: g.category.slice(0, 32) } : {}),
+                    isPublic: true,
+                    createdAt: serverTimestamp(),
+                    updatedAt: serverTimestamp(),
+                  },
+                };
+              })
+          );
+        }
 
-        cur.examRoutines.forEach((er) => {
-          const id = sanitizeFirestoreId(er.id);
-          batch.set(doc(db, 'examRoutines', id), {
-            id,
-            examTerm: er.examTerm.slice(0, 100),
-            classId: er.classId,
-            subject: er.subject.slice(0, 120),
-            date: er.date.slice(0, 32),
-            time: er.time.slice(0, 64),
-            ...(er.room ? { room: er.room.slice(0, 64) } : {}),
-            isPublic: true,
-            createdAt: serverTimestamp(),
-            updatedAt: serverTimestamp(),
-          });
-        });
+        if (!cancelled && (await checkEmpty('holidays'))) {
+          await commitOpsChunked(
+            cur.holidays.map((h) => {
+              const id = sanitizeFirestoreId(h.id);
+              return {
+                ref: doc(db, 'holidays', id),
+                data: {
+                  id,
+                  title: safeLoc(h.title, 'ছুটি', 'Holiday', 300),
+                  date: (h.date && h.date.length >= 4 ? h.date : '2026-01-01').slice(0, 32),
+                  duration: safeLoc(h.duration, '১ দিন', '1 Day', 100),
+                  type: h.type || 'National',
+                  isPublic: true,
+                  createdAt: serverTimestamp(),
+                  updatedAt: serverTimestamp(),
+                },
+              };
+            })
+          );
+        }
 
-        cur.subjects.forEach((s) => {
-          const id = sanitizeFirestoreId(s.id);
-          batch.set(doc(db, 'subjects', id), {
-            id,
-            code: s.code.slice(0, 16),
-            name: { bn: s.name.bn.slice(0, 200), en: s.name.en.slice(0, 200) },
-            classId: s.classId,
-            totalMarks: s.totalMarks,
-            ...(s.teacherName ? { teacherName: s.teacherName.slice(0, 150) } : {}),
-            isPublic: true,
-            createdAt: serverTimestamp(),
-            updatedAt: serverTimestamp(),
-          });
-        });
+        if (!cancelled && (await checkEmpty('onlineExams'))) {
+          await commitOpsChunked(
+            cur.onlineExams.map((ex) => {
+              const id = sanitizeFirestoreId(ex.id);
+              return {
+                ref: doc(db, 'onlineExams', id),
+                data: {
+                  id,
+                  title: safeLoc(ex.title, 'পরীক্ষা', 'Exam', 300),
+                  classId: ex.classId,
+                  subject: (ex.subject || 'General').slice(0, 120),
+                  chapter: (ex.chapter || 'Chapter 1').slice(0, 200),
+                  durationMinutes: ex.durationMinutes,
+                  mode: ex.mode,
+                  questions: ex.questions,
+                  createdBy: (ex.createdBy || 'Teacher').slice(0, 150),
+                  date: (ex.date || '2026-01-01').slice(0, 32),
+                  isPublic: true,
+                  createdAt: serverTimestamp(),
+                  updatedAt: serverTimestamp(),
+                },
+              };
+            })
+          );
+        }
 
-        cur.alumni.forEach((al) => {
-          const id = sanitizeFirestoreId(al.id);
-          batch.set(doc(db, 'alumni', id), {
-            id,
-            name: al.name.slice(0, 150),
-            batchYear: al.batchYear.slice(0, 16),
-            currentRole: al.currentRole.slice(0, 150),
-            organization: al.organization.slice(0, 200),
-            ...(al.city ? { city: al.city.slice(0, 100) } : {}),
-            message: al.message.slice(0, 1000),
-            status: al.status,
-            isPublic: al.status === 'approved',
-            createdAt: serverTimestamp(),
-            updatedAt: serverTimestamp(),
-          });
-        });
+        if (!cancelled && (await checkEmpty('examRoutines'))) {
+          await commitOpsChunked(
+            cur.examRoutines.map((er) => {
+              const id = sanitizeFirestoreId(er.id);
+              return {
+                ref: doc(db, 'examRoutines', id),
+                data: {
+                  id,
+                  examTerm: (er.examTerm || 'Half Yearly').slice(0, 100),
+                  classId: er.classId,
+                  subject: (er.subject || 'Subject').slice(0, 120),
+                  date: (er.date || '2026-01-01').slice(0, 32),
+                  time: (er.time || '10:00 AM').slice(0, 64),
+                  ...(er.room ? { room: er.room.slice(0, 64) } : {}),
+                  isPublic: true,
+                  createdAt: serverTimestamp(),
+                  updatedAt: serverTimestamp(),
+                },
+              };
+            })
+          );
+        }
 
-        await batch.commit();
-        setDbStatus('synced');
+        if (!cancelled && (await checkEmpty('subjects'))) {
+          await commitOpsChunked(
+            cur.subjects.map((s) => {
+              const id = sanitizeFirestoreId(s.id);
+              return {
+                ref: doc(db, 'subjects', id),
+                data: {
+                  id,
+                  code: (s.code || '101').slice(0, 16),
+                  name: safeLoc(s.name, 'বিষয়', 'Subject', 200),
+                  classId: s.classId,
+                  totalMarks: s.totalMarks,
+                  ...(s.teacherName ? { teacherName: s.teacherName.slice(0, 150) } : {}),
+                  isPublic: true,
+                  createdAt: serverTimestamp(),
+                  updatedAt: serverTimestamp(),
+                },
+              };
+            })
+          );
+        }
+
+        if (!cancelled && (await checkEmpty('classRoutines'))) {
+          await commitOpsChunked(
+            cur.classRoutines.map((cr) => {
+              const id = sanitizeFirestoreId(cr.classId);
+              return {
+                ref: doc(db, 'classRoutines', id),
+                data: {
+                  classId: id,
+                  className: safeLoc(cr.className, `শ্রেণী ${id}`, `Class ${id}`, 100),
+                  schedule: cr.schedule,
+                  isPublic: true,
+                  createdAt: serverTimestamp(),
+                  updatedAt: serverTimestamp(),
+                },
+              };
+            })
+          );
+        }
+
+        if (!cancelled && (await checkEmpty('students'))) {
+          await commitOpsChunked(
+            cur.students.map((st) => {
+              const id = sanitizeFirestoreId(st.id);
+              const photo = clampImageString(st.photo);
+              return {
+                ref: doc(db, 'students', id),
+                data: {
+                  id,
+                  roll: (st.roll || '01').slice(0, 20),
+                  name: (st.name || 'Student').slice(0, 150),
+                  classId: st.classId,
+                  section: (st.section || 'A').slice(0, 40),
+                  guardianMobile: (st.guardianMobile && st.guardianMobile.length >= 6 ? st.guardianMobile : '01700000000').slice(0, 30),
+                  ...(st.guardianName ? { guardianName: st.guardianName.slice(0, 150) } : {}),
+                  ...(photo ? { photo } : {}),
+                  ...(st.registrationNo ? { registrationNo: st.registrationNo.slice(0, 64) } : {}),
+                  ...(st.registrationDate ? { registrationDate: st.registrationDate.slice(0, 32) } : {}),
+                  ...(st.session ? { session: st.session.slice(0, 16) } : {}),
+                  ...(st.cardIssueDate ? { cardIssueDate: st.cardIssueDate.slice(0, 32) } : {}),
+                  ...(st.cardValidUpto ? { cardValidUpto: st.cardValidUpto.slice(0, 32) } : {}),
+                  ...(st.bloodGroup ? { bloodGroup: st.bloodGroup.slice(0, 16) } : {}),
+                  createdAt: serverTimestamp(),
+                  updatedAt: serverTimestamp(),
+                },
+              };
+            })
+          );
+        }
+
+        if (!cancelled && (await checkEmpty('homework'))) {
+          await commitOpsChunked(
+            cur.homeworkList.map((hw) => {
+              const id = sanitizeFirestoreId(hw.id);
+              return {
+                ref: doc(db, 'homework', id),
+                data: {
+                  id,
+                  title: (hw.title || 'Homework').slice(0, 300),
+                  subject: (hw.subject || 'Subject').slice(0, 120),
+                  classId: hw.classId,
+                  description: (hw.description || 'Details').slice(0, 3000),
+                  dueDate: (hw.dueDate || '2026-12-31').slice(0, 32),
+                  assignedBy: (hw.assignedBy || 'Teacher').slice(0, 150),
+                  createdDate: (hw.createdDate || '2026-01-01').slice(0, 32),
+                  isPublic: hw.isPublic ?? true,
+                  createdAt: serverTimestamp(),
+                  updatedAt: serverTimestamp(),
+                },
+              };
+            })
+          );
+        }
+
+        if (!cancelled && (await checkEmpty('alumni'))) {
+          await commitOpsChunked(
+            cur.alumni.map((al) => {
+              const id = sanitizeFirestoreId(al.id);
+              return {
+                ref: doc(db, 'alumni', id),
+                data: {
+                  id,
+                  name: (al.name || 'Alumni').slice(0, 150),
+                  batchYear: (al.batchYear && al.batchYear.length >= 4 ? al.batchYear : '2020').slice(0, 16),
+                  currentRole: (al.currentRole || 'Graduate').slice(0, 150),
+                  organization: (al.organization || 'RBMB').slice(0, 200),
+                  ...(al.city ? { city: al.city.slice(0, 100) } : {}),
+                  message: (al.message || 'Proud alumni').slice(0, 1000),
+                  status: al.status,
+                  isPublic: al.status === 'approved',
+                  createdAt: serverTimestamp(),
+                  updatedAt: serverTimestamp(),
+                },
+              };
+            })
+          );
+        }
+
+        if (!cancelled && (await checkEmpty('portal_notifications'))) {
+          await commitOpsChunked(
+            cur.portalNotifications.map((pn) => {
+              const id = sanitizeFirestoreId(pn.id);
+              return {
+                ref: doc(db, 'portal_notifications', id),
+                data: {
+                  id,
+                  title: (pn.title || 'Alert').slice(0, 250),
+                  message: (pn.message || 'Announcement').slice(0, 2000),
+                  targetRole: pn.targetRole,
+                  classId: pn.classId || 'all',
+                  priority: pn.priority || 'normal',
+                  senderName: (pn.senderName || 'Administration').slice(0, 150),
+                  createdDate: (pn.createdDate || '2026-01-01').slice(0, 32),
+                  createdAt: serverTimestamp(),
+                },
+              };
+            })
+          );
+        }
+
+        if (!cancelled) setDbStatus('synced');
       } catch (err) {
         safeListenerError(err, OperationType.WRITE, 'initial-seed');
       }
@@ -1183,14 +1595,19 @@ const App: React.FC = () => {
     };
   }, [isCloudAdmin, firebaseUser, resolvedUid]);
 
+  const shouldDeferSnapshotToLocal = (storageKey: string) => {
+    return !cloudRoleRef.current.isCloudAdmin && !cloudRoleRef.current.isCloudTeacher && getDirtyKeys().has(storageKey);
+  };
+
   // Real-time Firestore Listeners for Public School Data
   useEffect(() => {
     const unsubSettings = onSnapshot(
       doc(db, 'settings', 'main'),
       (snap) => {
         if (snap.exists()) {
+          if (shouldDeferSnapshotToLocal('school_settings')) return;
           const d = snap.data();
-          const nextSettings: SchoolSettings = {
+          const nextSettings = normalizeSchoolSettings({
             name: d.name || INITIAL_SETTINGS.name,
             shortName: d.shortName || INITIAL_SETTINGS.shortName,
             tagline: d.tagline || INITIAL_SETTINGS.tagline,
@@ -1204,7 +1621,7 @@ const App: React.FC = () => {
             headTeacherPhoto: d.headTeacherPhoto || INITIAL_SETTINGS.headTeacherPhoto,
             latitude: typeof d.latitude === 'number' ? d.latitude : INITIAL_SETTINGS.latitude,
             longitude: typeof d.longitude === 'number' ? d.longitude : INITIAL_SETTINGS.longitude,
-          };
+          });
           setSettings(nextSettings);
           safeLocalSet('school_settings', nextSettings);
         }
@@ -1215,7 +1632,7 @@ const App: React.FC = () => {
     const unsubNotices = onSnapshot(
       query(collection(db, 'notices'), where('isPublic', '==', true)),
       (snap) => {
-        if (!snap.empty) {
+        if (!snap.empty && !shouldDeferSnapshotToLocal('db_notices')) {
           const items = snap.docs.map((d) => d.data() as Notice);
           items.sort((a, b) => (b.date || '').localeCompare(a.date || ''));
           setNotices(items);
@@ -1228,7 +1645,7 @@ const App: React.FC = () => {
     const unsubNews = onSnapshot(
       query(collection(db, 'news'), where('isPublic', '==', true)),
       (snap) => {
-        if (!snap.empty) {
+        if (!snap.empty && !shouldDeferSnapshotToLocal('db_news')) {
           const items = snap.docs.map((d) => d.data() as NewsArticle);
           items.sort((a, b) => (b.date || '').localeCompare(a.date || ''));
           setNewsList(items);
@@ -1241,7 +1658,7 @@ const App: React.FC = () => {
     const unsubEvents = onSnapshot(
       query(collection(db, 'events'), where('isPublic', '==', true)),
       (snap) => {
-        if (!snap.empty) {
+        if (!snap.empty && !shouldDeferSnapshotToLocal('db_events')) {
           const items = snap.docs.map((d) => d.data() as CampusEvent);
           items.sort((a, b) => (a.date || '').localeCompare(b.date || ''));
           setEventsList(items);
@@ -1254,7 +1671,7 @@ const App: React.FC = () => {
     const unsubTeachers = onSnapshot(
       query(collection(db, 'teachers'), where('isPublic', '==', true)),
       (snap) => {
-        if (!snap.empty) {
+        if (!snap.empty && !shouldDeferSnapshotToLocal('db_teachers')) {
           const items = snap.docs.map((d) => d.data() as Teacher);
           setTeachers(items);
           safeLocalSet('db_teachers', items);
@@ -1266,7 +1683,7 @@ const App: React.FC = () => {
     const unsubEbooks = onSnapshot(
       query(collection(db, 'ebooks'), where('isPublic', '==', true)),
       (snap) => {
-        if (!snap.empty) {
+        if (!snap.empty && !shouldDeferSnapshotToLocal('db_ebooks')) {
           const items = snap.docs.map((d) => d.data() as EBook);
           setEbooks(items);
           safeLocalSet('db_ebooks', items);
@@ -1278,7 +1695,7 @@ const App: React.FC = () => {
     const unsubGallery = onSnapshot(
       query(collection(db, 'gallery'), where('isPublic', '==', true)),
       (snap) => {
-        if (!snap.empty) {
+        if (!snap.empty && !shouldDeferSnapshotToLocal('db_gallery')) {
           const items = snap.docs.map((d) => d.data() as GalleryItem);
           setGallery(items);
           safeLocalSet('db_gallery', items);
@@ -1290,7 +1707,7 @@ const App: React.FC = () => {
     const unsubHolidays = onSnapshot(
       query(collection(db, 'holidays'), where('isPublic', '==', true)),
       (snap) => {
-        if (!snap.empty) {
+        if (!snap.empty && !shouldDeferSnapshotToLocal('db_holidays')) {
           const items = snap.docs.map((d) => d.data() as Holiday);
           items.sort((a, b) => (a.date || '').localeCompare(b.date || ''));
           setHolidays(items);
@@ -1303,7 +1720,7 @@ const App: React.FC = () => {
     const unsubHomework = onSnapshot(
       query(collection(db, 'homework'), where('isPublic', '==', true)),
       (snap) => {
-        if (!snap.empty) {
+        if (!snap.empty && !shouldDeferSnapshotToLocal('db_homework')) {
           const items = snap.docs.map((d) => d.data() as HomeworkItem);
           items.sort((a, b) => (b.dueDate || '').localeCompare(a.dueDate || ''));
           setHomeworkList(items);
@@ -1316,7 +1733,7 @@ const App: React.FC = () => {
     const unsubOnlineExams = onSnapshot(
       query(collection(db, 'onlineExams'), where('isPublic', '==', true)),
       (snap) => {
-        if (!snap.empty) {
+        if (!snap.empty && !shouldDeferSnapshotToLocal('db_online_exams')) {
           const items = snap.docs.map((d) => d.data() as OnlineExamType);
           setOnlineExams(items);
           safeLocalSet('db_online_exams', items);
@@ -1328,7 +1745,7 @@ const App: React.FC = () => {
     const unsubExamRoutines = onSnapshot(
       query(collection(db, 'examRoutines'), where('isPublic', '==', true)),
       (snap) => {
-        if (!snap.empty) {
+        if (!snap.empty && !shouldDeferSnapshotToLocal('db_exam_routines')) {
           const items = snap.docs.map((d) => d.data() as ExamRoutineItem);
           items.sort((a, b) => (a.date || '').localeCompare(b.date || ''));
           setExamRoutines(items);
@@ -1341,7 +1758,7 @@ const App: React.FC = () => {
     const unsubSubjects = onSnapshot(
       query(collection(db, 'subjects'), where('isPublic', '==', true)),
       (snap) => {
-        if (!snap.empty) {
+        if (!snap.empty && !shouldDeferSnapshotToLocal('db_subjects')) {
           const items = snap.docs.map((d) => d.data() as SchoolSubject);
           setSubjects(items);
           safeLocalSet('db_subjects', items);
@@ -1353,7 +1770,7 @@ const App: React.FC = () => {
     const unsubClassRoutines = onSnapshot(
       query(collection(db, 'classRoutines'), where('isPublic', '==', true)),
       (snap) => {
-        if (!snap.empty) {
+        if (!snap.empty && !shouldDeferSnapshotToLocal('db_class_routines')) {
           const byId = new Map<string, ClassRoutine>();
           CLASS_ROUTINES.forEach((cr) => byId.set(cr.classId, cr));
           snap.docs.forEach((d) => {
@@ -1394,7 +1811,7 @@ const App: React.FC = () => {
     const unsubAlumni = onSnapshot(
       qRef,
       (snap) => {
-        if (!snap.empty) {
+        if (!snap.empty && !shouldDeferSnapshotToLocal('db_alumni')) {
           const items = snap.docs.map((d) => d.data() as AlumniProfile);
           setAlumni(items);
           safeLocalSet('db_alumni', items);
@@ -1547,8 +1964,12 @@ const App: React.FC = () => {
         (err) => safeListenerError(err, OperationType.LIST, 'examAttempts')
       );
 
+      const parentMsgsSource = isCloudAdmin
+        ? collection(db, 'parentMessages')
+        : query(collection(db, 'parentMessages'), where('recipientUid', '==', firebaseUser.uid));
+
       const unsubParentMsgs = onSnapshot(
-        collection(db, 'parentMessages'),
+        parentMsgsSource,
         (snap) => {
           const items = snap.docs.map((d) => d.data() as ParentMessage);
           setParentMessages(items);
@@ -1639,8 +2060,9 @@ const App: React.FC = () => {
       query(collection(db, 'students'), where('allowedUids', 'array-contains', firebaseUser.uid)),
       (snap) => {
         const items = snap.docs.map((d) => d.data() as SchoolStudent);
-        setStudents(items);
-        safeLocalSet('db_students', items);
+        if (items.length > 0) {
+          setStudents(items);
+        }
       },
       (err) => safeListenerError(err, OperationType.LIST, 'students')
     );
@@ -1739,7 +2161,7 @@ const App: React.FC = () => {
     const unsubPortalAlerts = onSnapshot(
       collection(db, 'portal_notifications'),
       (snap) => {
-        if (!snap.empty) {
+        if (!snap.empty && !shouldDeferSnapshotToLocal('db_portal_notifications')) {
           const items = snap.docs.map((d) => d.data() as PortalNotification);
           items.sort((a, b) => (b.createdDate || '').localeCompare(a.createdDate || ''));
           setPortalNotifications(items);
@@ -1769,10 +2191,11 @@ const App: React.FC = () => {
     }
   }, [chatMessages]);
 
-  const persistLocal = (key: string, data: unknown) => {
+  const persistLocal = (key: string, data: unknown, trackDirty = true) => {
     setDbStatus('syncing');
+    if (trackDirty) markDirtyKey(key);
     safeLocalSet(key, data);
-    setTimeout(() => setDbStatus('synced'), 300);
+    setTimeout(() => setDbStatus((cur) => (cur === 'error' ? 'error' : 'synced')), 300);
   };
 
   const signInWithGoogle = async (): Promise<{ ok: boolean; error?: string; code?: string; isAdmin?: boolean }> => {
@@ -2026,15 +2449,34 @@ const App: React.FC = () => {
   };
 
   const verifyLocalCredentials = async (
-    userId: string,
+    identifier: string,
     password: string,
     role: BaseUserRole
   ): Promise<AuthUser | null> => {
     // Admin access must strictly authenticate via verified Firebase Auth
     if (role === 'admin') return null;
-    const found = registeredUsers.find(
-      (u) => u.userId.toLowerCase() === userId.trim().toLowerCase() && u.role === role
-    );
+    const cleanId = identifier.trim().toLowerCase();
+    if (!cleanId) return null;
+
+    const found = registeredUsers.find((u) => {
+      if (u.role !== role) return false;
+      if (u.userId.trim().toLowerCase() === cleanId) return true;
+      if (u.email && u.email.trim().toLowerCase() === cleanId) return true;
+      if (u.registrationNo && u.registrationNo.trim().toLowerCase() === cleanId) return true;
+      if (
+        role === 'student' &&
+        u.linkedChildClass &&
+        u.linkedChildRoll &&
+        buildStudentRegistrationNo(u.linkedChildClass, u.linkedChildRoll, u.session || '2026').toLowerCase() === cleanId
+      ) {
+        return true;
+      }
+      if ((role === 'teacher' || role === 'parent') && u.phone && phonesMatch(u.phone, identifier)) {
+        return true;
+      }
+      return false;
+    });
+
     if (!found) return null;
     const valid = await verifyPassword(password, found.passwordHash || found.password);
     if (!valid) return null;
@@ -2060,12 +2502,308 @@ const App: React.FC = () => {
     return true;
   };
 
+  const selfRegisterAccount = async (payload: SelfRegistrationPayload): Promise<SelfRegistrationResult> => {
+    const cleanName = payload.name.trim();
+    const cleanPhone = payload.phone.trim();
+    const cleanEmail = (payload.email || '').trim();
+    const cleanPassword = payload.password;
+    const todayStr = new Date().toISOString().split('T')[0];
+
+    if (!cleanName) {
+      return { ok: false, error: lang === 'bn' ? 'অনুগ্রহ করে সম্পূর্ণ নাম লিখুন।' : 'Please enter your full name.' };
+    }
+    if (normalizePhoneDigits(cleanPhone).length < 6) {
+      return { ok: false, error: lang === 'bn' ? 'সঠিক মোবাইল নম্বর দিন (কমপক্ষে ৬ সংখ্যা)।' : 'Please enter a valid mobile number.' };
+    }
+    if (cleanPassword.length < 6) {
+      return { ok: false, error: lang === 'bn' ? 'পাসওয়ার্ড কমপক্ষে ৬ অক্ষরের হতে হবে।' : 'Password must be at least 6 characters.' };
+    }
+    if (cleanEmail && !cleanEmail.includes('@')) {
+      return { ok: false, error: lang === 'bn' ? 'সঠিক ইমেইল ঠিকানা দিন।' : 'Please enter a valid email address.' };
+    }
+    if (
+      cleanEmail &&
+      registeredUsers.some((u) => (u.email || '').trim().toLowerCase() === cleanEmail.toLowerCase())
+    ) {
+      return {
+        ok: false,
+        error: lang === 'bn' ? 'এই ইমেইল ঠিকানা দিয়ে ইতিমধ্যে অ্যাকাউন্ট খোলা আছে!' : 'An account with this email already exists!',
+      };
+    }
+
+    const passwordHash = await hashPassword(cleanPassword);
+    const safePhoto = payload.photo ? clampImageString(payload.photo) : '';
+
+    if (payload.role === 'student') {
+      const classId = (['6', '7', '8', '9', '10'].includes(payload.classId || '') ? payload.classId : '9') as string;
+      const rawRoll = (payload.roll || '').trim();
+      if (!rawRoll) {
+        return { ok: false, error: lang === 'bn' ? 'শিক্ষার্থীর রোল নম্বর দিন।' : 'Please enter roll number.' };
+      }
+      const cleanRoll = /^\d+$/.test(rawRoll) ? rawRoll.padStart(2, '0') : rawRoll;
+      const cleanSession = (payload.session || '2026').replace(/[^0-9]/g, '').slice(0, 4) || '2026';
+      const cleanSection = (payload.section || 'A').trim() || 'A';
+      const registrationNo = buildStudentRegistrationNo(classId, cleanRoll, cleanSession);
+
+      const alreadyClaimed = registeredUsers.some(
+        (u) =>
+          u.role === 'student' &&
+          ((u.registrationNo || '').toLowerCase() === registrationNo.toLowerCase() ||
+            u.userId.toLowerCase() === registrationNo.toLowerCase() ||
+            (u.linkedChildClass === classId && (u.linkedChildRoll || '').trim() === cleanRoll))
+      );
+      if (alreadyClaimed) {
+        return {
+          ok: false,
+          error:
+            lang === 'bn'
+              ? `শ্রেণী ${classId}, রোল ${cleanRoll} (${registrationNo}) দিয়ে ইতিমধ্যে একটি শিক্ষার্থী অ্যাকাউন্ট নিবন্ধিত আছে।`
+              : `A student account for Class ${classId}, Roll ${cleanRoll} (${registrationNo}) is already registered.`,
+        };
+      }
+
+      const existingStudent = students.find(
+        (s) => s.classId === classId && s.roll.trim() === cleanRoll
+      );
+      const studentId = existingStudent?.id || sanitizeFirestoreId(`st-${classId}-${cleanRoll}-${Date.now().toString(36)}`);
+      const nextStudent: SchoolStudent = {
+        ...(existingStudent || {}),
+        id: studentId,
+        roll: cleanRoll,
+        name: cleanName,
+        classId,
+        section: cleanSection,
+        guardianName: (payload.guardianName || '').trim() || existingStudent?.guardianName,
+        guardianMobile: cleanPhone,
+        photo: safePhoto || existingStudent?.photo,
+        registrationNo,
+        registrationDate: existingStudent?.registrationDate || todayStr,
+        session: cleanSession,
+        cardIssueDate: existingStudent?.cardIssueDate || todayStr,
+        cardValidUpto: existingStudent?.cardValidUpto || `${cleanSession}-12-31`,
+        bloodGroup: payload.bloodGroup || existingStudent?.bloodGroup,
+      };
+
+      const nextStudents = existingStudent
+        ? students.map((s) => (s.id === existingStudent.id ? nextStudent : s))
+        : [...students, nextStudent];
+      setStudents(nextStudents);
+      persistLocal('db_students', nextStudents);
+
+      const newAuthUser: AuthUser = {
+        userId: registrationNo,
+        registrationNo,
+        role: 'student',
+        name: cleanName,
+        email: cleanEmail || undefined,
+        phone: cleanPhone,
+        photo: safePhoto || undefined,
+        bloodGroup: payload.bloodGroup || undefined,
+        guardianName: (payload.guardianName || '').trim() || undefined,
+        section: cleanSection,
+        session: cleanSession,
+        linkedStudentId: studentId,
+        linkedChildClass: classId,
+        linkedChildRoll: cleanRoll,
+        linkedChildName: cleanName,
+        passwordHash,
+      };
+      const nextUsers = [...registeredUsers, newAuthUser];
+      setRegisteredUsers(nextUsers);
+      persistLocal('registered_users', nextUsers);
+
+      return {
+        ok: true,
+        user: stripPlaintextPassword(newAuthUser),
+        registrationNo,
+        matchedStudentName: cleanName,
+        matchedStudentClass: classId,
+        matchedStudentRoll: cleanRoll,
+      };
+    }
+
+    if (payload.role === 'teacher') {
+      const cleanDesig = (payload.designation || '').trim() || 'সহকারী শিক্ষক';
+      const cleanSubject = (payload.subject || '').trim() || 'General';
+      const cleanQual = (payload.qualification || '').trim() || 'Graduate';
+      const cleanNameBn = (payload.nameBn || '').trim() || cleanName;
+
+      if (
+        registeredUsers.some(
+          (u) => u.role === 'teacher' && u.phone && phonesMatch(u.phone, cleanPhone)
+        )
+      ) {
+        return {
+          ok: false,
+          error:
+            lang === 'bn'
+              ? 'এই মোবাইল নম্বর দিয়ে ইতিমধ্যে একজন শিক্ষক নিবন্ধিত আছেন।'
+              : 'A teacher account with this mobile number already exists.',
+        };
+      }
+
+      const year = new Date().getFullYear();
+      const serial = String(teachers.length + 1).padStart(3, '0');
+      const teacherCode = `RBMB-TCH-${year}-${serial}`;
+
+      const existingTeacher = teachers.find(
+        (tc) =>
+          (tc.phone && phonesMatch(tc.phone, cleanPhone)) ||
+          tc.name.en.trim().toLowerCase() === cleanName.toLowerCase() ||
+          tc.name.bn.trim().toLowerCase() === cleanNameBn.toLowerCase()
+      );
+      const teacherId =
+        existingTeacher?.id || sanitizeFirestoreId(`tc-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 5)}`);
+
+      const nextTeacher: Teacher = {
+        ...(existingTeacher || {}),
+        id: teacherId,
+        teacherCode: existingTeacher?.teacherCode || teacherCode,
+        name: { bn: cleanNameBn, en: cleanName },
+        designation: { bn: cleanDesig, en: cleanDesig },
+        subject: { bn: cleanSubject, en: cleanSubject },
+        qualification: { bn: cleanQual, en: cleanQual },
+        phone: cleanPhone,
+        bloodGroup: payload.bloodGroup || existingTeacher?.bloodGroup,
+        photo: safePhoto || existingTeacher?.photo || '',
+        cardIssueDate: existingTeacher?.cardIssueDate || todayStr,
+        cardValidUpto: existingTeacher?.cardValidUpto || `${year + 3}-12-31`,
+        isPublic: true,
+      };
+
+      const nextTeachers = existingTeacher
+        ? teachers.map((tc) => (tc.id === existingTeacher.id ? nextTeacher : tc))
+        : [...teachers, nextTeacher];
+      setTeachers(nextTeachers);
+      persistLocal('db_teachers', nextTeachers);
+
+      const finalCode = nextTeacher.teacherCode || teacherCode;
+      const newAuthUser: AuthUser = {
+        userId: finalCode,
+        role: 'teacher',
+        name: cleanNameBn,
+        email: cleanEmail || undefined,
+        phone: cleanPhone,
+        designation: cleanDesig,
+        subject: cleanSubject,
+        qualification: cleanQual,
+        bloodGroup: payload.bloodGroup || undefined,
+        photo: safePhoto || undefined,
+        passwordHash,
+      };
+      const nextUsers = [...registeredUsers, newAuthUser];
+      setRegisteredUsers(nextUsers);
+      persistLocal('registered_users', nextUsers);
+
+      return {
+        ok: true,
+        user: stripPlaintextPassword(newAuthUser),
+        teacherCode: finalCode,
+      };
+    }
+
+    // Parent registration: verify against ALL students sharing the student's registered mobile number
+    const matchedStudentMap = new Map<string, SchoolStudent>();
+    students.forEach((s) => {
+      if (phonesMatch(cleanPhone, s.guardianMobile)) {
+        matchedStudentMap.set(s.id, s);
+      }
+    });
+    registeredUsers.forEach((u) => {
+      if (u.role === 'student' && u.phone && phonesMatch(cleanPhone, u.phone)) {
+        const existingRec = students.find(
+          (s) =>
+            s.id === u.linkedStudentId ||
+            (s.classId === u.linkedChildClass && s.roll.trim() === (u.linkedChildRoll || '').trim())
+        );
+        if (existingRec) {
+          matchedStudentMap.set(existingRec.id, existingRec);
+        } else {
+          const synthId = u.linkedStudentId || sanitizeFirestoreId(`st-${u.linkedChildClass || '9'}-${u.linkedChildRoll || '01'}`);
+          if (!matchedStudentMap.has(synthId)) {
+            matchedStudentMap.set(synthId, {
+              id: synthId,
+              name: u.name,
+              classId: u.linkedChildClass || '9',
+              roll: u.linkedChildRoll || '01',
+              section: u.section || 'A',
+              guardianMobile: cleanPhone,
+              registrationNo: u.registrationNo,
+            });
+          }
+        }
+      }
+    });
+
+    const matchedList = Array.from(matchedStudentMap.values());
+    const primaryChild = matchedList[0];
+
+    if (!primaryChild) {
+      return {
+        ok: false,
+        error:
+          lang === 'bn'
+            ? 'এই মোবাইল নম্বরের সাথে কোনো নিবন্ধিত শিক্ষার্থীর তথ্য মেলেনি। শিক্ষার্থী নিবন্ধনের সময় যে মোবাইল নম্বর দিয়েছে, ঠিক সেই নম্বরটি দিন।'
+            : 'No registered student found with this mobile number. Please enter the exact mobile number submitted by your child.',
+      };
+    }
+
+    const parentWithSamePhone = registeredUsers.find(
+      (u) => u.role === 'parent' && u.phone && phonesMatch(u.phone, cleanPhone)
+    );
+    if (parentWithSamePhone && !cleanEmail) {
+      return {
+        ok: false,
+        error:
+          lang === 'bn'
+            ? 'এই মোবাইল নম্বরে ইতিমধ্যে একটি অভিভাবক অ্যাকাউন্ট রয়েছে। নতুন অ্যাকাউন্ট খুলতে একটি ইমেইল ঠিকানা যুক্ত করুন অথবা বর্তমান অ্যাকাউন্ট দিয়ে লগইন করুন।'
+            : 'A parent account with this mobile number already exists. Add a unique email address or sign in with your existing parent account.',
+      };
+    }
+
+    const parentUserId = cleanEmail || `PRN-${normalizePhoneDigits(cleanPhone).slice(-10)}-${Date.now().toString(36).slice(-4)}`;
+    const newAuthUser: AuthUser = {
+      userId: parentUserId,
+      role: 'parent',
+      name: cleanName,
+      email: cleanEmail || undefined,
+      phone: cleanPhone,
+      relationship: payload.relationship || 'Guardian',
+      photo: safePhoto || undefined,
+      linkedStudentId: primaryChild.id,
+      linkedStudentIds: matchedList.map((s) => s.id),
+      linkedChildClass: primaryChild.classId,
+      linkedChildRoll: primaryChild.roll,
+      linkedChildName: primaryChild.name,
+      passwordHash,
+    };
+    const nextUsers = [...registeredUsers, newAuthUser];
+    setRegisteredUsers(nextUsers);
+    persistLocal('registered_users', nextUsers);
+
+    return {
+      ok: true,
+      user: stripPlaintextPassword(newAuthUser),
+      matchedStudentName: primaryChild.name,
+      matchedStudentClass: primaryChild.classId,
+      matchedStudentRoll: primaryChild.roll,
+      matchedStudents: matchedList.map((s) => ({
+        name: s.name,
+        classId: s.classId,
+        roll: s.roll,
+      })),
+    };
+  };
+
   const updateUser = async (updatedUser: AuthUser) => {
     let nextHash = updatedUser.passwordHash;
     if (updatedUser.password && updatedUser.password.trim().length > 0) {
       nextHash = await hashPassword(updatedUser.password.trim());
     }
-    const cleanInput = stripPlaintextPassword(updatedUser);
+    const cleanInput = stripPlaintextPassword({
+      ...updatedUser,
+      photo: updatedUser.photo ? clampImageString(updatedUser.photo) : updatedUser.photo,
+    });
     const updated = registeredUsers.map((u) => {
       if (u.userId !== cleanInput.userId) return u;
       return {
@@ -2085,17 +2823,39 @@ const App: React.FC = () => {
 
     if (firebaseUser?.emailVerified && firebaseUser.uid === cleanInput.userId) {
       try {
-        await updateDoc(doc(db, 'users', firebaseUser.uid), {
-          name: cleanInput.name.slice(0, 150),
+        setDbStatus('syncing');
+        const userRef = doc(db, 'users', firebaseUser.uid);
+        const snap = await getDoc(userRef);
+        const profilePayload = {
+          name: (cleanInput.name || 'User').slice(0, 150),
           email: (cleanInput.email || firebaseUser.email || 'user@rbhs.edu').slice(0, 150),
-          ...(cleanInput.photo ? { photo: cleanInput.photo.slice(0, 600000) } : {}),
+          ...(cleanInput.photo ? { photo: clampImageString(cleanInput.photo) } : {}),
+          ...(cleanInput.phone ? { phone: cleanInput.phone.slice(0, 40) } : {}),
+          ...(cleanInput.designation ? { designation: cleanInput.designation.slice(0, 150) } : {}),
+          ...(cleanInput.relationship ? { relationship: cleanInput.relationship } : {}),
+          ...(cleanInput.linkedStudentId ? { linkedStudentId: cleanInput.linkedStudentId.slice(0, 128) } : {}),
+          ...(cleanInput.linkedStudentIds && cleanInput.linkedStudentIds.length > 0
+            ? { linkedStudentIds: cleanInput.linkedStudentIds.slice(0, 15).map((sid) => sid.slice(0, 128)) }
+            : {}),
           ...(cleanInput.linkedChildClass ? { linkedChildClass: cleanInput.linkedChildClass.slice(0, 16) } : {}),
           ...(cleanInput.linkedChildRoll ? { linkedChildRoll: cleanInput.linkedChildRoll.slice(0, 20) } : {}),
           ...(cleanInput.linkedChildName ? { linkedChildName: cleanInput.linkedChildName.slice(0, 150) } : {}),
           updatedAt: serverTimestamp(),
-        });
+        };
+        if (snap.exists()) {
+          await updateDoc(userRef, profilePayload);
+        } else {
+          await setDoc(userRef, {
+            uid: sanitizeFirestoreId(firebaseUser.uid),
+            role: (cleanInput.role || 'student') as BaseUserRole,
+            ...profilePayload,
+            createdAt: serverTimestamp(),
+          });
+        }
+        setDbStatus('synced');
+        setLastSyncError(null);
       } catch (err) {
-        console.warn('Cloud profile update skipped:', err);
+        safeListenerError(err, OperationType.UPDATE, `users/${firebaseUser.uid}`);
       }
     }
   };
@@ -2110,6 +2870,8 @@ const App: React.FC = () => {
   const logout = () => {
     setUser(null);
     localStorage.removeItem('school_user');
+    const restoredStudents = safeLocalGet<SchoolStudent[]>('db_students', INITIAL_STUDENTS);
+    setStudents(restoredStudents.length > 0 ? restoredStudents : INITIAL_STUDENTS);
     if (firebaseUser) {
       logoutGoogle();
     }
@@ -2197,6 +2959,29 @@ const App: React.FC = () => {
     }
   };
 
+  const STORAGE_KEY_BY_COL: Record<string, string> = {
+    notices: 'db_notices',
+    news: 'db_news',
+    events: 'db_events',
+    teachers: 'db_teachers',
+    ebooks: 'db_ebooks',
+    gallery: 'db_gallery',
+    holidays: 'db_holidays',
+    students: 'db_students',
+    attendance: 'db_attendance',
+    homework: 'db_homework',
+    examMarks: 'db_exam_marks',
+    onlineExams: 'db_online_exams',
+    examRoutines: 'db_exam_routines',
+    classRoutines: 'db_class_routines',
+    subjects: 'db_subjects',
+    alumni: 'db_alumni',
+    teacherLeaves: 'db_teacher_leaves',
+    studentLeaves: 'db_student_leaves',
+    fee_records: 'db_fee_records',
+    portal_notifications: 'db_portal_notifications',
+  };
+
   // Cloud + Local CRUD helpers
   const syncDocUpsert = async (
     collectionName: string,
@@ -2204,35 +2989,39 @@ const App: React.FC = () => {
     payload: Record<string, unknown>,
     isUpdate: boolean,
     allowTeacher = false
-  ) => {
-    if (allowTeacher ? !isCloudTeacher : !isCloudAdmin) return;
+  ): Promise<boolean> => {
+    if (allowTeacher ? !isCloudTeacher : !isCloudAdmin) return false;
     setDbStatus('syncing');
     const docRef = doc(db, collectionName, id);
     try {
-      if (isUpdate) {
-        const snap = await getDoc(docRef);
-        if (snap.exists()) {
-          await updateDoc(docRef, { ...payload, updatedAt: serverTimestamp() });
-        } else {
-          await setDoc(docRef, { ...payload, createdAt: serverTimestamp(), updatedAt: serverTimestamp() });
-        }
+      const snap = await getDoc(docRef);
+      if (snap.exists()) {
+        await updateDoc(docRef, { ...payload, updatedAt: serverTimestamp() });
       } else {
         await setDoc(docRef, { ...payload, createdAt: serverTimestamp(), updatedAt: serverTimestamp() });
       }
+      if (STORAGE_KEY_BY_COL[collectionName]) clearDirtyKey(STORAGE_KEY_BY_COL[collectionName]);
+      setLastSyncError(null);
       setDbStatus('synced');
+      return true;
     } catch (err) {
       safeListenerError(err, isUpdate ? OperationType.UPDATE : OperationType.CREATE, `${collectionName}/${id}`);
+      return false;
     }
   };
 
-  const syncDocDelete = async (collectionName: string, id: string, allowTeacher = false) => {
-    if (allowTeacher ? !isCloudTeacher : !isCloudAdmin) return;
+  const syncDocDelete = async (collectionName: string, id: string, allowTeacher = false): Promise<boolean> => {
+    if (allowTeacher ? !isCloudTeacher : !isCloudAdmin) return false;
     setDbStatus('syncing');
     try {
       await deleteDoc(doc(db, collectionName, id));
+      if (STORAGE_KEY_BY_COL[collectionName]) clearDirtyKey(STORAGE_KEY_BY_COL[collectionName]);
+      setLastSyncError(null);
       setDbStatus('synced');
+      return true;
     } catch (err) {
       safeListenerError(err, OperationType.DELETE, `${collectionName}/${id}`);
+      return false;
     }
   };
 
@@ -2243,15 +3032,15 @@ const App: React.FC = () => {
     const updated = [item, ...notices];
     setNotices(updated);
     persistLocal('db_notices', updated);
-    syncDocUpsert(
+    void syncDocUpsert(
       'notices',
       id,
       {
         id,
-        title: { bn: n.title.bn.slice(0, 300), en: n.title.en.slice(0, 300) },
-        date: n.date.slice(0, 32),
-        category: n.category,
-        description: { bn: n.description.bn.slice(0, 5000), en: n.description.en.slice(0, 5000) },
+        title: safeLoc(n.title, 'নোটিশ', 'Notice', 300),
+        date: (n.date && n.date.length >= 4 ? n.date : new Date().toISOString().split('T')[0]).slice(0, 32),
+        category: n.category || 'General',
+        description: safeLoc(n.description, 'বিস্তারিত', 'Details', 5000),
         ...(n.pdfUrl ? { pdfUrl: n.pdfUrl.slice(0, 2000) } : {}),
         isPublic: true,
       },
@@ -2265,15 +3054,15 @@ const App: React.FC = () => {
     const updated = notices.map((i) => (i.id === n.id ? { ...n, id } : i));
     setNotices(updated);
     persistLocal('db_notices', updated);
-    syncDocUpsert(
+    void syncDocUpsert(
       'notices',
       id,
       {
         id,
-        title: { bn: n.title.bn.slice(0, 300), en: n.title.en.slice(0, 300) },
-        date: n.date.slice(0, 32),
-        category: n.category,
-        description: { bn: n.description.bn.slice(0, 5000), en: n.description.en.slice(0, 5000) },
+        title: safeLoc(n.title, 'নোটিশ', 'Notice', 300),
+        date: (n.date && n.date.length >= 4 ? n.date : new Date().toISOString().split('T')[0]).slice(0, 32),
+        category: n.category || 'General',
+        description: safeLoc(n.description, 'বিস্তারিত', 'Details', 5000),
         ...(n.pdfUrl ? { pdfUrl: n.pdfUrl.slice(0, 2000) } : {}),
         isPublic: true,
       },
@@ -2286,27 +3075,28 @@ const App: React.FC = () => {
     const updated = notices.filter((n) => n.id !== id);
     setNotices(updated);
     persistLocal('db_notices', updated);
-    syncDocDelete('notices', sanitizeFirestoreId(id));
+    void syncDocDelete('notices', sanitizeFirestoreId(id));
   };
 
   // News Articles (Teacher + Admin can publish/edit)
   const addNews = (item: NewsArticle) => {
     const id = sanitizeFirestoreId(item.id);
-    const clean = { ...item, id, isPublic: true };
+    const img = clampImageString(item.imageUrl);
+    const clean = { ...item, id, ...(img ? { imageUrl: img } : {}), isPublic: true };
     const updated = [clean, ...newsList];
     setNewsList(updated);
     persistLocal('db_news', updated);
-    syncDocUpsert(
+    void syncDocUpsert(
       'news',
       id,
       {
         id,
-        title: { bn: clean.title.bn.slice(0, 300), en: clean.title.en.slice(0, 300) },
-        summary: { bn: clean.summary.bn.slice(0, 600), en: clean.summary.en.slice(0, 600) },
-        content: { bn: clean.content.bn.slice(0, 5000), en: clean.content.en.slice(0, 5000) },
-        category: clean.category,
-        date: clean.date.slice(0, 32),
-        ...(clean.imageUrl ? { imageUrl: clean.imageUrl.slice(0, 600000) } : {}),
+        title: safeLoc(clean.title, 'সংবাদ', 'News', 300),
+        summary: safeLoc(clean.summary, 'সারসংক্ষেপ', 'Summary', 600),
+        content: safeLoc(clean.content, 'বিস্তারিত সংবাদ', 'News content', 5000),
+        category: clean.category || 'Academic',
+        date: (clean.date && clean.date.length >= 4 ? clean.date : new Date().toISOString().split('T')[0]).slice(0, 32),
+        ...(img ? { imageUrl: img } : {}),
         ...(clean.author ? { author: clean.author.slice(0, 150) } : {}),
         isPublic: true,
       },
@@ -2317,21 +3107,22 @@ const App: React.FC = () => {
 
   const updateNews = (item: NewsArticle) => {
     const id = sanitizeFirestoreId(item.id);
-    const clean = { ...item, id, isPublic: true };
+    const img = clampImageString(item.imageUrl);
+    const clean = { ...item, id, ...(img ? { imageUrl: img } : {}), isPublic: true };
     const updated = newsList.map((i) => (i.id === item.id ? clean : i));
     setNewsList(updated);
     persistLocal('db_news', updated);
-    syncDocUpsert(
+    void syncDocUpsert(
       'news',
       id,
       {
         id,
-        title: { bn: clean.title.bn.slice(0, 300), en: clean.title.en.slice(0, 300) },
-        summary: { bn: clean.summary.bn.slice(0, 600), en: clean.summary.en.slice(0, 600) },
-        content: { bn: clean.content.bn.slice(0, 5000), en: clean.content.en.slice(0, 5000) },
-        category: clean.category,
-        date: clean.date.slice(0, 32),
-        ...(clean.imageUrl ? { imageUrl: clean.imageUrl.slice(0, 600000) } : {}),
+        title: safeLoc(clean.title, 'সংবাদ', 'News', 300),
+        summary: safeLoc(clean.summary, 'সারসংক্ষেপ', 'Summary', 600),
+        content: safeLoc(clean.content, 'বিস্তারিত সংবাদ', 'News content', 5000),
+        category: clean.category || 'Academic',
+        date: (clean.date && clean.date.length >= 4 ? clean.date : new Date().toISOString().split('T')[0]).slice(0, 32),
+        ...(img ? { imageUrl: img } : {}),
         ...(clean.author ? { author: clean.author.slice(0, 150) } : {}),
         isPublic: true,
       },
@@ -2344,7 +3135,7 @@ const App: React.FC = () => {
     const updated = newsList.filter((i) => i.id !== id);
     setNewsList(updated);
     persistLocal('db_news', updated);
-    syncDocDelete('news', sanitizeFirestoreId(id));
+    void syncDocDelete('news', sanitizeFirestoreId(id));
   };
 
   // Campus Events (Teacher + Admin can publish/edit)
@@ -2354,17 +3145,17 @@ const App: React.FC = () => {
     const updated = [clean, ...eventsList];
     setEventsList(updated);
     persistLocal('db_events', updated);
-    syncDocUpsert(
+    void syncDocUpsert(
       'events',
       id,
       {
         id,
-        title: { bn: clean.title.bn.slice(0, 300), en: clean.title.en.slice(0, 300) },
-        description: { bn: clean.description.bn.slice(0, 3000), en: clean.description.en.slice(0, 3000) },
-        date: clean.date.slice(0, 32),
-        time: clean.time.slice(0, 64),
-        location: { bn: clean.location.bn.slice(0, 300), en: clean.location.en.slice(0, 300) },
-        category: clean.category,
+        title: safeLoc(clean.title, 'অনুষ্ঠান', 'Event', 300),
+        description: safeLoc(clean.description, 'বিস্তারিত', 'Details', 3000),
+        date: (clean.date && clean.date.length >= 4 ? clean.date : new Date().toISOString().split('T')[0]).slice(0, 32),
+        time: (clean.time || '10:00 AM').slice(0, 64),
+        location: safeLoc(clean.location, 'বিদ্যালয় প্রাঙ্গণ', 'Campus', 300),
+        category: clean.category || 'Academic',
         isPublic: true,
       },
       false,
@@ -2378,17 +3169,17 @@ const App: React.FC = () => {
     const updated = eventsList.map((i) => (i.id === ev.id ? clean : i));
     setEventsList(updated);
     persistLocal('db_events', updated);
-    syncDocUpsert(
+    void syncDocUpsert(
       'events',
       id,
       {
         id,
-        title: { bn: clean.title.bn.slice(0, 300), en: clean.title.en.slice(0, 300) },
-        description: { bn: clean.description.bn.slice(0, 3000), en: clean.description.en.slice(0, 3000) },
-        date: clean.date.slice(0, 32),
-        time: clean.time.slice(0, 64),
-        location: { bn: clean.location.bn.slice(0, 300), en: clean.location.en.slice(0, 300) },
-        category: clean.category,
+        title: safeLoc(clean.title, 'অনুষ্ঠান', 'Event', 300),
+        description: safeLoc(clean.description, 'বিস্তারিত', 'Details', 3000),
+        date: (clean.date && clean.date.length >= 4 ? clean.date : new Date().toISOString().split('T')[0]).slice(0, 32),
+        time: (clean.time || '10:00 AM').slice(0, 64),
+        location: safeLoc(clean.location, 'বিদ্যালয় প্রাঙ্গণ', 'Campus', 300),
+        category: clean.category || 'Academic',
         isPublic: true,
       },
       true,
@@ -2400,26 +3191,32 @@ const App: React.FC = () => {
     const updated = eventsList.filter((i) => i.id !== id);
     setEventsList(updated);
     persistLocal('db_events', updated);
-    syncDocDelete('events', sanitizeFirestoreId(id));
+    void syncDocDelete('events', sanitizeFirestoreId(id));
   };
 
   // Teachers
   const addTeacher = (teach: Teacher) => {
     const id = sanitizeFirestoreId(teach.id);
-    const item = { ...teach, id };
+    const safePhoto = clampImageString(teach.photo);
+    const item: Teacher = { ...teach, id, photo: safePhoto };
     const updated = [...teachers, item];
     setTeachers(updated);
     persistLocal('db_teachers', updated);
-    syncDocUpsert(
+    void syncDocUpsert(
       'teachers',
       id,
       {
         id,
-        name: { bn: teach.name.bn.slice(0, 200), en: teach.name.en.slice(0, 200) },
-        designation: { bn: teach.designation.bn.slice(0, 200), en: teach.designation.en.slice(0, 200) },
-        subject: { bn: teach.subject.bn.slice(0, 200), en: teach.subject.en.slice(0, 200) },
-        qualification: { bn: teach.qualification.bn.slice(0, 300), en: teach.qualification.en.slice(0, 300) },
-        photo: (teach.photo || '').slice(0, 600000),
+        name: safeLoc(item.name, 'শিক্ষক', 'Teacher', 200),
+        designation: safeLoc(item.designation, 'সহকারী শিক্ষক', 'Assistant Teacher', 200),
+        subject: safeLoc(item.subject, 'সাধারণ', 'General', 200),
+        qualification: safeLoc(item.qualification, 'স্নাতকোত্তর', 'Graduate', 300),
+        photo: safePhoto,
+        ...(item.teacherCode ? { teacherCode: item.teacherCode.trim().slice(0, 40) } : {}),
+        ...(item.phone ? { phone: item.phone.trim().slice(0, 40) } : {}),
+        ...(item.bloodGroup ? { bloodGroup: item.bloodGroup.trim().slice(0, 16) } : {}),
+        ...(item.cardIssueDate ? { cardIssueDate: item.cardIssueDate.trim().slice(0, 32) } : {}),
+        ...(item.cardValidUpto ? { cardValidUpto: item.cardValidUpto.trim().slice(0, 32) } : {}),
         isPublic: true,
       },
       false
@@ -2428,51 +3225,94 @@ const App: React.FC = () => {
 
   const updateTeacher = (teach: Teacher) => {
     const id = sanitizeFirestoreId(teach.id);
-    const updated = teachers.map((i) => (i.id === teach.id ? { ...teach, id } : i));
+    const existingTeacher = teachers.find((i) => i.id === teach.id || i.id === id);
+    const merged: Teacher = {
+      ...(existingTeacher || teach),
+      ...teach,
+      id,
+      photo: clampImageString(teach.photo ?? existingTeacher?.photo ?? ''),
+    };
+    const existsInList = Boolean(existingTeacher);
+    const updated = existsInList
+      ? teachers.map((i) => (i.id === teach.id || i.id === id ? merged : i))
+      : [...teachers, merged];
     setTeachers(updated);
     persistLocal('db_teachers', updated);
-    syncDocUpsert(
-      'teachers',
-      id,
-      {
+
+    if (isCloudAdmin) {
+      void syncDocUpsert(
+        'teachers',
         id,
-        name: { bn: teach.name.bn.slice(0, 200), en: teach.name.en.slice(0, 200) },
-        designation: { bn: teach.designation.bn.slice(0, 200), en: teach.designation.en.slice(0, 200) },
-        subject: { bn: teach.subject.bn.slice(0, 200), en: teach.subject.en.slice(0, 200) },
-        qualification: { bn: teach.qualification.bn.slice(0, 300), en: teach.qualification.en.slice(0, 300) },
-        photo: (teach.photo || '').slice(0, 600000),
-        isPublic: true,
-      },
-      true
-    );
+        {
+          id,
+          name: safeLoc(merged.name, 'শিক্ষক', 'Teacher', 200),
+          designation: safeLoc(merged.designation, 'সহকারী শিক্ষক', 'Assistant Teacher', 200),
+          subject: safeLoc(merged.subject, 'সাধারণ', 'General', 200),
+          qualification: safeLoc(merged.qualification, 'স্নাতকোত্তর', 'Graduate', 300),
+          photo: merged.photo,
+          ...(merged.teacherCode ? { teacherCode: merged.teacherCode.trim().slice(0, 40) } : {}),
+          ...(merged.phone ? { phone: merged.phone.trim().slice(0, 40) } : {}),
+          ...(merged.bloodGroup ? { bloodGroup: merged.bloodGroup.trim().slice(0, 16) } : {}),
+          ...(merged.cardIssueDate ? { cardIssueDate: merged.cardIssueDate.trim().slice(0, 32) } : {}),
+          ...(merged.cardValidUpto ? { cardValidUpto: merged.cardValidUpto.trim().slice(0, 32) } : {}),
+          isPublic: true,
+        },
+        true
+      );
+    } else if (isCloudTeacher) {
+      // Teachers can update card metadata fields permitted by security rules on existing teacher docs
+      (async () => {
+        try {
+          const tRef = doc(db, 'teachers', id);
+          const snap = await getDoc(tRef);
+          if (snap.exists()) {
+            setDbStatus('syncing');
+            await updateDoc(tRef, {
+              photo: merged.photo,
+              ...(merged.teacherCode ? { teacherCode: merged.teacherCode.trim().slice(0, 40) } : {}),
+              ...(merged.phone ? { phone: merged.phone.trim().slice(0, 40) } : {}),
+              ...(merged.bloodGroup ? { bloodGroup: merged.bloodGroup.trim().slice(0, 16) } : {}),
+              ...(merged.cardIssueDate ? { cardIssueDate: merged.cardIssueDate.trim().slice(0, 32) } : {}),
+              ...(merged.cardValidUpto ? { cardValidUpto: merged.cardValidUpto.trim().slice(0, 32) } : {}),
+              updatedAt: serverTimestamp(),
+            });
+            clearDirtyKey('db_teachers');
+            setDbStatus('synced');
+          }
+        } catch (err) {
+          safeListenerError(err, OperationType.UPDATE, `teachers/${id}`);
+        }
+      })();
+    }
   };
 
   const deleteTeacher = (id: string) => {
     const updated = teachers.filter((tc) => tc.id !== id);
     setTeachers(updated);
     persistLocal('db_teachers', updated);
-    syncDocDelete('teachers', sanitizeFirestoreId(id));
+    void syncDocDelete('teachers', sanitizeFirestoreId(id));
   };
 
   // E-Books / Digital Library (Teacher + Admin can add/update)
   const addEbook = (b: EBook) => {
     const id = sanitizeFirestoreId(b.id);
-    const item = { ...b, id };
+    const safeCover = clampImageString(b.coverUrl);
+    const item = { ...b, id, coverUrl: safeCover };
     const updated = [item, ...ebooks];
     setEbooks(updated);
     persistLocal('db_ebooks', updated);
-    syncDocUpsert(
+    void syncDocUpsert(
       'ebooks',
       id,
       {
         id,
-        title: { bn: b.title.bn.slice(0, 300), en: b.title.en.slice(0, 300) },
-        classId: b.classId.slice(0, 16),
-        className: { bn: b.className.bn.slice(0, 100), en: b.className.en.slice(0, 100) },
-        subject: b.subject.slice(0, 120),
+        title: safeLoc(b.title, 'বই', 'Book', 300),
+        classId: (b.classId || '6').slice(0, 16),
+        className: safeLoc(b.className, 'শ্রেণী', 'Class', 100),
+        subject: (b.subject || 'General').slice(0, 120),
         ...(b.category ? { category: b.category.slice(0, 40) } : {}),
-        ...(b.description ? { description: { bn: b.description.bn.slice(0, 1500), en: b.description.en.slice(0, 1500) } } : {}),
-        coverUrl: (b.coverUrl || '').slice(0, 600000),
+        ...(b.description ? { description: safeLoc(b.description, 'বইয়ের বিবরণ', 'Book description', 1500) } : {}),
+        coverUrl: safeCover,
         downloadUrl: (b.downloadUrl || '#').slice(0, 2000),
         isPublic: true,
       },
@@ -2483,21 +3323,22 @@ const App: React.FC = () => {
 
   const updateEbook = (b: EBook) => {
     const id = sanitizeFirestoreId(b.id);
-    const updated = ebooks.map((i) => (i.id === b.id ? { ...b, id } : i));
+    const safeCover = clampImageString(b.coverUrl);
+    const updated = ebooks.map((i) => (i.id === b.id ? { ...b, id, coverUrl: safeCover } : i));
     setEbooks(updated);
     persistLocal('db_ebooks', updated);
-    syncDocUpsert(
+    void syncDocUpsert(
       'ebooks',
       id,
       {
         id,
-        title: { bn: b.title.bn.slice(0, 300), en: b.title.en.slice(0, 300) },
-        classId: b.classId.slice(0, 16),
-        className: { bn: b.className.bn.slice(0, 100), en: b.className.en.slice(0, 100) },
-        subject: b.subject.slice(0, 120),
+        title: safeLoc(b.title, 'বই', 'Book', 300),
+        classId: (b.classId || '6').slice(0, 16),
+        className: safeLoc(b.className, 'শ্রেণী', 'Class', 100),
+        subject: (b.subject || 'General').slice(0, 120),
         ...(b.category ? { category: b.category.slice(0, 40) } : {}),
-        ...(b.description ? { description: { bn: b.description.bn.slice(0, 1500), en: b.description.en.slice(0, 1500) } } : {}),
-        coverUrl: (b.coverUrl || '').slice(0, 600000),
+        ...(b.description ? { description: safeLoc(b.description, 'বইয়ের বিবরণ', 'Book description', 1500) } : {}),
+        coverUrl: safeCover,
         downloadUrl: (b.downloadUrl || '#').slice(0, 2000),
         isPublic: true,
       },
@@ -2510,23 +3351,24 @@ const App: React.FC = () => {
     const updated = ebooks.filter((b) => b.id !== id);
     setEbooks(updated);
     persistLocal('db_ebooks', updated);
-    syncDocDelete('ebooks', sanitizeFirestoreId(id));
+    void syncDocDelete('ebooks', sanitizeFirestoreId(id));
   };
 
   // Gallery
   const addGalleryItem = (i: GalleryItem) => {
     const id = sanitizeFirestoreId(i.id);
-    const item = { ...i, id };
+    const safeUrl = clampImageString(i.url) || 'https://placehold.co/800x600?text=RBMB';
+    const item = { ...i, id, url: safeUrl };
     const updated = [item, ...gallery];
     setGallery(updated);
     persistLocal('db_gallery', updated);
-    syncDocUpsert(
+    void syncDocUpsert(
       'gallery',
       id,
       {
         id,
-        url: (i.url || '').slice(0, 600000),
-        caption: { bn: i.caption.bn.slice(0, 400), en: i.caption.en.slice(0, 400) },
+        url: safeUrl,
+        caption: safeLoc(i.caption, 'ক্যাম্পাস ছবি', 'Campus photo', 400),
         ...(i.mediaType ? { mediaType: i.mediaType } : {}),
         ...(i.videoUrl ? { videoUrl: i.videoUrl.slice(0, 2000) } : {}),
         ...(i.category ? { category: i.category.slice(0, 32) } : {}),
@@ -2538,16 +3380,17 @@ const App: React.FC = () => {
 
   const updateGalleryItem = (i: GalleryItem) => {
     const id = sanitizeFirestoreId(i.id);
-    const updated = gallery.map((item) => (item.id === i.id ? { ...i, id } : item));
+    const safeUrl = clampImageString(i.url) || 'https://placehold.co/800x600?text=RBMB';
+    const updated = gallery.map((item) => (item.id === i.id ? { ...i, id, url: safeUrl } : item));
     setGallery(updated);
     persistLocal('db_gallery', updated);
-    syncDocUpsert(
+    void syncDocUpsert(
       'gallery',
       id,
       {
         id,
-        url: (i.url || '').slice(0, 600000),
-        caption: { bn: i.caption.bn.slice(0, 400), en: i.caption.en.slice(0, 400) },
+        url: safeUrl,
+        caption: safeLoc(i.caption, 'ক্যাম্পাস ছবি', 'Campus photo', 400),
         ...(i.mediaType ? { mediaType: i.mediaType } : {}),
         ...(i.videoUrl ? { videoUrl: i.videoUrl.slice(0, 2000) } : {}),
         ...(i.category ? { category: i.category.slice(0, 32) } : {}),
@@ -2561,7 +3404,7 @@ const App: React.FC = () => {
     const updated = gallery.filter((i) => i.id !== id);
     setGallery(updated);
     persistLocal('db_gallery', updated);
-    syncDocDelete('gallery', sanitizeFirestoreId(id));
+    void syncDocDelete('gallery', sanitizeFirestoreId(id));
   };
 
   // Holidays
@@ -2571,15 +3414,15 @@ const App: React.FC = () => {
     const updated = [...holidays, item];
     setHolidays(updated);
     persistLocal('db_holidays', updated);
-    syncDocUpsert(
+    void syncDocUpsert(
       'holidays',
       id,
       {
         id,
-        title: { bn: h.title.bn.slice(0, 300), en: h.title.en.slice(0, 300) },
-        date: h.date.slice(0, 32),
-        duration: { bn: h.duration.bn.slice(0, 100), en: h.duration.en.slice(0, 100) },
-        type: h.type,
+        title: safeLoc(h.title, 'ছুটি', 'Holiday', 300),
+        date: (h.date && h.date.length >= 4 ? h.date : new Date().toISOString().split('T')[0]).slice(0, 32),
+        duration: safeLoc(h.duration, '১ দিন', '1 Day', 100),
+        type: h.type || 'National',
         isPublic: true,
       },
       false
@@ -2591,15 +3434,15 @@ const App: React.FC = () => {
     const updated = holidays.map((i) => (i.id === h.id ? { ...h, id } : i));
     setHolidays(updated);
     persistLocal('db_holidays', updated);
-    syncDocUpsert(
+    void syncDocUpsert(
       'holidays',
       id,
       {
         id,
-        title: { bn: h.title.bn.slice(0, 300), en: h.title.en.slice(0, 300) },
-        date: h.date.slice(0, 32),
-        duration: { bn: h.duration.bn.slice(0, 100), en: h.duration.en.slice(0, 100) },
-        type: h.type,
+        title: safeLoc(h.title, 'ছুটি', 'Holiday', 300),
+        date: (h.date && h.date.length >= 4 ? h.date : new Date().toISOString().split('T')[0]).slice(0, 32),
+        duration: safeLoc(h.duration, '১ দিন', '1 Day', 100),
+        type: h.type || 'National',
         isPublic: true,
       },
       true
@@ -2610,37 +3453,61 @@ const App: React.FC = () => {
     const updated = holidays.filter((h) => h.id !== id);
     setHolidays(updated);
     persistLocal('db_holidays', updated);
-    syncDocDelete('holidays', sanitizeFirestoreId(id));
+    void syncDocDelete('holidays', sanitizeFirestoreId(id));
   };
 
   // School & Head Teacher Settings
-  const updateSettings = (newSettings: SchoolSettings) => {
-    setSettings(newSettings);
-    persistLocal('school_settings', newSettings);
+  const updateSettings = async (newSettings: SchoolSettings): Promise<boolean> => {
+    const sPhoto = clampImageString(newSettings.schoolPhoto) || INITIAL_SETTINGS.schoolPhoto;
+    const hPhoto = clampImageString(newSettings.headTeacherPhoto) || INITIAL_SETTINGS.headTeacherPhoto;
+    const cleaned: SchoolSettings = {
+      ...newSettings,
+      name: safeLoc(newSettings.name, SCHOOL_NAME.bn, SCHOOL_NAME.en, 200),
+      eiin: (newSettings.eiin || INITIAL_SETTINGS.eiin).trim().slice(0, 32),
+      phone: (newSettings.phone || INITIAL_SETTINGS.phone).trim().slice(0, 40),
+      email: (newSettings.email && newSettings.email.trim().length >= 3 ? newSettings.email.trim() : INITIAL_SETTINGS.email).slice(0, 150),
+      location: safeLoc(newSettings.location, INITIAL_SETTINGS.location.bn, INITIAL_SETTINGS.location.en, 300),
+      schoolPhoto: sPhoto,
+      headTeacherPhoto: hPhoto,
+      ...(newSettings.headTeacherName
+        ? { headTeacherName: safeLoc(newSettings.headTeacherName, 'প্রধান শিক্ষক', 'Head Teacher', 200) }
+        : {}),
+      ...(newSettings.headTeacherMessage
+        ? { headTeacherMessage: safeLoc(newSettings.headTeacherMessage, 'স্বাগতম।', 'Welcome.', 2500) }
+        : {}),
+    };
+    setSettings(cleaned);
+    persistLocal('school_settings', cleaned);
     if (isCloudAdmin) {
       setDbStatus('syncing');
-      setDoc(doc(db, 'settings', 'main'), {
-        name: { bn: (newSettings.name?.bn || SCHOOL_NAME.bn).slice(0, 200), en: (newSettings.name?.en || SCHOOL_NAME.en).slice(0, 200) },
-        ...(newSettings.shortName ? { shortName: newSettings.shortName.slice(0, 100) } : {}),
-        ...(newSettings.tagline ? { tagline: { bn: newSettings.tagline.bn.slice(0, 300), en: newSettings.tagline.en.slice(0, 300) } } : {}),
-        eiin: (newSettings.eiin || INITIAL_SETTINGS.eiin).slice(0, 32),
-        phone: (newSettings.phone || INITIAL_SETTINGS.phone).slice(0, 40),
-        email: (newSettings.email && newSettings.email.length >= 3 ? newSettings.email : INITIAL_SETTINGS.email).slice(0, 150),
-        location: { bn: (newSettings.location?.bn || INITIAL_SETTINGS.location.bn).slice(0, 300), en: (newSettings.location?.en || INITIAL_SETTINGS.location.en).slice(0, 300) },
-        ...(newSettings.schoolPhoto ? { schoolPhoto: newSettings.schoolPhoto.slice(0, 600000) } : {}),
-        ...(newSettings.headTeacherName ? { headTeacherName: { bn: newSettings.headTeacherName.bn.slice(0, 200), en: newSettings.headTeacherName.en.slice(0, 200) } } : {}),
-        ...(newSettings.headTeacherMessage ? { headTeacherMessage: { bn: newSettings.headTeacherMessage.bn.slice(0, 2500), en: newSettings.headTeacherMessage.en.slice(0, 2500) } } : {}),
-        ...(newSettings.headTeacherPhoto ? { headTeacherPhoto: newSettings.headTeacherPhoto.slice(0, 600000) } : {}),
-        ...(typeof newSettings.latitude === 'number' ? { latitude: newSettings.latitude } : {}),
-        ...(typeof newSettings.longitude === 'number' ? { longitude: newSettings.longitude } : {}),
-        updatedAt: serverTimestamp(),
-      })
-        .then(() => {
-          setDbStatus('synced');
-          logAuditEvent('SETTINGS_UPDATED', 'settings', 'main', 'Updated campus settings & profile');
-        })
-        .catch((err) => safeListenerError(err, OperationType.WRITE, 'settings/main'));
+      try {
+        await setDoc(doc(db, 'settings', 'main'), {
+          name: cleaned.name,
+          ...(cleaned.shortName ? { shortName: cleaned.shortName.slice(0, 100) } : {}),
+          ...(cleaned.tagline ? { tagline: safeLoc(cleaned.tagline, CAMPUS_TAGLINE.bn, CAMPUS_TAGLINE.en, 300) } : {}),
+          eiin: cleaned.eiin,
+          phone: cleaned.phone,
+          email: cleaned.email,
+          location: cleaned.location,
+          ...(cleaned.schoolPhoto ? { schoolPhoto: cleaned.schoolPhoto } : {}),
+          ...(cleaned.headTeacherName ? { headTeacherName: cleaned.headTeacherName } : {}),
+          ...(cleaned.headTeacherMessage ? { headTeacherMessage: cleaned.headTeacherMessage } : {}),
+          ...(cleaned.headTeacherPhoto ? { headTeacherPhoto: cleaned.headTeacherPhoto } : {}),
+          ...(typeof cleaned.latitude === 'number' ? { latitude: cleaned.latitude } : {}),
+          ...(typeof cleaned.longitude === 'number' ? { longitude: cleaned.longitude } : {}),
+          updatedAt: serverTimestamp(),
+        });
+        clearDirtyKey('school_settings');
+        setLastSyncError(null);
+        setDbStatus('synced');
+        void logAuditEvent('SETTINGS_UPDATED', 'settings', 'main', 'Updated campus settings & profile');
+        return true;
+      } catch (err) {
+        safeListenerError(err, OperationType.WRITE, 'settings/main');
+        return false;
+      }
     }
+    return true;
   };
 
   // Admissions + Public Non-PII Status Projection
@@ -2698,6 +3565,7 @@ const App: React.FC = () => {
 
   const updateAdmissionStatus = async (appId: string, status: 'pending' | 'approved' | 'rejected') => {
     const cleanId = sanitizeFirestoreId(appId);
+    const targetApp = admissions.find((a) => a.appId === appId || a.appId === cleanId);
     const updated = admissions.map((a) => (a.appId === appId ? { ...a, status } : a));
     setAdmissions(updated);
     persistLocal('admission_applications', updated);
@@ -2705,16 +3573,31 @@ const App: React.FC = () => {
     try {
       setDbStatus('syncing');
       const batch = writeBatch(db);
-      batch.update(doc(db, 'admissions', cleanId), {
-        status,
-        updatedAt: serverTimestamp(),
-      });
-      const statusSnap = await getDoc(doc(db, 'admission_status', cleanId));
-      if (statusSnap.exists()) {
-        batch.update(doc(db, 'admission_status', cleanId), {
+      const admRef = doc(db, 'admissions', cleanId);
+      const admSnap = await getDoc(admRef);
+      if (admSnap.exists()) {
+        batch.update(admRef, { status, updatedAt: serverTimestamp() });
+      } else if (targetApp) {
+        batch.set(admRef, {
+          appId: cleanId,
+          studentName: (targetApp.studentName || 'Applicant').slice(0, 150),
+          fatherName: (targetApp.fatherName || 'Father').slice(0, 150),
+          motherName: (targetApp.motherName || 'Mother').slice(0, 150),
+          guardianMobile: (targetApp.guardianMobile && targetApp.guardianMobile.length >= 6 ? targetApp.guardianMobile : '01700000000').slice(0, 30),
+          targetClass: (targetApp.targetClass || '6').slice(0, 40),
+          targetGroup: (targetApp.targetGroup || 'General').slice(0, 40),
+          birthDate: (targetApp.birthDate && targetApp.birthDate.length >= 4 ? targetApp.birthDate : '2012-01-01').slice(0, 32),
+          address: (targetApp.address && targetApp.address.length >= 2 ? targetApp.address : 'Rani Bazar').slice(0, 400),
           status,
+          submittedDate: (targetApp.submittedDate || new Date().toLocaleDateString()).slice(0, 40),
+          createdAt: serverTimestamp(),
           updatedAt: serverTimestamp(),
         });
+      }
+      const statusRef = doc(db, 'admission_status', cleanId);
+      const statusSnap = await getDoc(statusRef);
+      if (statusSnap.exists()) {
+        batch.update(statusRef, { status, updatedAt: serverTimestamp() });
       }
       await batch.commit();
       await logAuditEvent(
@@ -2723,6 +3606,7 @@ const App: React.FC = () => {
         cleanId,
         `Updated admission ${cleanId} status to ${status}`
       );
+      clearDirtyKey('admission_applications');
       setDbStatus('synced');
     } catch (err) {
       safeListenerError(err, OperationType.UPDATE, `admissions/${appId}`);
@@ -2821,15 +3705,30 @@ const App: React.FC = () => {
   };
 
   const markContactMessageRead = async (id: string) => {
+    const cleanId = sanitizeFirestoreId(id);
+    const targetMsg = contactMessages.find((m) => m.id === id || m.id === cleanId);
     const updated = contactMessages.map((m) => (m.id === id ? { ...m, status: 'read' as const } : m));
     setContactMessages(updated);
     persistLocal('contact_messages', updated);
     if (!isCloudAdmin) return;
     try {
       setDbStatus('syncing');
-      await updateDoc(doc(db, 'contactMessages', sanitizeFirestoreId(id)), {
-        status: 'read',
-      });
+      const msgRef = doc(db, 'contactMessages', cleanId);
+      const snap = await getDoc(msgRef);
+      if (snap.exists()) {
+        await updateDoc(msgRef, { status: 'read' });
+      } else if (targetMsg) {
+        await setDoc(msgRef, {
+          id: cleanId,
+          name: (targetMsg.name || 'Visitor').slice(0, 150),
+          mobile: (targetMsg.mobile && targetMsg.mobile.length >= 6 ? targetMsg.mobile : '01700000000').slice(0, 30),
+          email: (targetMsg.email || '').slice(0, 150),
+          message: (targetMsg.message || 'Message').slice(0, 2000),
+          status: 'read',
+          createdAt: serverTimestamp(),
+        });
+      }
+      clearDirtyKey('contact_messages');
       setDbStatus('synced');
     } catch (err) {
       safeListenerError(err, OperationType.UPDATE, `contactMessages/${id}`);
@@ -2986,17 +3885,19 @@ const App: React.FC = () => {
       student.guardianMobile && student.guardianMobile.trim().length >= 6
         ? student.guardianMobile.trim()
         : '01700000000';
+    const safePhoto = clampImageString(student.photo);
     const allowedUids = resolveAllowedUids(student.classId, student.roll, student);
     const clean: SchoolStudent = {
       ...student,
       id,
       guardianMobile,
+      ...(safePhoto ? { photo: safePhoto } : {}),
       ...(allowedUids.length > 0 ? { allowedUids } : {}),
     };
     const updated = [...students, clean];
     setStudents(updated);
     persistLocal('db_students', updated);
-    syncDocUpsert(
+    void syncDocUpsert(
       'students',
       id,
       {
@@ -3007,9 +3908,16 @@ const App: React.FC = () => {
         section: clean.section.slice(0, 40),
         guardianMobile: clean.guardianMobile.slice(0, 30),
         ...(clean.guardianName ? { guardianName: clean.guardianName.trim().slice(0, 150) } : {}),
-        ...(clean.photo ? { photo: clean.photo.slice(0, 600000) } : {}),
+        ...(safePhoto ? { photo: safePhoto } : {}),
+        ...(clean.registrationNo ? { registrationNo: clean.registrationNo.trim().slice(0, 64) } : {}),
         ...(clean.registrationDate ? { registrationDate: clean.registrationDate.trim().slice(0, 32) } : {}),
         ...(clean.session ? { session: clean.session.trim().slice(0, 16) } : {}),
+        ...(clean.cardIssueDate ? { cardIssueDate: clean.cardIssueDate.trim().slice(0, 32) } : {}),
+        ...(clean.cardValidUpto ? { cardValidUpto: clean.cardValidUpto.trim().slice(0, 32) } : {}),
+        ...(clean.bloodGroup ? { bloodGroup: clean.bloodGroup.trim().slice(0, 16) } : {}),
+        ...(clean.admitCardApproved !== undefined ? { admitCardApproved: Boolean(clean.admitCardApproved) } : {}),
+        ...(clean.admitCardTerm ? { admitCardTerm: clean.admitCardTerm.trim().slice(0, 100) } : {}),
+        ...(clean.admitCardApprovedAt ? { admitCardApprovedAt: clean.admitCardApprovedAt.trim().slice(0, 40) } : {}),
         ...(clean.studentUid ? { studentUid: sanitizeFirestoreId(clean.studentUid) } : {}),
         ...(allowedUids.length > 0 ? { allowedUids } : {}),
       },
@@ -3024,17 +3932,19 @@ const App: React.FC = () => {
       student.guardianMobile && student.guardianMobile.trim().length >= 6
         ? student.guardianMobile.trim()
         : '01700000000';
+    const safePhoto = clampImageString(student.photo);
     const allowedUids = resolveAllowedUids(student.classId, student.roll, student);
     const clean: SchoolStudent = {
       ...student,
       id,
       guardianMobile,
+      ...(safePhoto ? { photo: safePhoto } : {}),
       ...(allowedUids.length > 0 ? { allowedUids } : {}),
     };
     const updated = students.map((s) => (s.id === student.id ? clean : s));
     setStudents(updated);
     persistLocal('db_students', updated);
-    syncDocUpsert(
+    void syncDocUpsert(
       'students',
       id,
       {
@@ -3045,9 +3955,16 @@ const App: React.FC = () => {
         section: clean.section.slice(0, 40),
         guardianMobile: clean.guardianMobile.slice(0, 30),
         ...(clean.guardianName ? { guardianName: clean.guardianName.trim().slice(0, 150) } : {}),
-        ...(clean.photo ? { photo: clean.photo.slice(0, 600000) } : {}),
+        ...(safePhoto ? { photo: safePhoto } : {}),
+        ...(clean.registrationNo ? { registrationNo: clean.registrationNo.trim().slice(0, 64) } : {}),
         ...(clean.registrationDate ? { registrationDate: clean.registrationDate.trim().slice(0, 32) } : {}),
         ...(clean.session ? { session: clean.session.trim().slice(0, 16) } : {}),
+        ...(clean.cardIssueDate ? { cardIssueDate: clean.cardIssueDate.trim().slice(0, 32) } : {}),
+        ...(clean.cardValidUpto ? { cardValidUpto: clean.cardValidUpto.trim().slice(0, 32) } : {}),
+        ...(clean.bloodGroup ? { bloodGroup: clean.bloodGroup.trim().slice(0, 16) } : {}),
+        ...(clean.admitCardApproved !== undefined ? { admitCardApproved: Boolean(clean.admitCardApproved) } : {}),
+        ...(clean.admitCardTerm ? { admitCardTerm: clean.admitCardTerm.trim().slice(0, 100) } : {}),
+        ...(clean.admitCardApprovedAt ? { admitCardApprovedAt: clean.admitCardApprovedAt.trim().slice(0, 40) } : {}),
         ...(clean.studentUid ? { studentUid: sanitizeFirestoreId(clean.studentUid) } : {}),
         ...(allowedUids.length > 0 ? { allowedUids } : {}),
       },
@@ -3060,7 +3977,7 @@ const App: React.FC = () => {
     const updated = students.filter((s) => s.id !== id);
     setStudents(updated);
     persistLocal('db_students', updated);
-    syncDocDelete('students', sanitizeFirestoreId(id), true);
+    void syncDocDelete('students', sanitizeFirestoreId(id), true);
   };
 
   // Attendance (Teachers save full sheet + individual studentAttendance projections)
@@ -3261,6 +4178,8 @@ const App: React.FC = () => {
   };
 
   const gradeAssignmentSubmission = async (id: string, marks: number, feedback: string) => {
+    const cleanId = sanitizeFirestoreId(id);
+    const targetSub = assignmentSubmissions.find((s) => s.id === id || s.id === cleanId);
     const cleanMarks = Math.max(0, Math.min(100, marks));
     const cleanFeedback = feedback.trim();
     const updated = assignmentSubmissions.map((s) =>
@@ -3271,12 +4190,33 @@ const App: React.FC = () => {
     if (!isCloudTeacher) return;
     try {
       setDbStatus('syncing');
-      await updateDoc(doc(db, 'assignmentSubmissions', sanitizeFirestoreId(id)), {
-        status: 'graded',
-        marks: cleanMarks,
-        feedback: cleanFeedback.slice(0, 1000),
-        updatedAt: serverTimestamp(),
-      });
+      const subRef = doc(db, 'assignmentSubmissions', cleanId);
+      const snap = await getDoc(subRef);
+      if (snap.exists()) {
+        await updateDoc(subRef, {
+          status: 'graded',
+          marks: cleanMarks,
+          feedback: cleanFeedback.slice(0, 1000),
+          updatedAt: serverTimestamp(),
+        });
+      } else if (targetSub) {
+        await setDoc(subRef, {
+          id: cleanId,
+          homeworkId: sanitizeFirestoreId(targetSub.homeworkId),
+          classId: targetSub.classId,
+          subject: (targetSub.subject || 'Subject').slice(0, 120),
+          studentId: targetSub.studentId.slice(0, 128),
+          studentName: (targetSub.studentName || 'Student').slice(0, 150),
+          roll: (targetSub.roll || '01').slice(0, 20),
+          answerText: (targetSub.answerText || 'Answer').slice(0, 4000),
+          status: 'graded',
+          marks: cleanMarks,
+          feedback: cleanFeedback.slice(0, 1000),
+          submittedDate: (targetSub.submittedDate || new Date().toISOString().split('T')[0]).slice(0, 32),
+          createdAt: serverTimestamp(),
+          updatedAt: serverTimestamp(),
+        });
+      }
       setDbStatus('synced');
     } catch (err) {
       safeListenerError(err, OperationType.UPDATE, `assignmentSubmissions/${id}`);
@@ -3566,13 +4506,13 @@ const App: React.FC = () => {
     const updated = [...subjects, clean];
     setSubjects(updated);
     persistLocal('db_subjects', updated);
-    syncDocUpsert(
+    void syncDocUpsert(
       'subjects',
       id,
       {
         id,
-        code: clean.code.slice(0, 16),
-        name: { bn: clean.name.bn.slice(0, 200), en: clean.name.en.slice(0, 200) },
+        code: (clean.code || '101').slice(0, 16),
+        name: safeLoc(clean.name, 'বিষয়', 'Subject', 200),
         classId: clean.classId,
         totalMarks: clean.totalMarks,
         ...(clean.teacherName ? { teacherName: clean.teacherName.slice(0, 150) } : {}),
@@ -3586,15 +4526,48 @@ const App: React.FC = () => {
     const updated = subjects.filter((s) => s.id !== id);
     setSubjects(updated);
     persistLocal('db_subjects', updated);
-    syncDocDelete('subjects', sanitizeFirestoreId(id));
+    void syncDocDelete('subjects', sanitizeFirestoreId(id));
   };
 
   // Parent-Teacher Messages & Verified Parent-Student Link Workflow
   const sendParentMessage = (msg: ParentMessage) => {
     const id = sanitizeFirestoreId(msg.id);
+    const targetTeacherObj =
+      teachers.find((tc) => tc.id === msg.teacherId) ||
+      teachers.find(
+        (tc) =>
+          tc.name.en.trim().toLowerCase() === msg.teacherName.trim().toLowerCase() ||
+          tc.name.bn.trim().toLowerCase() === msg.teacherName.trim().toLowerCase()
+      );
+    const matchedCloudTeacher = cloudUsers.find(
+      (cu) =>
+        cu.role === 'teacher' &&
+        ((targetTeacherObj?.phone && cu.phone && phonesMatch(cu.phone, targetTeacherObj.phone)) ||
+          (targetTeacherObj &&
+            (cu.name.trim().toLowerCase() === targetTeacherObj.name.en.trim().toLowerCase() ||
+              cu.name.trim().toLowerCase() === targetTeacherObj.name.bn.trim().toLowerCase())) ||
+          cu.name.trim().toLowerCase() === msg.teacherName.trim().toLowerCase())
+    );
+    const matchedLocalTeacher = registeredUsers.find(
+      (ru) =>
+        ru.role === 'teacher' &&
+        ((msg.teacherCode && ru.userId.toLowerCase() === msg.teacherCode.toLowerCase()) ||
+          (targetTeacherObj?.teacherCode && ru.userId.toLowerCase() === targetTeacherObj.teacherCode.toLowerCase()) ||
+          (targetTeacherObj?.phone && ru.phone && phonesMatch(ru.phone, targetTeacherObj.phone)) ||
+          (targetTeacherObj &&
+            (ru.name.trim().toLowerCase() === targetTeacherObj.name.en.trim().toLowerCase() ||
+              ru.name.trim().toLowerCase() === targetTeacherObj.name.bn.trim().toLowerCase())) ||
+          ru.name.trim().toLowerCase() === msg.teacherName.trim().toLowerCase())
+    );
+    const resolvedRecipientUid =
+      msg.recipientUid || matchedCloudTeacher?.uid || matchedLocalTeacher?.userId;
+
     const clean: ParentMessage = {
       ...msg,
       id,
+      teacherId: msg.teacherId || targetTeacherObj?.id,
+      teacherCode: msg.teacherCode || targetTeacherObj?.teacherCode,
+      ...(resolvedRecipientUid ? { recipientUid: resolvedRecipientUid } : {}),
       status: 'open',
       ...(firebaseUser?.emailVerified ? { ownerUid: firebaseUser.uid } : {}),
     };
@@ -3610,6 +4583,9 @@ const App: React.FC = () => {
         classId: clean.classId,
         roll: clean.roll.slice(0, 20),
         teacherName: clean.teacherName.slice(0, 150),
+        ...(clean.teacherId ? { teacherId: clean.teacherId.slice(0, 128) } : {}),
+        ...(clean.teacherCode ? { teacherCode: clean.teacherCode.slice(0, 40) } : {}),
+        ...(matchedCloudTeacher?.uid ? { recipientUid: sanitizeFirestoreId(matchedCloudTeacher.uid) } : {}),
         subject: clean.subject.slice(0, 200),
         message: clean.message.slice(0, 2000),
         status: 'open',
@@ -3624,6 +4600,8 @@ const App: React.FC = () => {
   };
 
   const replyParentMessage = async (id: string, reply: string, repliedBy: string) => {
+    const cleanId = sanitizeFirestoreId(id);
+    const targetMsg = parentMessages.find((m) => m.id === id || m.id === cleanId);
     const cleanReply = reply.trim();
     const updated = parentMessages.map((m) =>
       m.id === id ? { ...m, reply: cleanReply, repliedBy, status: 'replied' as const } : m
@@ -3633,12 +4611,36 @@ const App: React.FC = () => {
     if (!isCloudTeacher) return;
     try {
       setDbStatus('syncing');
-      await updateDoc(doc(db, 'parentMessages', sanitizeFirestoreId(id)), {
-        reply: cleanReply.slice(0, 2000),
-        repliedBy: repliedBy.slice(0, 150),
-        status: 'replied',
-        updatedAt: serverTimestamp(),
-      });
+      const ref = doc(db, 'parentMessages', cleanId);
+      const snap = await getDoc(ref);
+      if (snap.exists()) {
+        await updateDoc(ref, {
+          reply: cleanReply.slice(0, 2000),
+          repliedBy: repliedBy.slice(0, 150),
+          status: 'replied',
+          updatedAt: serverTimestamp(),
+        });
+      } else if (targetMsg) {
+        await setDoc(ref, {
+          id: cleanId,
+          parentName: (targetMsg.parentName || 'Parent').slice(0, 150),
+          studentName: (targetMsg.studentName || 'Student').slice(0, 150),
+          classId: targetMsg.classId,
+          roll: (targetMsg.roll || '01').slice(0, 20),
+          teacherName: (targetMsg.teacherName || 'Teacher').slice(0, 150),
+          ...(targetMsg.teacherId ? { teacherId: targetMsg.teacherId.slice(0, 128) } : {}),
+          ...(targetMsg.teacherCode ? { teacherCode: targetMsg.teacherCode.slice(0, 40) } : {}),
+          ...(targetMsg.recipientUid ? { recipientUid: sanitizeFirestoreId(targetMsg.recipientUid) } : {}),
+          subject: (targetMsg.subject || 'Inquiry').slice(0, 200),
+          message: (targetMsg.message || 'Message').slice(0, 2000),
+          reply: cleanReply.slice(0, 2000),
+          repliedBy: repliedBy.slice(0, 150),
+          status: 'replied',
+          createdDate: (targetMsg.createdDate || new Date().toISOString().split('T')[0]).slice(0, 32),
+          createdAt: serverTimestamp(),
+          updatedAt: serverTimestamp(),
+        });
+      }
       setDbStatus('synced');
     } catch (err) {
       safeListenerError(err, OperationType.UPDATE, `parentMessages/${id}`);
@@ -3774,11 +4776,16 @@ const App: React.FC = () => {
   };
 
   // Alumni Network
-  const submitAlumniProfile = (profile: AlumniProfile) => {
+  const submitAlumniProfile = async (profile: AlumniProfile): Promise<void> => {
     const id = sanitizeFirestoreId(profile.id);
+    const safeBatch =
+      profile.batchYear && profile.batchYear.trim().length >= 4
+        ? profile.batchYear.trim().slice(0, 16)
+        : '2020';
     const clean: AlumniProfile = {
       ...profile,
       id,
+      batchYear: safeBatch,
       status: 'pending',
       isPublic: false,
       ...(firebaseUser?.emailVerified ? { ownerUid: firebaseUser.uid } : {}),
@@ -3787,25 +4794,32 @@ const App: React.FC = () => {
     setAlumni(updated);
     persistLocal('db_alumni', updated);
     setDbStatus('syncing');
-    setDoc(doc(db, 'alumni', id), {
-      id,
-      name: clean.name.slice(0, 150),
-      batchYear: clean.batchYear.slice(0, 16),
-      currentRole: clean.currentRole.slice(0, 150),
-      organization: clean.organization.slice(0, 200),
-      ...(clean.city ? { city: clean.city.slice(0, 100) } : {}),
-      message: clean.message.slice(0, 1000),
-      status: 'pending',
-      isPublic: false,
-      ...(firebaseUser?.emailVerified ? { ownerUid: firebaseUser.uid } : {}),
-      createdAt: serverTimestamp(),
-      updatedAt: serverTimestamp(),
-    })
-      .then(() => setDbStatus('synced'))
-      .catch((err) => safeListenerError(err, OperationType.CREATE, `alumni/${id}`));
+    try {
+      await setDoc(doc(db, 'alumni', id), {
+        id,
+        name: clean.name.slice(0, 150),
+        batchYear: safeBatch,
+        currentRole: clean.currentRole.slice(0, 150),
+        organization: clean.organization.slice(0, 200),
+        ...(clean.city ? { city: clean.city.slice(0, 100) } : {}),
+        message: clean.message.slice(0, 1000),
+        status: 'pending',
+        isPublic: false,
+        ...(firebaseUser?.emailVerified ? { ownerUid: firebaseUser.uid } : {}),
+        createdAt: serverTimestamp(),
+        updatedAt: serverTimestamp(),
+      });
+      setDbStatus('synced');
+      setLastSyncError(null);
+    } catch (err) {
+      setDbStatus('error');
+      handleFirestoreError(err, OperationType.CREATE, `alumni/${id}`);
+    }
   };
 
   const updateAlumniStatus = async (id: string, status: 'pending' | 'approved') => {
+    const cleanId = sanitizeFirestoreId(id);
+    const targetAl = alumni.find((a) => a.id === id || a.id === cleanId);
     const isPublic = status === 'approved';
     const updated = alumni.map((a) => (a.id === id ? { ...a, status, isPublic } : a));
     setAlumni(updated);
@@ -3813,12 +4827,27 @@ const App: React.FC = () => {
     if (!isCloudAdmin) return;
     try {
       setDbStatus('syncing');
-      await updateDoc(doc(db, 'alumni', sanitizeFirestoreId(id)), {
-        status,
-        isPublic,
-        updatedAt: serverTimestamp(),
-      });
+      const ref = doc(db, 'alumni', cleanId);
+      const snap = await getDoc(ref);
+      if (snap.exists()) {
+        await updateDoc(ref, { status, isPublic, updatedAt: serverTimestamp() });
+      } else if (targetAl) {
+        await setDoc(ref, {
+          id: cleanId,
+          name: (targetAl.name || 'Alumni').slice(0, 150),
+          batchYear: (targetAl.batchYear && targetAl.batchYear.length >= 4 ? targetAl.batchYear : '2020').slice(0, 16),
+          currentRole: (targetAl.currentRole || 'Graduate').slice(0, 150),
+          organization: (targetAl.organization || 'RBMB').slice(0, 200),
+          ...(targetAl.city ? { city: targetAl.city.slice(0, 100) } : {}),
+          message: (targetAl.message || 'Proud alumni').slice(0, 1000),
+          status,
+          isPublic,
+          createdAt: serverTimestamp(),
+          updatedAt: serverTimestamp(),
+        });
+      }
       await logAuditEvent('ALUMNI_REVIEWED', 'alumni', id, `Marked alumni ${id} as ${status}`);
+      clearDirtyKey('db_alumni');
       setDbStatus('synced');
     } catch (err) {
       safeListenerError(err, OperationType.UPDATE, `alumni/${id}`);
@@ -3829,7 +4858,7 @@ const App: React.FC = () => {
     const updated = alumni.filter((a) => a.id !== id);
     setAlumni(updated);
     persistLocal('db_alumni', updated);
-    syncDocDelete('alumni', sanitizeFirestoreId(id));
+    void syncDocDelete('alumni', sanitizeFirestoreId(id));
   };
 
   // Teacher Leaves
@@ -3860,7 +4889,10 @@ const App: React.FC = () => {
         createdAt: serverTimestamp(),
         updatedAt: serverTimestamp(),
       })
-        .then(() => setDbStatus('synced'))
+        .then(() => {
+          clearDirtyKey('db_teacher_leaves');
+          setDbStatus('synced');
+        })
         .catch((err) => safeListenerError(err, OperationType.CREATE, `teacherLeaves/${id}`));
     }
   };
@@ -3870,6 +4902,8 @@ const App: React.FC = () => {
     status: 'pending' | 'approved' | 'rejected',
     adminRemark?: string
   ) => {
+    const cleanId = sanitizeFirestoreId(id);
+    const targetLeave = teacherLeaves.find((l) => l.id === id || l.id === cleanId);
     const cleanRemark = adminRemark?.trim();
     const updated = teacherLeaves.map((l) =>
       l.id === id ? { ...l, status, ...(cleanRemark !== undefined ? { adminRemark: cleanRemark } : {}) } : l
@@ -3879,12 +4913,32 @@ const App: React.FC = () => {
     if (!isCloudAdmin) return;
     try {
       setDbStatus('syncing');
-      await updateDoc(doc(db, 'teacherLeaves', sanitizeFirestoreId(id)), {
-        status,
-        ...(cleanRemark ? { adminRemark: cleanRemark.slice(0, 500) } : {}),
-        updatedAt: serverTimestamp(),
-      });
+      const ref = doc(db, 'teacherLeaves', cleanId);
+      const snap = await getDoc(ref);
+      if (snap.exists()) {
+        await updateDoc(ref, {
+          status,
+          ...(cleanRemark ? { adminRemark: cleanRemark.slice(0, 500) } : {}),
+          updatedAt: serverTimestamp(),
+        });
+      } else if (targetLeave) {
+        await setDoc(ref, {
+          id: cleanId,
+          teacherId: (targetLeave.teacherId || 'teacher').slice(0, 128),
+          teacherName: (targetLeave.teacherName || 'Teacher').slice(0, 150),
+          leaveType: targetLeave.leaveType || 'Casual',
+          startDate: (targetLeave.startDate || '2026-01-01').slice(0, 32),
+          endDate: (targetLeave.endDate || '2026-01-01').slice(0, 32),
+          reason: (targetLeave.reason || 'Leave request').slice(0, 1500),
+          status,
+          ...(cleanRemark ? { adminRemark: cleanRemark.slice(0, 500) } : {}),
+          submittedDate: (targetLeave.submittedDate || new Date().toISOString().split('T')[0]).slice(0, 32),
+          createdAt: serverTimestamp(),
+          updatedAt: serverTimestamp(),
+        });
+      }
       await logAuditEvent('TEACHER_LEAVE_REVIEWED', 'teacherLeaves', id, `Teacher leave ${id} -> ${status}`);
+      clearDirtyKey('db_teacher_leaves');
       setDbStatus('synced');
     } catch (err) {
       safeListenerError(err, OperationType.UPDATE, `teacherLeaves/${id}`);
@@ -4491,7 +5545,7 @@ const App: React.FC = () => {
         .join('\n');
       const context = `School: ${t(settings.name)}, EIIN: ${settings.eiin}, Address: ${t(settings.location)}, Phone: ${settings.phone}, Email: ${settings.email}.
 Recent Notices:\n${noticeSummaries}
-Available Features: Online Admission (/admission), Online MCQ Exams (/exams), Digital Library (/ebooks), Class & Exam Routine (/routine), Alumni (/alumni), Student/Teacher/Parent/Admin Portals (/login/student).`;
+Available Features: Online Admission (/admission), Online MCQ Exams (/exams), Digital Library (/ebooks), Class & Exam Routine (/routine), Alumni (/alumni), Student/Teacher/Parent Portals (/login/student).`;
 
       const res = await fetch('/api/ai-assistant', {
         method: 'POST',
@@ -4558,6 +5612,7 @@ Available Features: Online Admission (/admission), Online MCQ Exams (/exams), Di
         login,
         verifyLocalCredentials,
         register,
+        selfRegisterAccount,
         updateUser,
         deleteUser,
         logout,
@@ -4667,6 +5722,7 @@ Available Features: Online Admission (/admission), Online MCQ Exams (/exams), Di
         exportDatabase,
         importDatabase,
         dbStatus,
+        lastSyncError,
       }}
     >
       <Router>

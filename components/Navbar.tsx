@@ -120,7 +120,6 @@ const Navbar: React.FC = () => {
     { name: t(TRANSLATIONS.nav.studentLogin), path: '/login/student' },
     { name: t(TRANSLATIONS.nav.parentLogin), path: '/login/parent' },
     { name: t(TRANSLATIONS.nav.teacherLogin), path: '/login/teacher' },
-    { name: t(TRANSLATIONS.nav.adminLogin), path: '/login/admin' },
     { name: t(TRANSLATIONS.nav.alumni), path: '/alumni' },
   ];
 
@@ -153,12 +152,6 @@ const Navbar: React.FC = () => {
       email: settingsForm.email.trim(),
       ...(settingsForm.newPassword.trim() ? { password: settingsForm.newPassword.trim() } : {}),
       photo: settingsForm.photo,
-      ...(user.role === 'parent'
-        ? {
-            linkedChildClass: settingsForm.linkedChildClass,
-            linkedChildRoll: settingsForm.linkedChildRoll.trim(),
-          }
-        : {}),
     });
     setShowSuccess(true);
     setTimeout(() => {
@@ -478,19 +471,6 @@ const Navbar: React.FC = () => {
                           <div className="text-[10px] font-normal text-slate-400">Attendance, Marks & Leave</div>
                         </div>
                       </Link>
-                      <Link
-                        to="/login/admin"
-                        onClick={() => setIsLoginOpen(false)}
-                        className="flex items-center gap-3 px-3 py-2.5 rounded-xl hover:bg-slate-100 dark:hover:bg-slate-800 text-xs font-bold text-slate-700 dark:text-slate-200"
-                      >
-                        <span className="p-2 rounded-lg bg-slate-200 dark:bg-slate-700 text-slate-700 dark:text-slate-200">
-                          <ShieldAlert className="w-4 h-4" />
-                        </span>
-                        <div>
-                          <div>{t(TRANSLATIONS.nav.adminLogin)}</div>
-                          <div className="text-[10px] font-normal text-slate-400">Full Campus Management</div>
-                        </div>
-                      </Link>
                     </div>
                   )}
                 </div>
@@ -631,7 +611,7 @@ const Navbar: React.FC = () => {
                   </button>
                 </div>
               ) : (
-                <div className="grid grid-cols-2 gap-2">
+                <div className="grid grid-cols-3 gap-2">
                   <Link
                     to="/login/student"
                     onClick={() => setIsOpen(false)}
@@ -652,13 +632,6 @@ const Navbar: React.FC = () => {
                     className="text-center py-2.5 rounded-lg text-xs font-bold bg-purple-700 text-white"
                   >
                     {t(TRANSLATIONS.nav.teacherLogin)}
-                  </Link>
-                  <Link
-                    to="/login/admin"
-                    onClick={() => setIsOpen(false)}
-                    className="text-center py-2.5 rounded-lg text-xs font-bold bg-slate-800 text-white"
-                  >
-                    {t(TRANSLATIONS.nav.adminLogin)}
                   </Link>
                 </div>
               )}
@@ -745,35 +718,11 @@ const Navbar: React.FC = () => {
                   </div>
                 </div>
 
-                {user?.role === 'parent' && (
-                  <div className="grid grid-cols-2 gap-3">
-                    <div>
-                      <label className="text-xs font-bold text-slate-500 dark:text-slate-400">
-                        {lang === 'bn' ? 'সন্তানের শ্রেণী' : 'Child Class'}
-                      </label>
-                      <select
-                        value={settingsForm.linkedChildClass}
-                        onChange={(e) => setSettingsForm((p) => ({ ...p, linkedChildClass: e.target.value }))}
-                        className="w-full mt-1 px-3 py-3 rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-sm font-semibold"
-                      >
-                        {['6', '7', '8', '9', '10'].map((c) => (
-                          <option key={c} value={c}>
-                            Class {c}
-                          </option>
-                        ))}
-                      </select>
-                    </div>
-                    <div>
-                      <label className="text-xs font-bold text-slate-500 dark:text-slate-400">
-                        {lang === 'bn' ? 'সন্তানের রোল' : 'Child Roll'}
-                      </label>
-                      <input
-                        type="text"
-                        value={settingsForm.linkedChildRoll}
-                        onChange={(e) => setSettingsForm((p) => ({ ...p, linkedChildRoll: e.target.value }))}
-                        className="w-full mt-1 px-3 py-3 rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-sm font-semibold"
-                      />
-                    </div>
+                {user?.role === 'parent' && user.linkedChildClass && (
+                  <div className="p-3 rounded-xl bg-emerald-50 dark:bg-emerald-950/50 border border-emerald-200 dark:border-emerald-800 text-xs font-bold text-emerald-800 dark:text-emerald-300">
+                    {lang === 'bn'
+                      ? `সংযুক্ত শিক্ষার্থী: ${user.linkedChildName || ''} (শ্রেণী ${user.linkedChildClass}, রোল ${user.linkedChildRoll})`
+                      : `Linked Student: ${user.linkedChildName || ''} (Class ${user.linkedChildClass}, Roll ${user.linkedChildRoll})`}
                   </div>
                 )}
 

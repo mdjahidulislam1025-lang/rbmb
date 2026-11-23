@@ -978,7 +978,7 @@ const NoticeBoard: React.FC<NoticeBoardProps> = ({ initialTab = 'notices' }) => 
                     {t(settings.headTeacherName) || (lang === 'bn' ? 'প্রধান শিক্ষক' : 'Head Teacher')}
                   </p>
                   <p className="text-slate-500 font-semibold">
-                    {lang === 'bn' ? 'প্রধান শিক্ষক, রাণীর বাজার মডেল উচ্চ বিদ্যালয়' : 'Head Teacher, RBMB Digital Campus'}
+                    {lang === 'bn' ? 'প্রধান শিক্ষক, রাণীর বাজার মাধ্যমিক বিদ্যালয়' : 'Head Teacher, Ranir Bazar Secondary High School'}
                   </p>
                 </div>
               </div>

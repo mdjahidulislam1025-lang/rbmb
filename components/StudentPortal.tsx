@@ -25,11 +25,12 @@ import {
   Sparkles,
   Loader2,
   AlertCircle,
+  Lock,
 } from 'lucide-react';
 import { useApp } from '../App';
 import { CLASS_SUBJECTS } from '../constants';
 import { FeeRecord, ExamQuestion } from '../types';
-import { calculateOverallGpa, isSafeHttpUrl } from '../utils/security';
+import { calculateOverallGpa, isSafeHttpUrl, buildStudentRegistrationNo } from '../utils/security';
 import { exportCsv } from '../utils/exportUtils';
 import { AcademicReportCard } from './AcademicReportCard';
 import { FeeReceiptModal } from './FeeReceiptModal';
@@ -71,6 +72,8 @@ export const StudentPortal: React.FC = () => {
     deleteStudentLeave,
     feeRecords,
     portalNotifications,
+    updateStudent,
+    updateUser,
   } = useApp();
 
   const [activeTab, setActiveTab] = useState<StudentTab>('homework');
@@ -80,7 +83,7 @@ export const StudentPortal: React.FC = () => {
   const [reportCardOpen, setReportCardOpen] = useState(false);
   const [activeReceipt, setActiveReceipt] = useState<FeeRecord | null>(null);
   const [idCardOpen, setIdCardOpen] = useState(false);
-  const [idCardMode, setIdCardMode] = useState<CardMode>('admit');
+  const [idCardMode, setIdCardMode] = useState<CardMode>('id');
   const [certificateOpen, setCertificateOpen] = useState(false);
 
   const openCardModal = (mode: CardMode) => {
@@ -217,6 +220,35 @@ export const StudentPortal: React.FC = () => {
     return { totalBilled, totalPaid, totalDue };
   }, [myFees]);
 
+  const isPaymentComplete = feeSummary.totalDue <= 0;
+  const isAdminApproved = Boolean(matchedStudent?.admitCardApproved);
+  const canDownloadAdmitCard = Boolean(matchedStudent) && isPaymentComplete && isAdminApproved;
+
+  const handleAdmitCardClick = () => {
+    if (!matchedStudent) {
+      notify(lang === 'bn' ? 'শিক্ষার্থীর প্রোফাইল পাওয়া যায়নি।' : 'Student profile not found.');
+      return;
+    }
+    if (!isPaymentComplete) {
+      notify(
+        lang === 'bn'
+          ? `অ্যাডমিট কার্ড পেতে আপনার বকেয়া ফি ৳${feeSummary.totalDue.toLocaleString()} সম্পূর্ণ পরিশোধ করতে হবে।`
+          : `Complete your remaining fee payment (৳${feeSummary.totalDue.toLocaleString()}) to unlock your Admit Card.`
+      );
+      setActiveTab('fees');
+      return;
+    }
+    if (!isAdminApproved) {
+      notify(
+        lang === 'bn'
+          ? 'ফি পরিশোধিত রয়েছে। পরীক্ষার জন্য অ্যাডমিনের অনুমোদনের পর এখান থেকে অ্যাডমিট কার্ড প্রিন্ট করতে পারবেন।'
+          : 'Fees are cleared. Your Admit Card will unlock once approved by Admin for the exam.'
+      );
+      return;
+    }
+    openCardModal('admit');
+  };
+
   const targetedAlerts = useMemo(
     () =>
       portalNotifications.filter(
@@ -338,52 +370,84 @@ export const StudentPortal: React.FC = () => {
         </div>
       )}
 
-      {/* Profile Selector & Quick Links */}
+      {/* Profile Selector / Locked Student Identity */}
       <div className="bg-slate-50 dark:bg-slate-800/70 p-5 rounded-3xl border border-slate-200 dark:border-slate-700 flex flex-col lg:flex-row lg:items-center justify-between gap-4">
-        <div className="flex flex-wrap items-center gap-3">
-          <div>
-            <label className="block text-[10px] font-bold uppercase text-slate-400 mb-1">
-              {lang === 'bn' ? 'শ্রেণী' : 'Class'}
-            </label>
-            <select
-              value={selectedClassId}
-              onChange={(e) => setSelectedClassId(e.target.value)}
-              className="px-4 py-2.5 rounded-xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 font-bold text-sm"
-            >
-              {['6', '7', '8', '9', '10'].map((c) => (
-                <option key={c} value={c}>
-                  {lang === 'bn' ? `${c}ম শ্রেণী` : `Class ${c}`}
-                </option>
-              ))}
-            </select>
-          </div>
-          <div>
-            <label className="block text-[10px] font-bold uppercase text-slate-400 mb-1">
-              {lang === 'bn' ? 'রোল নম্বর' : 'Roll No'}
-            </label>
-            <input
-              maxLength={20}
-              value={selectedRoll}
-              onChange={(e) => setSelectedRoll(e.target.value)}
-              placeholder="01"
-              className="w-24 px-4 py-2.5 rounded-xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 font-bold text-sm"
-            />
-          </div>
-          {matchedStudent && (
-            <div className="bg-emerald-100 dark:bg-emerald-950/70 text-emerald-800 dark:text-emerald-300 px-4 py-2 rounded-xl text-xs font-extrabold flex items-center gap-1.5">
-              {firebaseUser && <ShieldCheck className="w-4 h-4" />}
-              {matchedStudent.name} ({matchedStudent.section})
+        {user?.role === 'student' && user.linkedChildClass && user.linkedChildRoll ? (
+          <div className="flex flex-wrap items-center gap-3">
+            <div className="space-y-0.5">
+              <div className="flex flex-wrap items-center gap-2">
+                <span className="text-base font-black text-slate-900 dark:text-white">
+                  {matchedStudent?.name || user.name}
+                </span>
+                <span className="bg-emerald-100 dark:bg-emerald-950/70 text-emerald-800 dark:text-emerald-300 px-3 py-1 rounded-xl text-xs font-extrabold flex items-center gap-1.5">
+                  {firebaseUser && <ShieldCheck className="w-3.5 h-3.5" />}
+                  {lang === 'bn' ? `${selectedClassId}ম শ্রেণী` : `Class ${selectedClassId}`} ·{' '}
+                  {lang === 'bn' ? `রোল ${selectedRoll}` : `Roll ${selectedRoll}`}
+                  {matchedStudent?.section ? ` (${matchedStudent.section})` : ''}
+                </span>
+              </div>
+              <p className="text-xs font-semibold text-slate-500 dark:text-slate-400">
+                {lang === 'bn' ? 'রেজিস্ট্রেশন নম্বর:' : 'Registration No:'}{' '}
+                <span className="font-black text-emerald-700 dark:text-emerald-400">
+                  {user.registrationNo || matchedStudent?.registrationNo || buildStudentRegistrationNo(selectedClassId, selectedRoll, matchedStudent?.session || '2026')}
+                </span>
+              </p>
             </div>
-          )}
-        </div>
+          </div>
+        ) : (
+          <div className="flex flex-wrap items-center gap-3">
+            <div>
+              <label className="block text-[10px] font-bold uppercase text-slate-400 mb-1">
+                {lang === 'bn' ? 'শ্রেণী' : 'Class'}
+              </label>
+              <select
+                value={selectedClassId}
+                onChange={(e) => setSelectedClassId(e.target.value)}
+                className="px-4 py-2.5 rounded-xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 font-bold text-sm"
+              >
+                {['6', '7', '8', '9', '10'].map((c) => (
+                  <option key={c} value={c}>
+                    {lang === 'bn' ? `${c}ম শ্রেণী` : `Class ${c}`}
+                  </option>
+                ))}
+              </select>
+            </div>
+            <div>
+              <label className="block text-[10px] font-bold uppercase text-slate-400 mb-1">
+                {lang === 'bn' ? 'রোল নম্বর' : 'Roll No'}
+              </label>
+              <input
+                maxLength={20}
+                value={selectedRoll}
+                onChange={(e) => setSelectedRoll(e.target.value)}
+                placeholder="01"
+                className="w-24 px-4 py-2.5 rounded-xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 font-bold text-sm"
+              />
+            </div>
+            {matchedStudent && (
+              <div className="bg-emerald-100 dark:bg-emerald-950/70 text-emerald-800 dark:text-emerald-300 px-4 py-2 rounded-xl text-xs font-extrabold flex items-center gap-1.5">
+                {firebaseUser && <ShieldCheck className="w-4 h-4" />}
+                {matchedStudent.name} ({matchedStudent.section})
+              </div>
+            )}
+          </div>
+        )}
 
         <div className="flex flex-wrap gap-2 text-xs font-bold">
           <button
             type="button"
-            onClick={() => openCardModal('admit')}
-            className="px-3.5 py-2.5 rounded-xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 hover:border-emerald-500 flex items-center gap-1.5 whitespace-nowrap"
+            onClick={handleAdmitCardClick}
+            className={`px-3.5 py-2.5 rounded-xl border flex items-center gap-1.5 whitespace-nowrap transition-all ${
+              canDownloadAdmitCard
+                ? 'bg-emerald-50 dark:bg-emerald-950/60 border-emerald-400 dark:border-emerald-700 text-emerald-900 dark:text-emerald-200 hover:bg-emerald-100'
+                : 'bg-slate-100 dark:bg-slate-800/80 border-slate-200 dark:border-slate-700 text-slate-500 dark:text-slate-400'
+            }`}
           >
-            <ClipboardList className="w-3.5 h-3.5 text-emerald-700 dark:text-emerald-400" />
+            {canDownloadAdmitCard ? (
+              <ClipboardList className="w-3.5 h-3.5 text-emerald-700 dark:text-emerald-400" />
+            ) : (
+              <Lock className="w-3.5 h-3.5 text-amber-600 dark:text-amber-400" />
+            )}
             {lang === 'bn' ? 'অ্যাডমিট কার্ড' : 'Admit Card'}
           </button>
           <button
@@ -432,6 +496,89 @@ export const StudentPortal: React.FC = () => {
             {lang === 'bn' ? 'ডিজিটাল লাইব্রেরি' : 'Digital Library'}
           </Link>
         </div>
+      </div>
+
+      {/* Exam Admit Card Readiness Banner */}
+      <div
+        className={`p-4 rounded-2xl border flex flex-col sm:flex-row sm:items-center justify-between gap-3 ${
+          canDownloadAdmitCard
+            ? 'bg-emerald-50 dark:bg-emerald-950/40 border-emerald-200 dark:border-emerald-800'
+            : 'bg-amber-50/70 dark:bg-amber-950/30 border-amber-200 dark:border-amber-800'
+        }`}
+      >
+        <div className="flex items-start gap-3">
+          <div
+            className={`w-9 h-9 rounded-xl flex items-center justify-center shrink-0 ${
+              canDownloadAdmitCard
+                ? 'bg-emerald-700 text-white'
+                : 'bg-amber-100 dark:bg-amber-900/60 text-amber-700 dark:text-amber-300'
+            }`}
+          >
+            {canDownloadAdmitCard ? <ClipboardList className="w-4 h-4" /> : <Lock className="w-4 h-4" />}
+          </div>
+          <div className="space-y-1">
+            <p className="text-xs font-black text-slate-900 dark:text-white">
+              {canDownloadAdmitCard
+                ? lang === 'bn'
+                  ? `পরীক্ষার অ্যাডমিট কার্ড প্রস্তুত ${matchedStudent?.admitCardTerm ? `(${matchedStudent.admitCardTerm})` : ''}`
+                  : `Examination Admit Card Unlocked ${matchedStudent?.admitCardTerm ? `(${matchedStudent.admitCardTerm})` : ''}`
+                : lang === 'bn'
+                ? 'পরীক্ষার অ্যাডমিট কার্ড লক করা রয়েছে'
+                : 'Examination Admit Card Locked'}
+            </p>
+            <div className="flex flex-wrap items-center gap-2 text-[11px] font-bold">
+              <span
+                className={`px-2 py-0.5 rounded-md ${
+                  isPaymentComplete
+                    ? 'bg-emerald-100 dark:bg-emerald-900/60 text-emerald-800 dark:text-emerald-300'
+                    : 'bg-red-100 dark:bg-red-900/50 text-red-700 dark:text-red-300'
+                }`}
+              >
+                {isPaymentComplete
+                  ? lang === 'bn'
+                    ? 'সকল ফি পরিশোধিত'
+                    : 'All Fees Paid'
+                  : lang === 'bn'
+                  ? `বকেয়া ফি: ৳${feeSummary.totalDue.toLocaleString()}`
+                  : `Fee Due: ৳${feeSummary.totalDue.toLocaleString()}`}
+              </span>
+              <span
+                className={`px-2 py-0.5 rounded-md ${
+                  isAdminApproved
+                    ? 'bg-emerald-100 dark:bg-emerald-900/60 text-emerald-800 dark:text-emerald-300'
+                    : 'bg-amber-100 dark:bg-amber-900/60 text-amber-800 dark:text-amber-300'
+                }`}
+              >
+                {isAdminApproved
+                  ? lang === 'bn'
+                    ? 'অ্যাডমিন অনুমোদিত'
+                    : 'Admin Approved'
+                  : lang === 'bn'
+                  ? 'অ্যাডমিন অনুমোদনের অপেক্ষায়'
+                  : 'Pending Admin Approval'}
+              </span>
+            </div>
+          </div>
+        </div>
+        {canDownloadAdmitCard ? (
+          <button
+            type="button"
+            onClick={() => openCardModal('admit')}
+            className="px-4 py-2 rounded-xl bg-emerald-700 hover:bg-emerald-800 text-white text-xs font-extrabold inline-flex items-center gap-1.5 shrink-0"
+          >
+            <Printer className="w-3.5 h-3.5" />
+            {lang === 'bn' ? 'অ্যাডমিট কার্ড প্রিন্ট করুন' : 'Print Admit Card'}
+          </button>
+        ) : !isPaymentComplete ? (
+          <button
+            type="button"
+            onClick={() => setActiveTab('fees')}
+            className="px-4 py-2 rounded-xl bg-amber-600 hover:bg-amber-700 text-white text-xs font-extrabold inline-flex items-center gap-1.5 shrink-0"
+          >
+            <Receipt className="w-3.5 h-3.5" />
+            {lang === 'bn' ? 'বকেয়া ফি দেখুন' : 'View Pending Fees'}
+          </button>
+        ) : null}
       </div>
 
       {/* KPI Strip */}
@@ -1278,7 +1425,33 @@ export const StudentPortal: React.FC = () => {
         photoUrl={matchedStudent?.photo || user?.photo}
         registrationDate={matchedStudent?.registrationDate}
         session={matchedStudent?.session}
+        cardIssueDate={matchedStudent?.cardIssueDate}
+        cardValidUpto={matchedStudent?.cardValidUpto}
         initialMode={idCardMode}
+        allowedModes={canDownloadAdmitCard ? ['admit', 'reg', 'id'] : ['reg', 'id']}
+        onSaveStudentDetails={(updates) => {
+          if (matchedStudent) {
+            updateStudent({
+              ...matchedStudent,
+              guardianName: updates.guardianName ?? matchedStudent.guardianName,
+              guardianMobile: updates.guardianMobile ?? matchedStudent.guardianMobile,
+              photo: updates.photo ?? matchedStudent.photo,
+              registrationDate: updates.registrationDate ?? matchedStudent.registrationDate,
+              session: updates.session ?? matchedStudent.session,
+              cardIssueDate: updates.cardIssueDate ?? matchedStudent.cardIssueDate,
+              cardValidUpto: updates.cardValidUpto ?? matchedStudent.cardValidUpto,
+            });
+          }
+          if (user) {
+            void updateUser({
+              ...user,
+              ...(updates.photo ? { photo: updates.photo } : {}),
+              ...(updates.guardianMobile ? { phone: updates.guardianMobile } : {}),
+            });
+          }
+          setToast(lang === 'bn' ? 'কার্ডের তথ্য ও ছবি সংরক্ষিত হয়েছে!' : 'Card photo & details saved!');
+          setTimeout(() => setToast(null), 2600);
+        }}
       />
       <StudentCertificateModal
         open={certificateOpen}

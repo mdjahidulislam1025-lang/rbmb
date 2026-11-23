@@ -5,7 +5,6 @@ import {
   X,
   IdCard,
   Camera,
-  CheckCircle2,
   MapPin,
   Phone,
   Mail,
@@ -14,6 +13,8 @@ import {
   SlidersHorizontal,
   Users,
   Save,
+  ShieldCheck,
+  Check,
 } from 'lucide-react';
 import { useApp } from '../App';
 import { SchoolSettings, Teacher } from '../types';
@@ -39,6 +40,16 @@ export interface TeacherCardProfile {
   validUpto: string;
 }
 
+export interface TeacherProfileSavePayload {
+  id: string;
+  teacherCode: string;
+  phone: string;
+  bloodGroup: string;
+  issueDate: string;
+  validUpto: string;
+  photo?: string;
+}
+
 export interface TeacherIdCardModalProps {
   open: boolean;
   onClose: () => void;
@@ -47,6 +58,7 @@ export interface TeacherIdCardModalProps {
   allTeachers?: Teacher[];
   phoneOverride?: string;
   onSavePhoto?: (teacherId: string, photoDataUrl: string) => void;
+  onSaveProfile?: (updates: TeacherProfileSavePayload) => void;
 }
 
 export function getTeacherIdCode(teacherId: string, index = 0): string {
@@ -68,118 +80,68 @@ function formatDisplayDate(raw?: string): string {
   return trimmed;
 }
 
-const RBMBCrestSvg: React.FC<{ className?: string }> = ({ className = 'w-16 h-16' }) => (
+const ExecutiveCrestSvg: React.FC<{ className?: string }> = ({ className = 'w-14 h-14' }) => (
   <svg viewBox="0 0 120 120" className={className} aria-hidden="true">
-    <circle cx="60" cy="60" r="56" fill="#ffffff" stroke="#065f46" strokeWidth="4" />
-    <circle cx="60" cy="60" r="47" fill="none" stroke="#16a34a" strokeWidth="1.5" strokeDasharray="3 2" />
+    <defs>
+      <linearGradient id="goldCrestRing" x1="0%" y1="0%" x2="100%" y2="100%">
+        <stop offset="0%" stopColor="#fde68a" />
+        <stop offset="50%" stopColor="#d97706" />
+        <stop offset="100%" stopColor="#fef3c7" />
+      </linearGradient>
+    </defs>
+    <circle cx="60" cy="60" r="56" fill="#0f172a" stroke="url(#goldCrestRing)" strokeWidth="3.5" />
+    <circle cx="60" cy="60" r="48" fill="none" stroke="#d97706" strokeOpacity="0.65" strokeWidth="1" strokeDasharray="3 2.5" />
     <path
-      d="M28 84 C18 68, 19 46, 32 31 M92 84 C102 68, 101 46, 88 31"
+      d="M27 83 C18 67, 19 46, 32 31 M93 83 C102 67, 101 46, 88 31"
       fill="none"
-      stroke="#15803d"
-      strokeWidth="3.5"
-      strokeLinecap="round"
-    />
-    <path
-      d="M27 72 l-6 -4 M25 60 l-7 -2 M27 48 l-6 1 M93 72 l6 -4 M95 60 l7 -2 M93 48 l6 1"
-      stroke="#15803d"
+      stroke="#fbbf24"
       strokeWidth="2.4"
       strokeLinecap="round"
     />
     <path
       d="M39 36 H81 V64 C81 78, 60 88, 60 88 C60 88, 39 78, 39 64 Z"
-      fill="#ecfdf5"
-      stroke="#065f46"
-      strokeWidth="2.5"
+      fill="#064e3b"
+      stroke="#fbbf24"
+      strokeWidth="2"
     />
     <path
       d="M44 64 Q52 59 60 64 Q68 59 76 64 V75 Q68 70 60 75 Q52 70 44 75 Z"
-      fill="#ffffff"
-      stroke="#0284c7"
-      strokeWidth="2"
+      fill="#fefce8"
+      stroke="#d97706"
+      strokeWidth="1.4"
     />
-    <rect x="58" y="45" width="4" height="17" rx="1.5" fill="#b45309" />
-    <path d="M60 33 C65 39, 64 45, 60 46 C56 45, 55 39, 60 33 Z" fill="#f97316" />
-    <path d="M60 37 C62.5 40, 62 44, 60 44.5 C58 44, 57.5 40, 60 37 Z" fill="#facc15" />
-    <path d="M32 92 Q60 101 88 92 L85 99 Q60 108 35 99 Z" fill="#065f46" />
-    <text x="60" y="99" textAnchor="middle" fill="#ffffff" fontSize="8.5" fontWeight="800" letterSpacing="0.8">
-      RBMB · EST 1958
-    </text>
+    <rect x="58.2" y="45" width="3.6" height="16" rx="1.5" fill="#fbbf24" />
+    <path d="M60 35 C63 40, 64 44, 60 47 C56 44, 57 40, 60 35 Z" fill="#f97316" />
   </svg>
 );
 
-const OfficialSignatureSvg: React.FC<{ className?: string }> = ({ className = 'w-20 h-6' }) => (
-  <svg viewBox="0 0 140 44" className={className} aria-hidden="true">
+const OfficialSignatureSvg: React.FC<{ className?: string }> = ({ className = 'w-24 h-7' }) => (
+  <svg viewBox="0 0 180 54" className={className} aria-hidden="true">
     <path
-      d="M14 31 C20 12, 34 9, 32 27 C31 35, 19 34, 24 23 C28 15, 42 29, 49 23 C54 18, 56 30, 64 25 C71 20, 74 28, 84 22 C93 17, 102 25, 124 21"
+      d="M14 38 C22 14, 40 12, 34 32 C28 46, 12 36, 30 28 C46 21, 56 38, 66 26 C72 19, 75 35, 86 28 C95 22, 102 36, 118 24 C126 18, 134 34, 152 25"
       fill="none"
       stroke="#0f172a"
-      strokeWidth="2.1"
+      strokeWidth="2.3"
       strokeLinecap="round"
       strokeLinejoin="round"
     />
+    <path d="M18 44 Q88 39 162 42" fill="none" stroke="#b45309" strokeWidth="1.2" strokeLinecap="round" />
   </svg>
 );
 
-const TeacherPhotoFrame: React.FC<{
-  photoUrl?: string;
-  teacherName: string;
-  className?: string;
-}> = ({ photoUrl, teacherName, className = 'w-24 sm:w-[108px] aspect-[3/4]' }) => {
-  const [imgError, setImgError] = useState(false);
-
-  useEffect(() => {
-    setImgError(false);
-  }, [photoUrl]);
-
-  if (photoUrl && !imgError) {
-    return (
-      <div
-        className={`${className} rounded-lg overflow-hidden border-2 border-emerald-800 bg-sky-100 shrink-0 shadow-sm`}
-      >
-        <img
-          src={photoUrl}
-          alt={teacherName}
-          referrerPolicy="no-referrer"
-          onError={() => setImgError(true)}
-          className="w-full h-full object-cover object-top"
-        />
-      </div>
-    );
-  }
-
-  return (
-    <div
-      className={`${className} rounded-lg overflow-hidden border-2 border-emerald-800 bg-gradient-to-b from-[#0ea5e9] to-[#0369a1] shrink-0 shadow-sm flex items-end justify-center`}
-    >
-      <svg viewBox="0 0 120 155" className="w-full h-full" aria-label={teacherName}>
-        <rect width="120" height="155" fill="#0ea5e9" />
-        <circle cx="60" cy="54" r="23" fill="#fde68a" />
-        <path
-          d="M37 51 C37 31, 83 31, 83 51 C78 40, 68 37, 60 38 C50 37, 41 41, 37 51 Z"
-          fill="#0f172a"
-        />
-        {/* Formal blazer & collar */}
-        <path d="M16 155 C18 114, 39 102, 60 102 C81 102, 102 114, 104 155 Z" fill="#1e293b" />
-        <polygon points="48,103 60,129 72,103" fill="#ffffff" />
-        <polygon points="56,109 64,109 65,146 60,154 55,146" fill="#065f46" />
-      </svg>
-    </div>
-  );
-};
-
-const QrBadge: React.FC<{
+const QrVerificationStamp: React.FC<{
   payload: string;
   caption: string;
   sizeClass?: string;
-}> = ({ payload, caption, sizeClass = 'w-16 h-16 sm:w-[70px] sm:h-[70px]' }) => {
+}> = ({ payload, caption, sizeClass = 'w-[68px] h-[68px]' }) => {
   const [dataUrl, setDataUrl] = useState<string>('');
 
   useEffect(() => {
     let active = true;
     QRCode.toDataURL(payload, {
-      errorCorrectionLevel: 'M',
-      margin: 1,
       width: 180,
+      margin: 1,
+      errorCorrectionLevel: 'M',
       color: { dark: '#0f172a', light: '#ffffff' },
     })
       .then((url) => {
@@ -194,35 +156,85 @@ const QrBadge: React.FC<{
   }, [payload]);
 
   return (
-    <div className="flex flex-col items-center justify-center shrink-0">
-      <div className="bg-white p-1.5 rounded-lg border border-slate-200 shadow-sm">
+    <div className="flex flex-col items-center shrink-0">
+      <div className="p-1.5 bg-white border border-amber-600/60 shadow-sm rounded-lg relative">
+        <span className="absolute -top-0.5 -left-0.5 w-2 h-2 border-t-2 border-l-2 border-slate-900" />
+        <span className="absolute -top-0.5 -right-0.5 w-2 h-2 border-t-2 border-r-2 border-slate-900" />
+        <span className="absolute -bottom-0.5 -left-0.5 w-2 h-2 border-b-2 border-l-2 border-slate-900" />
+        <span className="absolute -bottom-0.5 -right-0.5 w-2 h-2 border-b-2 border-r-2 border-slate-900" />
         {dataUrl ? (
-          <img src={dataUrl} alt={caption} className={`${sizeClass} object-contain block`} />
+          <img
+            src={dataUrl}
+            alt={caption}
+            className={`${sizeClass} block object-contain rounded-[2px]`}
+          />
         ) : (
-          <div
-            className={`${sizeClass} bg-slate-100 flex items-center justify-center text-[10px] font-bold text-slate-400`}
-          >
+          <div className={`${sizeClass} bg-slate-100 rounded flex items-center justify-center text-[9px] text-slate-400`}>
             QR
           </div>
         )}
       </div>
-      <p className="text-[10px] sm:text-[11px] font-bold text-slate-800 mt-1.5 text-center leading-tight whitespace-nowrap">
+      <span className="mt-1 text-[9px] font-black uppercase tracking-[0.14em] text-slate-800 whitespace-nowrap">
         {caption}
-      </p>
+      </span>
     </div>
   );
 };
 
-function getSchoolHeaderInfo(settings: SchoolSettings, cardLang: 'en' | 'bn') {
-  const rawName = cardLang === 'bn' ? settings.name.bn : settings.name.en;
-  const hasTag = rawName.includes('RBMB') || rawName.includes('আরবিএমবি');
-  const schoolName = hasTag
-    ? rawName
-    : `${rawName} (${cardLang === 'bn' ? 'আরবিএমবি' : 'RBMB'})`;
-  const locationText = cardLang === 'bn' ? settings.location.bn : settings.location.en;
-  const authorityTitle = cardLang === 'bn' ? 'প্রধান শিক্ষক' : 'Head Teacher';
-  const website = 'www.rbmb-campus.edu.bd';
-  return { schoolName, locationText, authorityTitle, website };
+const ExecutivePortraitFrame: React.FC<{
+  photoUrl?: string;
+  name: string;
+}> = ({ photoUrl, name }) => {
+  const initials = (name || 'T')
+    .split(/\s+/)
+    .filter(Boolean)
+    .slice(0, 2)
+    .map((w) => w[0]?.toUpperCase() || '')
+    .join('');
+
+  return (
+    <div className="relative p-1 bg-white border border-amber-600/50 rounded-xl shadow-md shrink-0">
+      <span className="absolute -top-[3px] -left-[3px] w-3 h-3 border-t-2 border-l-2 border-amber-500 rounded-tl" />
+      <span className="absolute -top-[3px] -right-[3px] w-3 h-3 border-t-2 border-r-2 border-amber-500 rounded-tr" />
+      <span className="absolute -bottom-[3px] -left-[3px] w-3 h-3 border-b-2 border-l-2 border-amber-500 rounded-bl" />
+      <span className="absolute -bottom-[3px] -right-[3px] w-3 h-3 border-b-2 border-r-2 border-amber-500 rounded-br" />
+      <div className="w-24 sm:w-[106px] aspect-[3/4] rounded-lg overflow-hidden bg-gradient-to-b from-slate-800 to-slate-900 flex flex-col items-center justify-center relative">
+        {photoUrl ? (
+          <img
+            src={photoUrl}
+            alt={name}
+            referrerPolicy="no-referrer"
+            className="w-full h-full object-cover object-top"
+          />
+        ) : (
+          <div className="flex flex-col items-center justify-center text-center px-2">
+            <div className="w-12 h-12 rounded-full bg-amber-500/20 border border-amber-400/50 flex items-center justify-center text-amber-300 font-black text-base tracking-wider">
+              {initials || 'FC'}
+            </div>
+            <span className="mt-2 text-[8px] font-bold uppercase tracking-[0.18em] text-slate-300">
+              Faculty Photo
+            </span>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+};
+
+function getSchoolMeta(settings: SchoolSettings, cardLang: 'en' | 'bn') {
+  const rawBn = settings.name?.bn || 'রাণীর বাজার মাধ্যমিক বিদ্যালয়';
+  const rawEn = settings.name?.en || 'Ranir Bazar Secondary High School';
+  const schoolName =
+    cardLang === 'bn'
+      ? rawBn.includes('আরবিএমবি') ? rawBn : `${rawBn} (আরবিএমবি)`
+      : rawEn.includes('RBMB') ? rawEn : `${rawEn} (RBMB)`;
+  const locationText =
+    cardLang === 'bn'
+      ? settings.location?.bn || 'রাণীর বাজার, চৌদ্দগ্রাম, কুমিল্লা'
+      : settings.location?.en || 'Rani Bazar, Chauddagram, Cumilla';
+  const signatureLabel = cardLang === 'bn' ? 'প্রধান শিক্ষক' : 'Head Teacher';
+  const website = 'www.rbmb12.vercel.app';
+  return { schoolName, locationText, signatureLabel, website };
 }
 
 const TeacherIdCardPairDocument: React.FC<{
@@ -230,266 +242,252 @@ const TeacherIdCardPairDocument: React.FC<{
   cardLang: 'en' | 'bn';
   settings: SchoolSettings;
 }> = ({ profile, cardLang, settings }) => {
-  const { schoolName, locationText, authorityTitle, website } = getSchoolHeaderInfo(
-    settings,
-    cardLang
-  );
-
-  const displayName = cardLang === 'bn' ? profile.nameBn : profile.nameEn;
-  const displayDesig = cardLang === 'bn' ? profile.designationBn : profile.designationEn;
-  const displaySubject = cardLang === 'bn' ? profile.subjectBn : profile.subjectEn;
-  const displayQual = cardLang === 'bn' ? profile.qualificationBn : profile.qualificationEn;
-
-  const isHeadTeacher =
-    profile.designationEn.toLowerCase().includes('head teacher') &&
-    !profile.designationEn.toLowerCase().includes('assistant');
-  const signatureLabel = isHeadTeacher
-    ? cardLang === 'bn'
-      ? 'সভাপতি / কর্তৃপক্ষ'
-      : 'School Authority'
-    : authorityTitle;
+  const { schoolName, locationText, signatureLabel, website } = getSchoolMeta(settings, cardLang);
+  const nameText = cardLang === 'bn' ? profile.nameBn : profile.nameEn;
+  const desigText = cardLang === 'bn' ? profile.designationBn : profile.designationEn;
+  const subjectText = cardLang === 'bn' ? profile.subjectBn : profile.subjectEn;
+  const qualText = cardLang === 'bn' ? profile.qualificationBn : profile.qualificationEn;
 
   const qrPayload = [
-    'RBMB TEACHER ID CARD',
+    'RBMB-FACULTY-VERIFY',
     `ID:${profile.teacherCode}`,
     `Name:${profile.nameEn}`,
-    `Desig:${profile.designationEn}`,
-    `Subject:${profile.subjectEn}`,
+    `Designation:${profile.designationEn}`,
+    `Department:${profile.subjectEn}`,
     `Phone:${profile.phone}`,
     `Valid:${profile.validUpto}`,
     `EIIN:${settings.eiin}`,
   ].join('|');
 
-  const backInstructions =
+  const backDirectives =
     cardLang === 'bn'
       ? [
-          'এই পরিচয়পত্রটি শুধুমাত্র আরবিএমবি শিক্ষকমণ্ডলীর প্রাতিষ্ঠানিক ব্যবহারের জন্য।',
-          'বিদ্যালয় প্রাঙ্গণ ও দাপ্তরিক কাজে কার্ডটি সাথে রাখার জন্য অনুরোধ করা হলো।',
-          'কার্ডটি হারিয়ে গেলে দ্রুত বিদ্যালয় অফিসে অবহিত করুন।',
-          'এই কার্ডটি হস্তান্তরযোগ্য নয় এবং বিদ্যালয়ের সম্পত্তি।',
+          'এই ফ্যাকাল্টি পরিচয়পত্রটি বিদ্যালয় কর্তৃপক্ষের নিবন্ধিত সম্পত্তি।',
+          'প্রাতিষ্ঠানিক দায়িত্ব পালন ও পরীক্ষার হলে কার্ডটি দৃশ্যমান রাখুন।',
+          'কার্ডটি হারিয়ে গেলে অবিলম্বে প্রধান শিক্ষকের কার্যালয়ে অবহিত করুন।',
+          'এই পরিচয়পত্রটি সম্পূর্ণভাবে অ-হস্তান্তরযোগ্য।',
         ]
       : [
-          'This ID Card is officially issued for RBMB faculty use only.',
-          'Please carry this card during campus hours and school duties.',
-          'Report loss immediately to the school office.',
-          'This card is non-transferable and property of the school.',
+          'This Executive Faculty Credential remains school property.',
+          'Display visibly during campus supervision and examinations.',
+          'Report lost or damaged credentials immediately to the office.',
+          'Strictly non-transferable · Authorized Faculty Only.',
         ];
 
   return (
-    <div className="max-w-[540px] mx-auto space-y-6 font-sans">
-      {/* FRONT SIDE */}
-      <div className="print-card-avoid-break bg-white text-slate-900 rounded-2xl border border-emerald-700/40 shadow-lg overflow-hidden relative">
-        {settings.schoolPhoto && (
-          <div
-            className="absolute inset-0 pointer-events-none opacity-[0.07] bg-cover bg-center"
-            style={{ backgroundImage: `url(${settings.schoolPhoto})` }}
-          />
-        )}
+    <div className="max-w-[550px] mx-auto space-y-7 font-sans" style={{ WebkitPrintColorAdjust: 'exact', printColorAdjust: 'exact' }}>
+      {/* ============================================================
+          FRONT SIDE — Architectural Slate-Forest & Champagne Gold
+         ============================================================ */}
+      <div className="print-card-avoid-break bg-[#fcfcfa] text-slate-900 rounded-2xl border border-slate-300 shadow-xl overflow-hidden relative">
+        {/* Subtle Architectural Filigree Watermark */}
+        <svg
+          className="absolute inset-0 w-full h-full pointer-events-none opacity-[0.045]"
+          viewBox="0 0 550 340"
+          preserveAspectRatio="none"
+          aria-hidden="true"
+        >
+          <defs>
+            <pattern id="rbmbArchGrid" width="28" height="28" patternUnits="userSpaceOnUse">
+              <path d="M 14 0 L 28 14 L 14 28 L 0 14 Z" fill="none" stroke="#0f172a" strokeWidth="0.7" />
+            </pattern>
+          </defs>
+          <rect width="550" height="340" fill="url(#rbmbArchGrid)" />
+        </svg>
 
-        {/* Curved Top Wave Header */}
-        <div className="relative">
-          <svg
-            viewBox="0 0 540 105"
-            className="w-full h-[88px] sm:h-[98px] block"
-            preserveAspectRatio="none"
-            aria-hidden="true"
-          >
-            <path d="M0 0 H540 V68 Q340 106 0 74 Z" fill="#65a30d" />
-            <path d="M0 0 H540 V58 Q330 98 0 66 Z" fill="#064e2b" />
-          </svg>
-          <div className="absolute inset-0 px-5 pt-2.5 flex items-start gap-3.5 text-white">
-            <RBMBCrestSvg className="w-16 h-16 sm:w-[70px] sm:h-[70px] shrink-0" />
-            <div className="flex-1 text-center pr-4 pt-0.5">
-              <h3 className="text-sm sm:text-[17px] font-black leading-tight">{schoolName}</h3>
-              <p className="text-[11px] sm:text-xs font-semibold opacity-95 mt-0.5">
-                {locationText}
-              </p>
-              <p className="text-[11px] italic font-medium opacity-90">
-                {cardLang === 'bn' ? 'শেখা • বেড়ে ওঠা • উৎকর্ষতা' : 'Learn • Grow • Excel'}
-              </p>
-            </div>
-          </div>
-        </div>
-
-        {/* Body Content */}
-        <div className="relative z-10 px-5 pt-1 pb-2">
-          <div className="flex justify-center mb-3">
-            <div className="px-7 py-1 rounded-full bg-[#064e2b] text-white font-black text-xs sm:text-sm tracking-wide shadow-sm">
-              {cardLang === 'bn' ? 'শিক্ষক পরিচয়পত্র (Teacher ID Card)' : 'Teacher ID Card'}
-            </div>
+        {/* Executive Angular Header */}
+        <div className="relative bg-gradient-to-r from-[#0f172a] via-[#062e26] to-[#0f172a] text-white px-5 pt-3.5 pb-4 border-b-2 border-[#d97706]">
+          {/* Fine vertical architectural gold accent hairlines */}
+          <div className="absolute right-0 top-0 bottom-0 w-24 opacity-20 pointer-events-none overflow-hidden">
+            <svg viewBox="0 0 100 100" className="w-full h-full" preserveAspectRatio="none">
+              <line x1="20" y1="0" x2="100" y2="100" stroke="#fbbf24" strokeWidth="1" />
+              <line x1="45" y1="0" x2="100" y2="70" stroke="#fbbf24" strokeWidth="1" />
+              <line x1="70" y1="0" x2="100" y2="40" stroke="#fbbf24" strokeWidth="1" />
+            </svg>
           </div>
 
-          <div className="flex items-center gap-3.5 sm:gap-4">
-            <TeacherPhotoFrame
-              photoUrl={profile.photoUrl}
-              teacherName={displayName}
-              className="w-24 sm:w-[108px] aspect-[3/4]"
-            />
-
-            <div className="flex-1 min-w-0 text-[11px] sm:text-xs">
-              <table className="w-full border-collapse">
-                <tbody>
-                  {[
-                    [cardLang === 'bn' ? 'শিক্ষকের নাম' : 'Teacher Name', displayName, true],
-                    [cardLang === 'bn' ? 'শিক্ষক আইডি' : 'Teacher ID', profile.teacherCode, true],
-                    [cardLang === 'bn' ? 'পদবি' : 'Designation', displayDesig, false],
-                    [cardLang === 'bn' ? 'বিষয় / বিভাগ' : 'Department', displaySubject, false],
-                    [cardLang === 'bn' ? 'যোগ্যতা' : 'Qualification', displayQual, false],
-                    [cardLang === 'bn' ? 'মোবাইল' : 'Phone', profile.phone, false],
-                    ...(profile.bloodGroup.trim()
-                      ? [[cardLang === 'bn' ? 'রক্তের গ্রুপ' : 'Blood Group', profile.bloodGroup, true]]
-                      : [[cardLang === 'bn' ? 'ইআইআইএন' : 'School EIIN', settings.eiin, false]]),
-                  ].map(([label, val, bold], idx) => (
-                    <tr key={idx}>
-                      <td className="py-[1.5px] pr-1.5 font-semibold text-slate-800 whitespace-nowrap w-[88px] sm:w-[98px]">
-                        {label}
-                      </td>
-                      <td className="py-[1.5px] pr-1.5 font-bold text-slate-700 w-2">:</td>
-                      <td
-                        className={`py-[1.5px] tabular-nums truncate max-w-[175px] ${
-                          bold ? 'font-extrabold text-slate-950' : 'font-semibold text-slate-900'
-                        }`}
-                      >
-                        {val}
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-
-            <QrBadge
-              payload={qrPayload}
-              caption={cardLang === 'bn' ? 'যাচাই করুন' : 'Verify Faculty'}
-              sizeClass="w-16 h-16 sm:w-[70px] sm:h-[70px]"
-            />
-          </div>
-        </div>
-
-        {/* Bottom Wave + Dates + Signature */}
-        <div className="relative h-16 mt-1">
-          <svg
-            viewBox="0 0 540 72"
-            className="w-full h-full block"
-            preserveAspectRatio="none"
-            aria-hidden="true"
-          >
-            <path d="M0 10 Q180 12 370 72 H0 Z" fill="#65a30d" />
-            <path d="M0 18 Q170 20 355 72 H0 Z" fill="#064e2b" />
-          </svg>
-          <div className="absolute inset-0 px-5 pb-2 flex items-end justify-between">
-            <div className="text-white text-[11px] font-bold leading-snug tabular-nums">
-              <p>
-                {cardLang === 'bn' ? 'ইস্যু তারিখ:' : 'Issue Date:'}{' '}
-                {formatDisplayDate(profile.issueDate)}
-              </p>
-              <p>
-                {cardLang === 'bn' ? 'মেয়াদ উত্তীর্ণ:' : 'Valid Upto:'}{' '}
-                {formatDisplayDate(profile.validUpto)}
-              </p>
-            </div>
-            <div className="flex flex-col items-center text-center">
-              <OfficialSignatureSvg className="w-20 h-6" />
-              <div className="w-28 border-t border-slate-800 pt-0.5 text-[11px] font-extrabold text-slate-900">
-                {signatureLabel}
+          <div className="relative z-10 flex items-center justify-between gap-3">
+            <div className="flex items-center gap-3 min-w-0">
+              <ExecutiveCrestSvg className="w-13 h-13 sm:w-14 sm:h-14 shrink-0" />
+              <div className="min-w-0">
+                <p className="text-[9px] font-bold uppercase tracking-[0.22em] text-amber-300">
+                  {cardLang === 'bn' ? 'অফিসিয়াল ফ্যাকাল্টি আইডেন্টিটি' : 'Executive Faculty Credential'}
+                </p>
+                <h3 className="text-sm sm:text-[16px] font-black tracking-tight leading-snug text-white truncate">
+                  {schoolName}
+                </h3>
+                <p className="text-[11px] font-medium text-slate-300 truncate">{locationText}</p>
               </div>
+            </div>
+
+            <div className="shrink-0 text-right border border-amber-500/60 bg-slate-950/60 px-2.5 py-1.5 rounded-lg">
+              <p className="text-[8px] font-bold uppercase tracking-[0.18em] text-amber-300">EIIN</p>
+              <p className="text-xs font-black tracking-wider text-white tabular-nums">{settings.eiin}</p>
+            </div>
+          </div>
+        </div>
+
+        {/* Sub-Ribbon Classification Bar */}
+        <div className="relative z-10 bg-slate-900 text-amber-200 px-5 py-1.5 flex items-center justify-between text-[10px] font-extrabold uppercase tracking-[0.18em] border-b border-slate-200">
+          <span className="flex items-center gap-1.5">
+            <ShieldCheck className="w-3.5 h-3.5 text-amber-400" />
+            {cardLang === 'bn' ? 'শিক্ষক ও অনুষদ পরিচয়পত্র' : 'TEACHER / FACULTY ID CARD'}
+          </span>
+          <span className="tabular-nums text-white font-black tracking-wider">{profile.teacherCode}</span>
+        </div>
+
+        {/* Front Card Body */}
+        <div className="relative z-10 px-5 py-4 flex items-center gap-4">
+          <ExecutivePortraitFrame photoUrl={profile.photoUrl} name={nameText} />
+
+          <div className="flex-1 min-w-0">
+            <div className="pb-2 mb-2 border-b border-slate-200">
+              <h4 className="text-base sm:text-[17px] font-black text-slate-950 leading-tight truncate">
+                {nameText}
+              </h4>
+              <p className="text-xs font-extrabold uppercase tracking-wider text-[#064e3b] mt-0.5 truncate">
+                {desigText}
+              </p>
+            </div>
+
+            <table className="w-full border-collapse text-[11px] sm:text-xs">
+              <tbody>
+                {[
+                  [cardLang === 'bn' ? 'ফ্যাকাল্টি আইডি' : 'Faculty ID', profile.teacherCode, true],
+                  [cardLang === 'bn' ? 'বিভাগ / বিষয়' : 'Department', subjectText, false],
+                  [cardLang === 'bn' ? 'যোগ্যতা' : 'Qualification', qualText, false],
+                  [cardLang === 'bn' ? 'রক্তের গ্রুপ' : 'Blood Group', profile.bloodGroup || '—', false],
+                  [cardLang === 'bn' ? 'মোবাইল' : 'Contact', profile.phone, true],
+                ].map(([label, val, accent], idx) => (
+                  <tr key={idx} className="border-b border-slate-100 last:border-b-0">
+                    <td className="py-[2.5px] pr-2 font-bold text-slate-500 whitespace-nowrap w-[88px]">
+                      {label}
+                    </td>
+                    <td className="py-[2.5px] pr-1.5 text-slate-400 font-bold w-2">:</td>
+                    <td
+                      className={`py-[2.5px] tabular-nums truncate max-w-[165px] ${
+                        accent ? 'font-black text-slate-950' : 'font-semibold text-slate-800'
+                      }`}
+                    >
+                      {val}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+
+          <QrVerificationStamp
+            payload={qrPayload}
+            caption={cardLang === 'bn' ? 'যাচাই করুন' : 'VERIFY'}
+            sizeClass="w-[66px] h-[66px]"
+          />
+        </div>
+
+        {/* Front Architectural Footer */}
+        <div className="relative z-10 flex items-stretch border-t border-amber-600/40 bg-white">
+          <div className="bg-gradient-to-r from-[#0f172a] to-[#062e26] text-white px-5 py-2.5 flex-1 flex flex-wrap items-center gap-x-6 gap-y-1 text-[11px] font-bold tabular-nums">
+            <span>
+              <span className="text-amber-300 uppercase text-[9px] tracking-widest mr-1.5">
+                {cardLang === 'bn' ? 'ইস্যু:' : 'ISSUED:'}
+              </span>
+              {formatDisplayDate(profile.issueDate)}
+            </span>
+            <span>
+              <span className="text-amber-300 uppercase text-[9px] tracking-widest mr-1.5">
+                {cardLang === 'bn' ? 'মেয়াদ:' : 'VALID UPTO:'}
+              </span>
+              {formatDisplayDate(profile.validUpto)}
+            </span>
+          </div>
+          <div className="bg-[#fcfcfa] px-5 py-1.5 flex flex-col items-center justify-center border-l border-amber-600/30 min-w-[155px]">
+            <OfficialSignatureSvg className="w-20 h-5" />
+            <div className="w-28 border-t border-slate-700 pt-0.5 text-center text-[10px] font-black uppercase tracking-wider text-slate-900">
+              {signatureLabel}
             </div>
           </div>
         </div>
       </div>
 
-      {/* BACK SIDE */}
-      <div className="print-card-avoid-break bg-white text-slate-900 rounded-2xl border border-emerald-700/40 shadow-lg overflow-hidden relative">
-        {settings.schoolPhoto && (
-          <div
-            className="absolute inset-0 pointer-events-none opacity-[0.06] bg-cover bg-center"
-            style={{ backgroundImage: `url(${settings.schoolPhoto})` }}
-          />
-        )}
-
-        <div className="relative">
-          <svg
-            viewBox="0 0 540 92"
-            className="w-full h-[78px] sm:h-[84px] block"
-            preserveAspectRatio="none"
-            aria-hidden="true"
-          >
-            <path d="M0 0 H540 V58 Q340 94 0 64 Z" fill="#65a30d" />
-            <path d="M0 0 H540 V49 Q330 85 0 56 Z" fill="#064e2b" />
-          </svg>
-          <div className="absolute inset-0 px-5 pt-2 flex items-start gap-3.5 text-white">
-            <RBMBCrestSvg className="w-14 h-14 sm:w-16 sm:h-16 shrink-0" />
-            <div className="flex-1 text-center pr-6 pt-1">
-              <h3 className="text-sm sm:text-[17px] font-black leading-tight">{schoolName}</h3>
-              <p className="text-[11px] italic font-medium opacity-90 mt-0.5">
-                {cardLang === 'bn' ? 'শেখা • বেড়ে ওঠা • উৎকর্ষতা' : 'Learn • Grow • Excel'}
+      {/* ============================================================
+          BACK SIDE — Institutional Directives & Campus Registry
+         ============================================================ */}
+      <div className="print-card-avoid-break bg-[#fcfcfa] text-slate-900 rounded-2xl border border-slate-300 shadow-xl overflow-hidden relative">
+        {/* Top Slate-Forest Strip */}
+        <div className="bg-gradient-to-r from-[#0f172a] via-[#062e26] to-[#0f172a] text-white px-5 py-3 border-b-2 border-[#d97706] flex items-center justify-between gap-3">
+          <div className="flex items-center gap-3 min-w-0">
+            <ExecutiveCrestSvg className="w-11 h-11 shrink-0" />
+            <div className="min-w-0">
+              <h3 className="text-sm sm:text-[15px] font-black leading-tight truncate">{schoolName}</h3>
+              <p className="text-[10px] font-semibold tracking-widest uppercase text-amber-300">
+                {cardLang === 'bn' ? 'শিক্ষক নিবন্ধন ও পরিচয়পত্র নির্দেশিকা' : 'Official Faculty Registry · Campus Security'}
               </p>
             </div>
           </div>
+          <span className="text-[10px] font-black tracking-wider tabular-nums px-2.5 py-1 border border-amber-500/50 rounded bg-slate-950/60 text-amber-200 shrink-0">
+            {profile.teacherCode}
+          </span>
         </div>
 
-        <div className="relative z-10 px-5 py-3 grid grid-cols-1 sm:grid-cols-12 gap-4">
-          <div className="sm:col-span-7 space-y-2">
-            <div className="inline-block px-4 py-1 rounded-full bg-[#064e2b] text-white text-xs font-extrabold">
-              {cardLang === 'bn' ? 'গুরুত্বপূর্ণ নির্দেশনা:' : 'Important Instructions:'}
+        {/* Two-Column Crisp Information Grid */}
+        <div className="px-5 py-4 grid grid-cols-1 sm:grid-cols-12 gap-5 relative z-10">
+          <div className="sm:col-span-7 space-y-2.5">
+            <div className="border-b border-slate-200 pb-1 flex items-center justify-between">
+              <h4 className="text-[11px] font-black uppercase tracking-[0.14em] text-[#064e3b]">
+                {cardLang === 'bn' ? 'গুরুত্বপূর্ণ নির্দেশনাবলি' : 'Faculty Directives'}
+              </h4>
             </div>
-            <ul className="space-y-1.5 text-[11px] sm:text-xs font-medium text-slate-900">
-              {backInstructions.map((line, i) => (
+            <ul className="space-y-1.5 text-[11px] sm:text-xs font-medium text-slate-800">
+              {backDirectives.map((line, i) => (
                 <li key={i} className="flex items-start gap-2">
-                  <CheckCircle2 className="w-3.5 h-3.5 text-[#16a34a] shrink-0 mt-0.5" />
+                  <span className="mt-1 w-4 h-4 rounded bg-slate-900 text-amber-300 text-[9px] font-black flex items-center justify-center shrink-0 tabular-nums">
+                    {i + 1}
+                  </span>
                   <span className="leading-snug">{line}</span>
                 </li>
               ))}
             </ul>
           </div>
 
-          <div className="sm:col-span-5 space-y-2">
-            <div className="inline-block px-5 py-1 rounded-full bg-[#064e2b] text-white text-xs font-extrabold">
-              {cardLang === 'bn' ? 'যোগাযোগ:' : 'Contact Us:'}
+          <div className="sm:col-span-5 space-y-2.5 sm:border-l sm:border-slate-200 sm:pl-4">
+            <div className="border-b border-slate-200 pb-1">
+              <h4 className="text-[11px] font-black uppercase tracking-[0.14em] text-[#064e3b]">
+                {cardLang === 'bn' ? 'কার্যালয় ও যোগাযোগ' : 'Campus Administration'}
+              </h4>
             </div>
-            <ul className="space-y-1.5 text-[11px] sm:text-xs font-semibold text-slate-900">
+            <ul className="space-y-1.5 text-[11px] sm:text-xs font-semibold text-slate-800">
               <li className="flex items-start gap-2">
-                <MapPin className="w-3.5 h-3.5 text-[#064e2b] shrink-0 mt-0.5" />
+                <MapPin className="w-3.5 h-3.5 text-amber-600 shrink-0 mt-0.5" />
                 <span className="leading-snug">{locationText}</span>
               </li>
               <li className="flex items-center gap-2 tabular-nums">
-                <Phone className="w-3.5 h-3.5 text-[#064e2b] shrink-0" />
+                <Phone className="w-3.5 h-3.5 text-amber-600 shrink-0" />
                 <span>{settings.phone}</span>
               </li>
               <li className="flex items-center gap-2">
-                <Mail className="w-3.5 h-3.5 text-[#064e2b] shrink-0" />
+                <Mail className="w-3.5 h-3.5 text-amber-600 shrink-0" />
                 <span className="truncate">{settings.email}</span>
               </li>
               <li className="flex items-center gap-2">
-                <Globe className="w-3.5 h-3.5 text-[#064e2b] shrink-0" />
+                <Globe className="w-3.5 h-3.5 text-amber-600 shrink-0" />
                 <span>{website}</span>
               </li>
             </ul>
           </div>
         </div>
 
-        <div className="relative h-16 mt-1">
-          <svg
-            viewBox="0 0 540 72"
-            className="w-full h-full block"
-            preserveAspectRatio="none"
-            aria-hidden="true"
-          >
-            <path d="M0 10 Q180 12 370 72 H0 Z" fill="#65a30d" />
-            <path d="M0 18 Q170 20 355 72 H0 Z" fill="#064e2b" />
-          </svg>
-          <div className="absolute inset-0 px-5 pb-2 flex items-end justify-between">
-            <div className="flex items-center gap-2.5 text-white pb-1">
-              <BookOpen className="w-6 h-6 text-white shrink-0" />
-              <span className="text-xs sm:text-sm font-black tracking-wide">
-                শিক্ষাই আলো, শিক্ষাই শক্তি
-              </span>
-            </div>
-            <div className="flex flex-col items-center text-center">
-              <OfficialSignatureSvg className="w-20 h-6" />
-              <div className="w-28 border-t border-slate-800 pt-0.5 text-[11px] font-extrabold text-slate-900">
-                {signatureLabel}
-              </div>
+        {/* Back Footer */}
+        <div className="flex items-stretch border-t border-amber-600/40 bg-white">
+          <div className="bg-gradient-to-r from-[#0f172a] to-[#062e26] text-white px-5 py-2.5 flex-1 flex items-center gap-2.5">
+            <BookOpen className="w-5 h-5 text-amber-400 shrink-0" />
+            <span className="text-xs sm:text-sm font-black tracking-wide">
+              শিক্ষাই আলো, শিক্ষাই শক্তি
+            </span>
+          </div>
+          <div className="bg-[#fcfcfa] px-5 py-1.5 flex flex-col items-center justify-center border-l border-amber-600/30 min-w-[155px]">
+            <OfficialSignatureSvg className="w-20 h-5" />
+            <div className="w-28 border-t border-slate-700 pt-0.5 text-center text-[10px] font-black uppercase tracking-wider text-slate-900">
+              {signatureLabel}
             </div>
           </div>
         </div>
@@ -506,6 +504,7 @@ export const TeacherIdCardModal: React.FC<TeacherIdCardModalProps> = ({
   allTeachers,
   phoneOverride,
   onSavePhoto,
+  onSaveProfile,
 }) => {
   const { lang, settings } = useApp();
   const photoInputRef = useRef<HTMLInputElement>(null);
@@ -518,7 +517,7 @@ export const TeacherIdCardModal: React.FC<TeacherIdCardModalProps> = ({
 
   const buildProfile = (tc: Teacher, idx: number): TeacherCardProfile => ({
     id: tc.id,
-    teacherCode: getTeacherIdCode(tc.id, idx),
+    teacherCode: tc.teacherCode || getTeacherIdCode(tc.id, idx),
     nameEn: tc.name.en || tc.name.bn,
     nameBn: tc.name.bn || tc.name.en,
     designationEn: tc.designation.en || tc.designation.bn,
@@ -527,11 +526,11 @@ export const TeacherIdCardModal: React.FC<TeacherIdCardModalProps> = ({
     subjectBn: tc.subject.bn || tc.subject.en,
     qualificationEn: tc.qualification.en || tc.qualification.bn,
     qualificationBn: tc.qualification.bn || tc.qualification.en,
-    phone: phoneOverride || settings.phone,
-    bloodGroup: '',
+    phone: tc.phone || phoneOverride || settings.phone,
+    bloodGroup: tc.bloodGroup || '',
     photoUrl: tc.photo || '',
-    issueDate: '2026-01-15',
-    validUpto: '2026-12-31',
+    issueDate: tc.cardIssueDate || '2026-01-15',
+    validUpto: tc.cardValidUpto || '2026-12-31',
   });
 
   const [profile, setProfile] = useState<TeacherCardProfile>(() => buildProfile(teacher, teacherIndex));
@@ -542,7 +541,18 @@ export const TeacherIdCardModal: React.FC<TeacherIdCardModalProps> = ({
     setProfile(buildProfile(teacher, teacherIndex));
     setSavedToast(false);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [open, teacher.id, teacher.photo, teacherIndex, phoneOverride]);
+  }, [
+    open,
+    teacher.id,
+    teacher.photo,
+    teacher.teacherCode,
+    teacher.phone,
+    teacher.bloodGroup,
+    teacher.cardIssueDate,
+    teacher.cardValidUpto,
+    teacherIndex,
+    phoneOverride,
+  ]);
 
   const handleSelectTeacher = (id: string) => {
     setSelectedTeacherId(id);
@@ -552,17 +562,53 @@ export const TeacherIdCardModal: React.FC<TeacherIdCardModalProps> = ({
     setProfile(buildProfile(allTeachers[idx], idx));
   };
 
+  const triggerSavedToast = () => {
+    setSavedToast(true);
+    setTimeout(() => setSavedToast(false), 2600);
+  };
+
+  const handleSaveCardDetails = () => {
+    if (onSaveProfile) {
+      onSaveProfile({
+        id: profile.id,
+        teacherCode: profile.teacherCode.trim() || getTeacherIdCode(profile.id, teacherIndex),
+        phone: profile.phone.trim(),
+        bloodGroup: profile.bloodGroup.trim(),
+        issueDate: profile.issueDate.trim() || '2026-01-15',
+        validUpto: profile.validUpto.trim() || '2026-12-31',
+        photo: profile.photoUrl || undefined,
+      });
+      triggerSavedToast();
+    } else if (onSavePhoto && profile.photoUrl) {
+      onSavePhoto(profile.id, profile.photoUrl);
+      triggerSavedToast();
+    }
+  };
+
   const handlePhotoUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
     try {
-      const compressed = await compressImageFile(file, 360, 0.82);
-      setProfile((prev) => ({ ...prev, photoUrl: compressed }));
-      if (onSavePhoto) {
-        onSavePhoto(profile.id, compressed);
-        setSavedToast(true);
-        setTimeout(() => setSavedToast(false), 2500);
-      }
+      const compressed = await compressImageFile(file, 450, 0.8, 420000);
+      setProfile((prev) => {
+        const next = { ...prev, photoUrl: compressed };
+        if (onSaveProfile) {
+          onSaveProfile({
+            id: next.id,
+            teacherCode: next.teacherCode,
+            phone: next.phone,
+            bloodGroup: next.bloodGroup,
+            issueDate: next.issueDate,
+            validUpto: next.validUpto,
+            photo: compressed,
+          });
+          triggerSavedToast();
+        } else if (onSavePhoto) {
+          onSavePhoto(next.id, compressed);
+          triggerSavedToast();
+        }
+        return next;
+      });
     } catch {
       // ignore read failure gracefully
     } finally {
@@ -579,14 +625,14 @@ export const TeacherIdCardModal: React.FC<TeacherIdCardModalProps> = ({
 
   return (
     <div className="fixed inset-0 z-[220] flex items-center justify-center p-2 sm:p-5 overflow-y-auto">
-      <div className="fixed inset-0 bg-slate-950/75 backdrop-blur-sm no-print" onClick={onClose} />
+      <div className="fixed inset-0 bg-slate-950/80 backdrop-blur-sm no-print" onClick={onClose} />
 
       <div className="relative bg-slate-100 dark:bg-slate-900 w-full max-w-4xl rounded-2xl border border-slate-200 dark:border-slate-800 shadow-2xl overflow-hidden my-auto max-h-[94vh] flex flex-col">
         {/* Top Toolbar — strictly Teacher ID Card (Front & Back) only */}
         <div className="no-print flex flex-col gap-3 px-4 sm:px-6 py-3.5 bg-white dark:bg-slate-800/95 border-b border-slate-200 dark:border-slate-700 shrink-0">
           <div className="flex flex-wrap items-center justify-between gap-2.5">
-            <div className="inline-flex items-center gap-2 px-3.5 py-1.5 rounded-xl bg-emerald-700 text-white text-xs font-bold">
-              <IdCard className="w-4 h-4" />
+            <div className="inline-flex items-center gap-2 px-3.5 py-1.5 rounded-xl bg-slate-900 border border-amber-500/60 text-amber-200 text-xs font-bold">
+              <IdCard className="w-4 h-4 text-amber-400" />
               <span>
                 {lang === 'bn'
                   ? 'শিক্ষক আইডি কার্ড (Front & Back)'
@@ -595,6 +641,13 @@ export const TeacherIdCardModal: React.FC<TeacherIdCardModalProps> = ({
             </div>
 
             <div className="flex flex-wrap items-center gap-2">
+              {savedToast && (
+                <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-emerald-50 dark:bg-emerald-950/60 text-emerald-700 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-800 text-xs font-bold">
+                  <Check className="w-3.5 h-3.5" />
+                  {lang === 'bn' ? 'সংরক্ষিত!' : 'Saved!'}
+                </span>
+              )}
+
               <button
                 type="button"
                 onClick={() => setCardLang((prev) => (prev === 'en' ? 'bn' : 'en'))}
@@ -606,10 +659,10 @@ export const TeacherIdCardModal: React.FC<TeacherIdCardModalProps> = ({
               <button
                 type="button"
                 onClick={() => photoInputRef.current?.click()}
-                className="px-3 py-1.5 rounded-lg bg-slate-100 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 hover:border-emerald-500 text-xs font-bold inline-flex items-center gap-1.5 whitespace-nowrap"
+                className="px-3 py-1.5 rounded-lg bg-slate-100 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 hover:border-amber-500 text-xs font-bold inline-flex items-center gap-1.5 whitespace-nowrap"
               >
-                <Camera className="w-3.5 h-3.5 text-emerald-700 dark:text-emerald-400" />
-                {savedToast ? (lang === 'bn' ? 'সেভ হয়েছে!' : 'Saved!') : lang === 'bn' ? 'ছবি দিন' : 'Photo'}
+                <Camera className="w-3.5 h-3.5 text-amber-600 dark:text-amber-400" />
+                {lang === 'bn' ? 'ছবি দিন' : 'Photo'}
               </button>
               <input
                 ref={photoInputRef}
@@ -624,7 +677,7 @@ export const TeacherIdCardModal: React.FC<TeacherIdCardModalProps> = ({
                 onClick={() => setShowCustomize((p) => !p)}
                 className={`px-3 py-1.5 rounded-lg border text-xs font-bold inline-flex items-center gap-1.5 whitespace-nowrap ${
                   showCustomize
-                    ? 'bg-emerald-50 border-emerald-400 text-emerald-800 dark:bg-emerald-950/60 dark:text-emerald-300'
+                    ? 'bg-slate-900 border-amber-500 text-amber-200'
                     : 'bg-slate-100 dark:bg-slate-900 border-slate-200 dark:border-slate-700'
                 }`}
               >
@@ -635,9 +688,9 @@ export const TeacherIdCardModal: React.FC<TeacherIdCardModalProps> = ({
               <button
                 type="button"
                 onClick={() => window.print()}
-                className="px-3.5 py-1.5 rounded-lg bg-emerald-700 hover:bg-emerald-800 text-white text-xs font-bold inline-flex items-center gap-1.5 whitespace-nowrap"
+                className="px-3.5 py-1.5 rounded-lg bg-slate-900 hover:bg-slate-800 border border-amber-500/60 text-white text-xs font-bold inline-flex items-center gap-1.5 whitespace-nowrap"
               >
-                <Printer className="w-3.5 h-3.5" />
+                <Printer className="w-3.5 h-3.5 text-amber-400" />
                 {lang === 'bn' ? 'প্রিন্ট / PDF' : 'Print / PDF'}
               </button>
 
@@ -656,7 +709,7 @@ export const TeacherIdCardModal: React.FC<TeacherIdCardModalProps> = ({
           {allTeachers && allTeachers.length > 1 && (
             <div className="flex flex-wrap items-center justify-between gap-2 pt-2 border-t border-slate-200 dark:border-slate-700 text-xs">
               <div className="flex items-center gap-2 flex-1 min-w-[220px]">
-                <Users className="w-3.5 h-3.5 text-emerald-700 dark:text-emerald-400 shrink-0" />
+                <Users className="w-3.5 h-3.5 text-amber-600 dark:text-amber-400 shrink-0" />
                 <select
                   value={selectedTeacherId}
                   disabled={printAllMode}
@@ -665,7 +718,7 @@ export const TeacherIdCardModal: React.FC<TeacherIdCardModalProps> = ({
                 >
                   {allTeachers.map((tc, idx) => (
                     <option key={tc.id} value={tc.id}>
-                      {getTeacherIdCode(tc.id, idx)} · {tc.name.en || tc.name.bn} ({tc.designation.en})
+                      {tc.teacherCode || getTeacherIdCode(tc.id, idx)} · {tc.name.en || tc.name.bn} ({tc.designation.en})
                     </option>
                   ))}
                 </select>
@@ -675,8 +728,8 @@ export const TeacherIdCardModal: React.FC<TeacherIdCardModalProps> = ({
                 onClick={() => setPrintAllMode((p) => !p)}
                 className={`px-3 py-1.5 rounded-lg font-bold inline-flex items-center gap-1.5 whitespace-nowrap border transition-colors ${
                   printAllMode
-                    ? 'bg-emerald-700 text-white border-emerald-700'
-                    : 'bg-emerald-50 text-emerald-800 border-emerald-200 dark:bg-emerald-950/60 dark:text-emerald-300 dark:border-emerald-800'
+                    ? 'bg-slate-900 text-amber-200 border-amber-500'
+                    : 'bg-slate-50 text-slate-800 border-slate-300 dark:bg-slate-900 dark:text-slate-200 dark:border-slate-700'
                 }`}
               >
                 <Printer className="w-3.5 h-3.5" />
@@ -691,12 +744,12 @@ export const TeacherIdCardModal: React.FC<TeacherIdCardModalProps> = ({
             </div>
           )}
 
-          {/* Optional Quick Edit Fields */}
+          {/* Edit & Save Faculty Metadata */}
           {showCustomize && (
-            <div className="grid grid-cols-2 sm:grid-cols-5 gap-2.5 pt-2 border-t border-slate-200 dark:border-slate-700 text-xs">
+            <div className="grid grid-cols-2 sm:grid-cols-6 gap-2.5 pt-2 border-t border-slate-200 dark:border-slate-700 text-xs">
               <div>
                 <label className="block text-[10px] font-bold text-slate-400 uppercase mb-1">
-                  {lang === 'bn' ? 'শিক্ষক আইডি' : 'Teacher ID'}
+                  {lang === 'bn' ? 'শিক্ষক আইডি' : 'Faculty ID'}
                 </label>
                 <input
                   value={profile.teacherCode}
@@ -740,29 +793,31 @@ export const TeacherIdCardModal: React.FC<TeacherIdCardModalProps> = ({
                 <label className="block text-[10px] font-bold text-slate-400 uppercase mb-1">
                   {lang === 'bn' ? 'মেয়াদ উত্তীর্ণ' : 'Valid Upto'}
                 </label>
-                <div className="flex gap-1.5">
-                  <input
-                    type="date"
-                    value={profile.validUpto}
-                    onChange={(e) => setProfile((p) => ({ ...p, validUpto: e.target.value }))}
-                    className="w-full px-2.5 py-1.5 rounded-lg bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 font-semibold"
-                  />
-                  {onSavePhoto && profile.photoUrl && (
-                    <button
-                      type="button"
-                      onClick={() => {
-                        onSavePhoto(profile.id, profile.photoUrl!);
-                        setSavedToast(true);
-                        setTimeout(() => setSavedToast(false), 2500);
-                      }}
-                      title={lang === 'bn' ? 'ছবি সংরক্ষণ' : 'Save Photo'}
-                      className="px-2.5 py-1.5 rounded-lg bg-emerald-700 text-white font-bold shrink-0"
-                    >
-                      <Save className="w-3.5 h-3.5" />
-                    </button>
-                  )}
-                </div>
+                <input
+                  type="date"
+                  value={profile.validUpto}
+                  onChange={(e) => setProfile((p) => ({ ...p, validUpto: e.target.value }))}
+                  className="w-full px-2.5 py-1.5 rounded-lg bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 font-semibold"
+                />
               </div>
+              {(onSaveProfile || onSavePhoto) && (
+                <div className="flex items-end">
+                  <button
+                    type="button"
+                    onClick={handleSaveCardDetails}
+                    className="w-full py-1.5 px-3 rounded-lg bg-slate-900 hover:bg-slate-800 border border-amber-500/70 text-amber-200 font-bold inline-flex items-center justify-center gap-1.5"
+                  >
+                    <Save className="w-3.5 h-3.5 text-amber-400" />
+                    {savedToast
+                      ? lang === 'bn'
+                        ? 'সংরক্ষিত!'
+                        : 'Saved!'
+                      : lang === 'bn'
+                      ? 'তথ্য সেভ'
+                      : 'Save Info'}
+                  </button>
+                </div>
+              )}
             </div>
           )}
         </div>

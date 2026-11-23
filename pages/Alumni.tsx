@@ -21,6 +21,8 @@ const Alumni: React.FC = () => {
   const [batchFilter, setBatchFilter] = useState('All');
   const [showJoinModal, setShowJoinModal] = useState(false);
   const [submittedNotice, setSubmittedNotice] = useState(false);
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [submitError, setSubmitError] = useState('');
 
   const visibleAlumni = useMemo(() => {
     return alumni.filter((a) => isCloudAdmin || a.status === 'approved');
@@ -47,8 +49,9 @@ const Alumni: React.FC = () => {
     });
   }, [visibleAlumni, batchFilter, search]);
 
-  const handleSubmit = (e: React.FormEvent<HTMLFormElement>) => {
+  const handleSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
+    setSubmitError('');
     const f = e.currentTarget as HTMLFormElement & {
       fullName: HTMLInputElement;
       batchYear: HTMLInputElement;
@@ -57,10 +60,15 @@ const Alumni: React.FC = () => {
       city: HTMLInputElement;
       message: HTMLTextAreaElement;
     };
+    const cleanBatch = f.batchYear.value.trim();
+    if (cleanBatch.length < 4) {
+      setSubmitError(lang === 'bn' ? 'কমপক্ষে ৪ সংখ্যার পাশের সাল লিখুন (যেমন: 2018)।' : 'Please enter a valid 4-digit batch year (e.g. 2018).');
+      return;
+    }
     const newProfile: AlumniProfile = {
       id: `alu-${Date.now()}`,
       name: f.fullName.value.trim(),
-      batchYear: f.batchYear.value.trim(),
+      batchYear: cleanBatch,
       currentRole: f.currentRole.value.trim(),
       organization: f.organization.value.trim(),
       city: f.city.value.trim(),
@@ -68,10 +76,21 @@ const Alumni: React.FC = () => {
       status: 'pending',
       isPublic: false,
     };
-    submitAlumniProfile(newProfile);
-    setShowJoinModal(false);
-    setSubmittedNotice(true);
-    setTimeout(() => setSubmittedNotice(false), 5000);
+    setIsSubmitting(true);
+    try {
+      await submitAlumniProfile(newProfile);
+      setShowJoinModal(false);
+      setSubmittedNotice(true);
+      setTimeout(() => setSubmittedNotice(false), 5000);
+    } catch {
+      setSubmitError(
+        lang === 'bn'
+          ? 'ক্লাউড ডাটাবেসে সংরক্ষণ করা যায়নি। তথ্য যাচাই করে পুনরায় চেষ্টা করুন।'
+          : 'Could not save to cloud database. Please check fields and try again.'
+      );
+    } finally {
+      setIsSubmitting(false);
+    }
   };
 
   return (
@@ -206,6 +225,11 @@ const Alumni: React.FC = () => {
               </button>
             </div>
             <form onSubmit={handleSubmit} className="p-6 space-y-4">
+              {submitError && (
+                <div className="p-3 rounded-xl bg-red-50 dark:bg-red-950/60 border border-red-200 dark:border-red-800 text-red-700 dark:text-red-300 text-xs font-bold">
+                  {submitError}
+                </div>
+              )}
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <div>
                   <label className="block text-xs font-bold text-slate-500 dark:text-slate-400 mb-1">{lang === 'bn' ? 'পূর্ণ নাম' : 'Full Name'}</label>
@@ -213,7 +237,7 @@ const Alumni: React.FC = () => {
                 </div>
                 <div>
                   <label className="block text-xs font-bold text-slate-500 dark:text-slate-400 mb-1">{lang === 'bn' ? 'SSC পাশের সাল' : 'SSC Batch Year'}</label>
-                  <input required name="batchYear" placeholder="2018" maxLength={10} className="w-full px-4 py-2.5 rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 font-bold text-sm" />
+                  <input required name="batchYear" minLength={4} placeholder="2018" maxLength={10} className="w-full px-4 py-2.5 rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 font-bold text-sm" />
                 </div>
               </div>
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
@@ -234,8 +258,8 @@ const Alumni: React.FC = () => {
                 <label className="block text-xs font-bold text-slate-500 dark:text-slate-400 mb-1">{lang === 'bn' ? 'শিক্ষার্থীদের উদ্দেশ্যে বার্তা' : 'Message for Students'}</label>
                 <textarea required name="message" rows={3} maxLength={1000} className="w-full px-4 py-2.5 rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 font-bold text-sm" />
               </div>
-              <button type="submit" className="w-full py-3.5 rounded-2xl bg-green-700 hover:bg-green-800 text-white font-bold text-sm shadow-lg">
-                {lang === 'bn' ? 'তথ্য জমা দিন' : 'Submit Alumni Profile'}
+              <button disabled={isSubmitting} type="submit" className="w-full py-3.5 rounded-2xl bg-green-700 hover:bg-green-800 text-white font-bold text-sm shadow-lg disabled:opacity-60">
+                {isSubmitting ? (lang === 'bn' ? 'জমা হচ্ছে...' : 'Submitting...') : lang === 'bn' ? 'তথ্য জমা দিন' : 'Submit Alumni Profile'}
               </button>
             </form>
           </div>

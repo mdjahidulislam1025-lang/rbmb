@@ -32,8 +32,8 @@ export const CAMPUS_BRAND = {
 };
 
 export const SCHOOL_NAME = {
-  bn: 'রাণীর বাজার মডেল উচ্চ বিদ্যালয়',
-  en: 'Rani Bazar Model High School',
+  bn: 'রাণীর বাজার মাধ্যমিক বিদ্যালয়',
+  en: 'Ranir Bazar Secondary High School',
 };
 
 export const CAMPUS_TAGLINE = {
@@ -58,8 +58,8 @@ export const INITIAL_SETTINGS: SchoolSettings = {
     en: 'Md. Abdul Karim',
   },
   headTeacherMessage: {
-    bn: 'সুপ্রিয় শিক্ষার্থী, অভিভাবক ও প্রাক্তন শিক্ষার্থীবৃন্দ — আরবিএমবি ডিজিটাল ক্যাম্পাসে (রাণীর বাজার মডেল উচ্চ বিদ্যালয়) আপনাদের স্বাগতম। ১৯৫৮ সাল থেকে আমাদের প্রতিষ্ঠান নৈতিক শিক্ষা, বিজ্ঞানমনস্কতা ও সহশিক্ষা কার্যক্রমে অগ্রণী ভূমিকা পালন করে আসছে। ডিজিটাল ক্লাসরুম, অনলাইন পরীক্ষা ও সমন্বিত পোর্টালের মাধ্যমে প্রতিটি শিক্ষার্থীকে যোগ্য বিশ্বনাগরিক হিসেবে গড়ে তোলাই আমাদের লক্ষ্য।',
-    en: 'Dear Students, Guardians, and Alumni — welcome to RBMB Digital Campus (Rani Bazar Model High School). Since 1958, our institution has championed moral values, scientific curiosity, and co-curricular excellence. Through smart classrooms, online assessments, and unified portals, we empower every learner for tomorrow.',
+    bn: 'সুপ্রিয় শিক্ষার্থী, অভিভাবক ও প্রাক্তন শিক্ষার্থীবৃন্দ — আরবিএমবি ডিজিটাল ক্যাম্পাসে (রাণীর বাজার মাধ্যমিক বিদ্যালয়) আপনাদের স্বাগতম। ১৯৫৮ সাল থেকে আমাদের প্রতিষ্ঠান নৈতিক শিক্ষা, বিজ্ঞানমনস্কতা ও সহশিক্ষা কার্যক্রমে অগ্রণী ভূমিকা পালন করে আসছে। ডিজিটাল ক্লাসরুম, অনলাইন পরীক্ষা ও সমন্বিত পোর্টালের মাধ্যমে প্রতিটি শিক্ষার্থীকে যোগ্য বিশ্বনাগরিক হিসেবে গড়ে তোলাই আমাদের লক্ষ্য।',
+    en: 'Dear Students, Guardians, and Alumni — welcome to RBMB Digital Campus (Ranir Bazar Secondary High School). Since 1958, our institution has championed moral values, scientific curiosity, and co-curricular excellence. Through smart classrooms, online assessments, and unified portals, we empower every learner for tomorrow.',
   },
   headTeacherPhoto: headTeacherImg,
   latitude: 23.2248,
@@ -250,8 +250,8 @@ export const INITIAL_NEWS: NewsArticle[] = [
       en: 'Integrated student, teacher, and parent portals alongside online MCQ assessments and digital library resources are now live.',
     },
     content: {
-      bn: 'রাণীর বাজার মডেল উচ্চ বিদ্যালয়ের একাডেমিক কার্যক্রম আরও গতিশীল ও স্বচ্ছ করতে আরবিএমবি ডিজিটাল ক্যাম্পাস চালু করা হয়েছে। শিক্ষার্থীরা এখন থেকে ঘরে বসেই পাঠ্যবই, নোট, অনলাইন পরীক্ষা ও ফলাফল দেখতে পারবে।',
-      en: 'To modernize classroom administration and self-paced learning, Rani Bazar Model High School has rolled out RBMB Digital Campus. Learners can access textbooks, chapter notes, timed MCQ exams, and attendance updates from any device.',
+      bn: 'রাণীর বাজার মাধ্যমিক বিদ্যালয়ের একাডেমিক কার্যক্রম আরও গতিশীল ও স্বচ্ছ করতে আরবিএমবি ডিজিটাল ক্যাম্পাস চালু করা হয়েছে। শিক্ষার্থীরা এখন থেকে ঘরে বসেই পাঠ্যবই, নোট, অনলাইন পরীক্ষা ও ফলাফল দেখতে পারবে।',
+      en: 'To modernize classroom administration and self-paced learning, Ranir Bazar Secondary High School has rolled out RBMB Digital Campus. Learners can access textbooks, chapter notes, timed MCQ exams, and attendance updates from any device.',
     },
     category: 'Academic',
     date: '2026-06-10',
@@ -751,15 +751,15 @@ export const HOLIDAYS_2026: Holiday[] = [
 ];
 
 export const INITIAL_STUDENTS: SchoolStudent[] = [
-  { id: 'st-6-1', roll: '01', name: 'সাদিয়া আফরিন (Sadia Afrin)', classId: '6', section: 'A', guardianMobile: '01711-223344' },
-  { id: 'st-6-2', roll: '02', name: 'রাফি আহমেদ (Rafi Ahmed)', classId: '6', section: 'A', guardianMobile: '01811-334455' },
-  { id: 'st-7-1', roll: '01', name: 'তাসনিম তাবাসসুম (Tasnim Tabassum)', classId: '7', section: 'A', guardianMobile: '01911-445566' },
-  { id: 'st-8-1', roll: '01', name: 'মাহফুজ রহমান (Mahfuz Rahman)', classId: '8', section: 'A', guardianMobile: '01611-556677' },
-  { id: 'st-9-1', roll: '01', name: 'আরিয়ান করিম (Aryan Karim)', classId: '9', section: 'Science', guardianMobile: '01712-667788' },
-  { id: 'st-9-2', roll: '02', name: 'নুসরাত জাহান (Nusrat Jahan)', classId: '9', section: 'Science', guardianMobile: '01715-778899' },
-  { id: 'st-9-3', roll: '03', name: 'তামিম ইকবাল (Tamim Iqbal)', classId: '9', section: 'Commerce', guardianMobile: '01815-889900' },
-  { id: 'st-10-1', roll: '01', name: 'জাহিদুল ইসলাম (Jahidul Islam)', classId: '10', section: 'Science', guardianMobile: '01700-112233' },
-  { id: 'st-10-2', roll: '02', name: 'সুমাইয়া আক্তার (Sumaiya Akter)', classId: '10', section: 'Science', guardianMobile: '01700-445566' },
+  { id: 'st-6-1', roll: '01', name: 'সাদিয়া আফরিন (Sadia Afrin)', classId: '6', section: 'A', guardianMobile: '01711-223344', session: '2026', registrationNo: 'RBMB-REG-2026-0601' },
+  { id: 'st-6-2', roll: '02', name: 'রাফি আহমেদ (Rafi Ahmed)', classId: '6', section: 'A', guardianMobile: '01811-334455', session: '2026', registrationNo: 'RBMB-REG-2026-0602' },
+  { id: 'st-7-1', roll: '01', name: 'তাসনিম তাবাসসুম (Tasnim Tabassum)', classId: '7', section: 'A', guardianMobile: '01911-445566', session: '2026', registrationNo: 'RBMB-REG-2026-0701' },
+  { id: 'st-8-1', roll: '01', name: 'মাহফুজ রহমান (Mahfuz Rahman)', classId: '8', section: 'A', guardianMobile: '01611-556677', session: '2026', registrationNo: 'RBMB-REG-2026-0801' },
+  { id: 'st-9-1', roll: '01', name: 'আরিয়ান করিম (Aryan Karim)', classId: '9', section: 'Science', guardianName: 'মোঃ করিম উদ্দিন', guardianMobile: '01712-667788', session: '2026', registrationNo: 'RBMB-REG-2026-0901' },
+  { id: 'st-9-2', roll: '02', name: 'নুসরাত জাহান (Nusrat Jahan)', classId: '9', section: 'Science', guardianMobile: '01715-778899', session: '2026', registrationNo: 'RBMB-REG-2026-0902' },
+  { id: 'st-9-3', roll: '03', name: 'তামিম ইকবাল (Tamim Iqbal)', classId: '9', section: 'Commerce', guardianMobile: '01815-889900', session: '2026', registrationNo: 'RBMB-REG-2026-0903' },
+  { id: 'st-10-1', roll: '01', name: 'জাহিদুল ইসলাম (Jahidul Islam)', classId: '10', section: 'Science', guardianMobile: '01700-112233', session: '2026', registrationNo: 'RBMB-REG-2026-1001' },
+  { id: 'st-10-2', roll: '02', name: 'সুমাইয়া আক্তার (Sumaiya Akter)', classId: '10', section: 'Science', guardianMobile: '01700-445566', session: '2026', registrationNo: 'RBMB-REG-2026-1002' },
 ];
 
 export const INITIAL_HOMEWORK: HomeworkItem[] = [

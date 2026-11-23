@@ -12,7 +12,6 @@ import {
   MapPin,
   ExternalLink,
   ShieldCheck,
-  ShieldAlert,
   User as UserIcon,
   ArrowRight,
   ClipboardCheck,
@@ -48,8 +47,8 @@ const Home: React.FC = () => {
 
     list.push({
       url: settings.schoolPhoto || heroCampusImg,
-      captionBn: 'রাণীর বাজার মডেল উচ্চ বিদ্যালয় · স্মার্ট ডিজিটাল শিক্ষা ও আধুনিক ক্যাম্পাস',
-      captionEn: 'Rani Bazar Model High School · Smart Digital Education & Connected Campus',
+      captionBn: 'রাণীর বাজার মাধ্যমিক বিদ্যালয় · স্মার্ট ডিজিটাল শিক্ষা ও আধুনিক ক্যাম্পাস',
+      captionEn: 'Ranir Bazar Secondary High School · Smart Digital Education & Connected Campus',
       eyebrowBn: 'আরবিএমবি ডিজিটাল ক্যাম্পাস · স্থাপিত ১৯৫৮',
       eyebrowEn: 'RBMB DIGITAL CAMPUS · EST. 1958',
     });
@@ -158,14 +157,6 @@ const Home: React.FC = () => {
       label: lang === 'bn' ? 'শিক্ষক পোর্টাল' : 'Teacher Portal',
       sub: lang === 'bn' ? 'পাঠদান, হাজিরা ও নম্বর প্রদান' : 'Teaching and management',
       path: '/login/teacher',
-    },
-    {
-      role: 'admin',
-      icon: ShieldAlert,
-      color: 'bg-slate-900 dark:bg-slate-700',
-      label: lang === 'bn' ? 'অ্যাডমিন প্যানেল' : 'Admin System',
-      sub: lang === 'bn' ? 'সম্পূর্ণ ক্যাম্পাস ও ভর্তি নিয়ন্ত্রণ' : 'Campus & user administration',
-      path: '/login/admin',
     },
   ];
 
@@ -298,9 +289,9 @@ const Home: React.FC = () => {
         )}
       </section>
 
-      {/* 4 Role Portals */}
+      {/* 3 Role Portals */}
       <section className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 -mt-8 relative z-20">
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
           {portalCards.map((p) => (
             <Link
               key={p.role}

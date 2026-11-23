@@ -168,6 +168,7 @@ const Login: React.FC = () => {
     updateSettings,
     exportDatabase,
     importDatabase,
+    lastSyncError,
   } = useApp();
 
   const [activeTab, setActiveTab] = useState<'student' | 'teacher' | 'parent' | 'admin'>('student');
@@ -188,6 +189,7 @@ const Login: React.FC = () => {
   const [dbFeedback, setDbFeedback] = useState<{ ok: boolean; msg: string } | null>(null);
   const [tempImage, setTempImage] = useState('');
   const [showSaveSuccess, setShowSaveSuccess] = useState(false);
+  const [settingsError, setSettingsError] = useState('');
   const [adminToast, setAdminToast] = useState('');
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const [editingItem, setEditingItem] = useState<any>(null);
@@ -195,6 +197,7 @@ const Login: React.FC = () => {
   const [adminCardMode, setAdminCardMode] = useState<CardMode>('admit');
   const [cardClassFilter, setCardClassFilter] = useState<string>('all');
   const [cardSearch, setCardSearch] = useState<string>('');
+  const [adminAdmitTerm, setAdminAdmitTerm] = useState<string>(EXAM_TERMS[1]?.id || EXAM_TERMS[0]?.id || 'Half-Yearly Exam 2026');
   const [adminTeacherCard, setAdminTeacherCard] = useState<{ teacher: Teacher; index: number } | null>(null);
 
   const todayStr = new Date().toISOString().split('T')[0];
@@ -450,7 +453,7 @@ const Login: React.FC = () => {
     setError('');
     setAuthNotice('');
     setNeedsVerification(false);
-    setUserId(`${role}01`);
+    setUserId(role === 'student' ? 'RBMB-REG-2026-0901' : `${role}01`);
     setPassword('123456');
   };
 
@@ -465,16 +468,26 @@ const Login: React.FC = () => {
 
     if (identifier.includes('@')) {
       const res = await signInWithEmail(identifier, password);
-      setIsSubmitting(false);
       if (res.ok) {
+        setIsSubmitting(false);
         navigate('/dashboard');
-      } else {
-        if (res.needsVerification) setNeedsVerification(true);
-        setError(
-          res.error ||
-            (lang === 'bn' ? 'ইমেইল বা পাসওয়ার্ড সঠিক নয়।' : 'Invalid email or password.')
-        );
+        return;
       }
+      if (!res.needsVerification && activeTab !== 'admin') {
+        const localEmailMatch = await verifyLocalCredentials(identifier, password, activeTab);
+        if (localEmailMatch) {
+          setIsSubmitting(false);
+          login(localEmailMatch);
+          navigate('/dashboard');
+          return;
+        }
+      }
+      setIsSubmitting(false);
+      if (res.needsVerification) setNeedsVerification(true);
+      setError(
+        res.error ||
+          (lang === 'bn' ? 'ইমেইল বা পাসওয়ার্ড সঠিক নয়।' : 'Invalid email or password.')
+      );
       return;
     }
 
@@ -496,9 +509,13 @@ const Login: React.FC = () => {
       navigate('/dashboard');
     } else {
       setError(
-        lang === 'bn'
-          ? 'ভুল আইডি বা পাসওয়ার্ড অথবা ভুল রোল ট্যাব!'
-          : 'Invalid ID/password for the selected portal role.'
+        activeTab === 'student'
+          ? lang === 'bn'
+            ? 'ভুল রেজিস্ট্রেশন নম্বর বা পাসওয়ার্ড! সঠিক রেজিস্ট্রেশন নম্বর (যেমন: RBMB-REG-2026-0901) ও পাসওয়ার্ড দিন।'
+            : 'Invalid Registration Number or password for Student Portal.'
+          : lang === 'bn'
+          ? 'ভুল আইডি/মোবাইল বা পাসওয়ার্ড অথবা ভুল রোল ট্যাব!'
+          : 'Invalid ID/mobile or password for the selected portal role.'
       );
     }
   };
@@ -662,9 +679,10 @@ const Login: React.FC = () => {
     }
   };
 
-  const handleSaveSettings = (e: React.FormEvent) => {
+  const handleSaveSettings = async (e: React.FormEvent) => {
     e.preventDefault();
-    updateSettings({
+    setSettingsError('');
+    const ok = await updateSettings({
       name: { bn: systemForm.nameBn, en: systemForm.nameEn },
       eiin: systemForm.eiin,
       phone: systemForm.phone,
@@ -677,8 +695,16 @@ const Login: React.FC = () => {
       latitude: Number(systemForm.latitude) || 23.2248,
       longitude: Number(systemForm.longitude) || 91.3185,
     });
-    setShowSaveSuccess(true);
-    setTimeout(() => setShowSaveSuccess(false), 2000);
+    if (ok) {
+      setShowSaveSuccess(true);
+      setTimeout(() => setShowSaveSuccess(false), 2500);
+    } else {
+      setSettingsError(
+        lang === 'bn'
+          ? 'লোকালে সেভ হয়েছে, তবে ক্লাউড সিঙ্ক ব্যর্থ হয়েছে। আপনার ইমেজ সাইজ বা ইন্টারনেট যাচাই করুন।'
+          : 'Saved locally, but cloud sync failed. Please verify connection and field limits.'
+      );
+    }
   };
 
   if (user) {
@@ -1939,122 +1965,270 @@ const Login: React.FC = () => {
                   </div>
                 )}
 
-                {managementTab === 'cards' && (
-                  <div className="space-y-4">
-                    <div className="flex flex-wrap items-center justify-between gap-3 bg-slate-50 dark:bg-slate-800/70 p-4 rounded-2xl border border-slate-200 dark:border-slate-700">
-                      <div className="flex flex-wrap items-center gap-2.5">
-                        <select
-                          value={cardClassFilter}
-                          onChange={(e) => setCardClassFilter(e.target.value)}
-                          className="px-3.5 py-2 rounded-xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 text-xs font-bold"
-                        >
-                          <option value="all">{lang === 'bn' ? 'সকল শ্রেণী (৬ষ্ঠ–১০ম)' : 'All Classes (6–10)'}</option>
-                          {['6', '7', '8', '9', '10'].map((c) => (
-                            <option key={c} value={c}>Class {c}</option>
-                          ))}
-                        </select>
-                        <input
-                          value={cardSearch}
-                          onChange={(e) => setCardSearch(e.target.value)}
-                          placeholder={lang === 'bn' ? 'নাম বা রোল দিয়ে খুঁজুন...' : 'Search by name or roll...'}
-                          className="px-3.5 py-2 rounded-xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 text-xs font-semibold min-w-[200px]"
-                        />
-                      </div>
+                {managementTab === 'cards' && (() => {
+                  const getStudentDue = (st: SchoolStudent) =>
+                    feeRecords
+                      .filter((f) => f.classId === st.classId && f.roll.trim() === st.roll.trim())
+                      .reduce((sum, f) => (f.status === 'waived' ? sum : sum + Math.max(0, f.amount - f.paidAmount)), 0);
 
-                      <div className="flex flex-wrap gap-2">
-                        {teachers.length > 0 && (
-                          <button
-                            type="button"
-                            onClick={() => setAdminTeacherCard({ teacher: teachers[0], index: 0 })}
-                            className="px-3.5 py-2 rounded-xl bg-white dark:bg-slate-900 border border-emerald-300 dark:border-emerald-700 hover:bg-emerald-50 text-emerald-800 dark:text-emerald-300 text-xs font-bold inline-flex items-center gap-1.5"
-                          >
-                            <IdCard className="w-3.5 h-3.5" />
-                            {lang === 'bn' ? `শিক্ষক আইডি কার্ড (${teachers.length})` : `Teacher ID Cards (${teachers.length})`}
-                          </button>
-                        )}
-                        {(() => {
-                          const filtered = students.filter(
-                            (st) =>
-                              (cardClassFilter === 'all' || st.classId === cardClassFilter) &&
-                              (!cardSearch.trim() ||
-                                st.name.toLowerCase().includes(cardSearch.trim().toLowerCase()) ||
-                                st.roll.toLowerCase().includes(cardSearch.trim().toLowerCase()))
-                          );
-                          if (filtered.length === 0) return null;
-                          return (
-                            <button
-                              type="button"
-                              onClick={() => {
-                                setAdminCardMode('admit');
-                                setAdminCardStudent(filtered[0]);
-                              }}
-                              className="px-3.5 py-2 rounded-xl bg-emerald-700 hover:bg-emerald-800 text-white text-xs font-bold inline-flex items-center gap-1.5"
+                  const filteredCardStudents = students.filter(
+                    (st) =>
+                      (cardClassFilter === 'all' || st.classId === cardClassFilter) &&
+                      (!cardSearch.trim() ||
+                        st.name.toLowerCase().includes(cardSearch.trim().toLowerCase()) ||
+                        st.roll.toLowerCase().includes(cardSearch.trim().toLowerCase()))
+                  );
+
+                  const handleApproveAllPaid = () => {
+                    let approvedCount = 0;
+                    let unpaidSkipped = 0;
+                    filteredCardStudents.forEach((st) => {
+                      const due = getStudentDue(st);
+                      if (due > 0) {
+                        unpaidSkipped += 1;
+                      } else if (!st.admitCardApproved) {
+                        approvedCount += 1;
+                        updateStudent({
+                          ...st,
+                          admitCardApproved: true,
+                          admitCardTerm: adminAdmitTerm,
+                          admitCardApprovedAt: todayStr,
+                        });
+                      }
+                    });
+                    notifyAdmin(
+                      lang === 'bn'
+                        ? `${approvedCount} জন পরিশোধিত শিক্ষার্থীর অ্যাডমিট কার্ড অনুমোদন হয়েছে (বকেয়া থাকায় ${unpaidSkipped} জন স্থগিত)।`
+                        : `Approved ${approvedCount} paid students (${unpaidSkipped} unpaid skipped).`
+                    );
+                  };
+
+                  const handleRevokeAllAdmit = () => {
+                    let revokedCount = 0;
+                    filteredCardStudents.forEach((st) => {
+                      if (st.admitCardApproved) {
+                        revokedCount += 1;
+                        updateStudent({
+                          ...st,
+                          admitCardApproved: false,
+                        });
+                      }
+                    });
+                    notifyAdmin(
+                      lang === 'bn'
+                        ? `${revokedCount} জন শিক্ষার্থীর অ্যাডমিট কার্ড অনুমোদন প্রত্যাহার করা হয়েছে।`
+                        : `Revoked Admit Card approval for ${revokedCount} students.`
+                    );
+                  };
+
+                  return (
+                    <div className="space-y-4">
+                      <div className="flex flex-col gap-3 bg-slate-50 dark:bg-slate-800/70 p-4 rounded-2xl border border-slate-200 dark:border-slate-700">
+                        <div className="flex flex-wrap items-center justify-between gap-3">
+                          <div className="flex flex-wrap items-center gap-2.5">
+                            <select
+                              value={cardClassFilter}
+                              onChange={(e) => setCardClassFilter(e.target.value)}
+                              className="px-3.5 py-2 rounded-xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 text-xs font-bold"
                             >
-                              <ClipboardList className="w-3.5 h-3.5" />
-                              {lang === 'bn' ? `সব অ্যাডমিট (${filtered.length})` : `Open Batch Cards (${filtered.length})`}
-                            </button>
-                          );
-                        })()}
-                      </div>
-                    </div>
+                              <option value="all">{lang === 'bn' ? 'সকল শ্রেণী (৬ষ্ঠ–১০ম)' : 'All Classes (6–10)'}</option>
+                              {['6', '7', '8', '9', '10'].map((c) => (
+                                <option key={c} value={c}>Class {c}</option>
+                              ))}
+                            </select>
+                            <input
+                              value={cardSearch}
+                              onChange={(e) => setCardSearch(e.target.value)}
+                              placeholder={lang === 'bn' ? 'নাম বা রোল দিয়ে খুঁজুন...' : 'Search by name or roll...'}
+                              className="px-3.5 py-2 rounded-xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 text-xs font-semibold min-w-[200px]"
+                            />
+                            <select
+                              value={adminAdmitTerm}
+                              onChange={(e) => setAdminAdmitTerm(e.target.value)}
+                              className="px-3.5 py-2 rounded-xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 text-xs font-bold"
+                            >
+                              {EXAM_TERMS.map((term) => (
+                                <option key={term.id} value={term.id}>{lang === 'bn' ? term.bn : term.en}</option>
+                              ))}
+                            </select>
+                          </div>
 
-                    <div className="divide-y divide-slate-200 dark:divide-slate-800 rounded-2xl border border-slate-200 dark:border-slate-800 overflow-hidden bg-white dark:bg-slate-900">
-                      {students
-                        .filter(
-                          (st) =>
-                            (cardClassFilter === 'all' || st.classId === cardClassFilter) &&
-                            (!cardSearch.trim() ||
-                              st.name.toLowerCase().includes(cardSearch.trim().toLowerCase()) ||
-                              st.roll.toLowerCase().includes(cardSearch.trim().toLowerCase()))
-                        )
-                        .map((st) => (
-                          <div key={st.id} className="p-4 flex flex-wrap items-center justify-between gap-3 text-xs">
-                            <div>
-                              <p className="font-extrabold text-sm text-slate-900 dark:text-white">
-                                #{st.roll} · {st.name}
-                              </p>
-                              <p className="text-slate-500 dark:text-slate-400 font-semibold mt-0.5 tabular-nums">
-                                Class {st.classId} · Section {st.section} · Mobile: {st.guardianMobile}
-                                {st.guardianName ? ` · Guardian: ${st.guardianName}` : ''}
-                              </p>
-                            </div>
-                            <div className="flex flex-wrap items-center gap-1.5">
+                          <div className="flex flex-wrap gap-2">
+                            {teachers.length > 0 && (
+                              <button
+                                type="button"
+                                onClick={() => setAdminTeacherCard({ teacher: teachers[0], index: 0 })}
+                                className="px-3.5 py-2 rounded-xl bg-white dark:bg-slate-900 border border-emerald-300 dark:border-emerald-700 hover:bg-emerald-50 text-emerald-800 dark:text-emerald-300 text-xs font-bold inline-flex items-center gap-1.5"
+                              >
+                                <IdCard className="w-3.5 h-3.5" />
+                                {lang === 'bn' ? `শিক্ষক আইডি কার্ড (${teachers.length})` : `Teacher ID Cards (${teachers.length})`}
+                              </button>
+                            )}
+                            {filteredCardStudents.length > 0 && (
                               <button
                                 type="button"
                                 onClick={() => {
                                   setAdminCardMode('admit');
-                                  setAdminCardStudent(st);
+                                  setAdminCardStudent(filteredCardStudents[0]);
                                 }}
-                                className="px-3 py-1.5 rounded-lg bg-emerald-700 hover:bg-emerald-800 text-white font-bold inline-flex items-center gap-1"
+                                className="px-3.5 py-2 rounded-xl bg-slate-800 hover:bg-slate-900 text-white text-xs font-bold inline-flex items-center gap-1.5"
                               >
-                                <ClipboardList className="w-3.5 h-3.5" /> Admit Card
+                                <ClipboardList className="w-3.5 h-3.5" />
+                                {lang === 'bn' ? `ব্যাচ প্রিভিউ (${filteredCardStudents.length})` : `Batch Preview (${filteredCardStudents.length})`}
                               </button>
-                              <button
-                                type="button"
-                                onClick={() => {
-                                  setAdminCardMode('reg');
-                                  setAdminCardStudent(st);
-                                }}
-                                className="px-3 py-1.5 rounded-lg bg-slate-100 dark:bg-slate-800 hover:bg-emerald-50 text-slate-800 dark:text-slate-200 border border-slate-200 dark:border-slate-700 font-bold inline-flex items-center gap-1"
-                              >
-                                <FileBadge2 className="w-3.5 h-3.5 text-emerald-700" /> Reg Card
-                              </button>
-                              <button
-                                type="button"
-                                onClick={() => {
-                                  setAdminCardMode('id');
-                                  setAdminCardStudent(st);
-                                }}
-                                className="px-3 py-1.5 rounded-lg bg-slate-100 dark:bg-slate-800 hover:bg-emerald-50 text-slate-800 dark:text-slate-200 border border-slate-200 dark:border-slate-700 font-bold inline-flex items-center gap-1"
-                              >
-                                <IdCard className="w-3.5 h-3.5 text-emerald-700" /> ID Card
-                              </button>
-                            </div>
+                            )}
                           </div>
-                        ))}
+                        </div>
+
+                        <div className="flex flex-wrap items-center justify-between gap-2 pt-2.5 border-t border-slate-200 dark:border-slate-700 text-xs">
+                          <span className="text-slate-600 dark:text-slate-300 font-semibold">
+                            {lang === 'bn'
+                              ? 'শুধুমাত্র সম্পূর্ণ ফি পরিশোধিত শিক্ষার্থীর অ্যাডমিট কার্ড অনুমোদন করা যাবে।'
+                              : 'Admit Cards can only be approved for students with zero due balance.'}
+                          </span>
+                          <div className="flex flex-wrap gap-2">
+                            <button
+                              type="button"
+                              onClick={handleApproveAllPaid}
+                              className="px-3.5 py-2 rounded-xl bg-emerald-700 hover:bg-emerald-800 text-white font-extrabold inline-flex items-center gap-1.5"
+                            >
+                              <CheckCircle className="w-3.5 h-3.5" />
+                              {lang === 'bn' ? 'সব পরিশোধিত অ্যাডমিট অনুমোদন' : 'Approve All Paid'}
+                            </button>
+                            <button
+                              type="button"
+                              onClick={handleRevokeAllAdmit}
+                              className="px-3.5 py-2 rounded-xl bg-amber-100 hover:bg-amber-200 text-amber-900 font-extrabold inline-flex items-center gap-1.5"
+                            >
+                              <RotateCcw className="w-3.5 h-3.5" />
+                              {lang === 'bn' ? 'অনুমোদন প্রত্যাহার' : 'Revoke All'}
+                            </button>
+                          </div>
+                        </div>
+                      </div>
+
+                      <div className="divide-y divide-slate-200 dark:divide-slate-800 rounded-2xl border border-slate-200 dark:border-slate-800 overflow-hidden bg-white dark:bg-slate-900">
+                        {filteredCardStudents.map((st) => {
+                          const due = getStudentDue(st);
+                          const isPaid = due <= 0;
+                          const isApproved = Boolean(st.admitCardApproved);
+                          return (
+                            <div key={st.id} className="p-4 flex flex-wrap items-center justify-between gap-3 text-xs">
+                              <div className="space-y-1">
+                                <div className="flex flex-wrap items-center gap-2">
+                                  <p className="font-extrabold text-sm text-slate-900 dark:text-white">
+                                    #{st.roll} · {st.name}
+                                  </p>
+                                  <span
+                                    className={`px-2 py-0.5 rounded-md text-[10px] font-black uppercase ${
+                                      isPaid
+                                        ? 'bg-emerald-100 text-emerald-800 dark:bg-emerald-950 dark:text-emerald-300'
+                                        : 'bg-red-100 text-red-700 dark:bg-red-950 dark:text-red-300'
+                                    }`}
+                                  >
+                                    {isPaid
+                                      ? lang === 'bn' ? 'ফি পরিশোধিত' : 'Fees Paid'
+                                      : lang === 'bn' ? `বকেয়া ৳${due.toLocaleString()}` : `Due ৳${due.toLocaleString()}`}
+                                  </span>
+                                  <span
+                                    className={`px-2 py-0.5 rounded-md text-[10px] font-black uppercase ${
+                                      isApproved && isPaid
+                                        ? 'bg-emerald-700 text-white'
+                                        : 'bg-amber-100 text-amber-800 dark:bg-amber-950 dark:text-amber-300'
+                                    }`}
+                                  >
+                                    {isApproved && isPaid
+                                      ? lang === 'bn' ? 'অ্যাডমিট অনুমোদিত' : 'Admit Approved'
+                                      : !isPaid
+                                      ? lang === 'bn' ? 'বকেয়া লক' : 'Payment Locked'
+                                      : lang === 'bn' ? 'অনুমোদনের অপেক্ষায়' : 'Pending Approval'}
+                                  </span>
+                                </div>
+                                <p className="text-slate-500 dark:text-slate-400 font-semibold tabular-nums">
+                                  Class {st.classId} · Section {st.section} · Mobile: {st.guardianMobile}
+                                  {st.guardianName ? ` · Guardian: ${st.guardianName}` : ''}
+                                </p>
+                              </div>
+                              <div className="flex flex-wrap items-center gap-1.5">
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    if (!isApproved && !isPaid) {
+                                      notifyAdmin(
+                                        lang === 'bn'
+                                          ? `${st.name}-এর ৳${due.toLocaleString()} ফি বকেয়া থাকায় অ্যাডমিট অনুমোদন করা যাবে না।`
+                                          : `Cannot approve ${st.name}: ৳${due.toLocaleString()} fee due remains.`
+                                      );
+                                      return;
+                                    }
+                                    updateStudent({
+                                      ...st,
+                                      admitCardApproved: !isApproved,
+                                      admitCardTerm: adminAdmitTerm,
+                                      admitCardApprovedAt: todayStr,
+                                    });
+                                    notifyAdmin(
+                                      !isApproved
+                                        ? lang === 'bn'
+                                          ? `${st.name}-এর অ্যাডমিট কার্ড অনুমোদন হয়েছে!`
+                                          : `Admit Card approved for ${st.name}!`
+                                        : lang === 'bn'
+                                        ? `${st.name}-এর অ্যাডমিট কার্ড অনুমোদন প্রত্যাহার হয়েছে।`
+                                        : `Admit Card revoked for ${st.name}.`
+                                    );
+                                  }}
+                                  className={`px-3 py-1.5 rounded-lg font-extrabold inline-flex items-center gap-1 ${
+                                    isApproved && isPaid
+                                      ? 'bg-amber-100 hover:bg-amber-200 text-amber-900'
+                                      : isPaid
+                                      ? 'bg-emerald-700 hover:bg-emerald-800 text-white'
+                                      : 'bg-slate-200 dark:bg-slate-800 text-slate-500 cursor-not-allowed'
+                                  }`}
+                                >
+                                  {isApproved && isPaid ? (
+                                    <>{lang === 'bn' ? 'প্রত্যাহার' : 'Revoke'}</>
+                                  ) : (
+                                    <>{lang === 'bn' ? 'অ্যাডমিট অনুমোদন' : 'Approve Admit'}</>
+                                  )}
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    setAdminCardMode('admit');
+                                    setAdminCardStudent(st);
+                                  }}
+                                  className="px-3 py-1.5 rounded-lg bg-slate-100 dark:bg-slate-800 hover:bg-emerald-50 text-slate-800 dark:text-slate-200 border border-slate-200 dark:border-slate-700 font-bold inline-flex items-center gap-1"
+                                >
+                                  <ClipboardList className="w-3.5 h-3.5 text-emerald-700" /> Admit
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    setAdminCardMode('reg');
+                                    setAdminCardStudent(st);
+                                  }}
+                                  className="px-3 py-1.5 rounded-lg bg-slate-100 dark:bg-slate-800 hover:bg-emerald-50 text-slate-800 dark:text-slate-200 border border-slate-200 dark:border-slate-700 font-bold inline-flex items-center gap-1"
+                                >
+                                  <FileBadge2 className="w-3.5 h-3.5 text-emerald-700" /> Reg
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    setAdminCardMode('id');
+                                    setAdminCardStudent(st);
+                                  }}
+                                  className="px-3 py-1.5 rounded-lg bg-slate-100 dark:bg-slate-800 hover:bg-emerald-50 text-slate-800 dark:text-slate-200 border border-slate-200 dark:border-slate-700 font-bold inline-flex items-center gap-1"
+                                >
+                                  <IdCard className="w-3.5 h-3.5 text-emerald-700" /> ID
+                                </button>
+                              </div>
+                            </div>
+                          );
+                        })}
+                      </div>
                     </div>
-                  </div>
-                )}
+                  );
+                })()}
 
                 {managementTab === 'system' && (
                   <form onSubmit={handleSaveSettings} className="grid sm:grid-cols-2 gap-4 bg-slate-50 dark:bg-slate-800 p-6 rounded-3xl">
@@ -2109,11 +2283,16 @@ const Login: React.FC = () => {
                       />
                     </div>
 
-                    <div className="flex items-center gap-3">
+                    <div className="flex flex-wrap items-center gap-3">
                       <button type="submit" className="px-6 py-3 rounded-xl bg-emerald-700 text-white text-xs font-bold flex items-center gap-2">
                         <Save className="w-4 h-4" /> Save Settings
                       </button>
                       {showSaveSuccess && <span className="text-xs font-bold text-emerald-600 flex items-center gap-1"><CheckCircle className="w-4 h-4" /> Saved!</span>}
+                      {(settingsError || lastSyncError) && (
+                        <span className="text-xs font-bold text-amber-700 dark:text-amber-400">
+                          {settingsError || lastSyncError}
+                        </span>
+                      )}
                     </div>
                   </form>
                 )}
@@ -2225,6 +2404,8 @@ const Login: React.FC = () => {
             photoUrl={adminCardStudent.photo}
             registrationDate={adminCardStudent.registrationDate}
             session={adminCardStudent.session}
+            cardIssueDate={adminCardStudent.cardIssueDate}
+            cardValidUpto={adminCardStudent.cardValidUpto}
             initialMode={adminCardMode}
             rosterStudents={students.filter(
               (s) => cardClassFilter === 'all' || s.classId === cardClassFilter
@@ -2240,7 +2421,10 @@ const Login: React.FC = () => {
                 photo: updates.photo ?? target.photo,
                 registrationDate: updates.registrationDate ?? target.registrationDate,
                 session: updates.session ?? target.session,
+                cardIssueDate: updates.cardIssueDate ?? target.cardIssueDate,
+                cardValidUpto: updates.cardValidUpto ?? target.cardValidUpto,
               });
+              notifyAdmin(lang === 'bn' ? 'শিক্ষার্থীর কার্ডের তথ্য সেভ হয়েছে!' : 'Student card details saved!');
             }}
           />
         )}
@@ -2251,6 +2435,21 @@ const Login: React.FC = () => {
             teacher={adminTeacherCard.teacher}
             teacherIndex={adminTeacherCard.index}
             allTeachers={teachers}
+            onSaveProfile={(updates) => {
+              const target = teachers.find((tc) => tc.id === updates.id);
+              if (target) {
+                updateTeacher({
+                  ...target,
+                  teacherCode: updates.teacherCode,
+                  phone: updates.phone,
+                  bloodGroup: updates.bloodGroup,
+                  cardIssueDate: updates.issueDate,
+                  cardValidUpto: updates.validUpto,
+                  photo: updates.photo ?? target.photo,
+                });
+                notifyAdmin(lang === 'bn' ? 'শিক্ষকের আইডি কার্ডের তথ্য সেভ হয়েছে!' : 'Teacher ID Card details saved!');
+              }
+            }}
             onSavePhoto={(teacherId, photoDataUrl) => {
               const target = teachers.find((tc) => tc.id === teacherId);
               if (target) {
@@ -2264,47 +2463,61 @@ const Login: React.FC = () => {
     );
   }
 
+  const isAdminLoginRoute = location.pathname.toLowerCase().includes('/login/admin');
+
   return (
     <div className="min-h-[80vh] flex items-center justify-center px-4 py-12 bg-slate-50 dark:bg-slate-950">
       <div className="w-full max-w-md bg-white dark:bg-slate-900 rounded-3xl shadow-2xl border border-slate-200 dark:border-slate-800 overflow-hidden">
         <div className="p-8 pb-4 text-center">
-          <div className="inline-flex p-3.5 rounded-2xl bg-emerald-700 text-white shadow-lg mb-3">
-            <GraduationCap className="w-8 h-8" />
+          <div className={`inline-flex p-3.5 rounded-2xl text-white shadow-lg mb-3 ${isAdminLoginRoute ? 'bg-slate-900 dark:bg-slate-700' : 'bg-emerald-700'}`}>
+            {isAdminLoginRoute ? <ShieldAlert className="w-8 h-8" /> : <GraduationCap className="w-8 h-8" />}
           </div>
           <h1 className="text-2xl font-black text-slate-900 dark:text-white">
-            {lang === 'bn' ? 'পোর্টাল লগইন' : 'School Portal Login'}
+            {isAdminLoginRoute
+              ? lang === 'bn'
+                ? 'অ্যাডমিন প্যানেল লগইন'
+                : 'Admin Panel Login'
+              : lang === 'bn'
+              ? 'পোর্টাল লগইন'
+              : 'School Portal Login'}
           </h1>
           <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">
-            {lang === 'bn' ? 'আপনার পোর্টাল নির্বাচন করে প্রবেশ করুন' : 'Choose your portal role to continue'}
+            {isAdminLoginRoute
+              ? lang === 'bn'
+                ? 'অনুমোদিত অ্যাডমিনিস্ট্রেটর অ্যাকাউন্ট দিয়ে প্রবেশ করুন'
+                : 'Authorized school administrator access only'
+              : lang === 'bn'
+              ? 'শিক্ষার্থী, অভিভাবক বা শিক্ষক পোর্টাল নির্বাচন করে প্রবেশ করুন'
+              : 'Choose Student, Parent, or Teacher portal to sign in'}
           </p>
         </div>
 
-        {/* 4 Role Tabs: Student, Parent, Teacher, Admin */}
-        <div className="grid grid-cols-4 gap-1 bg-slate-100 dark:bg-slate-800 p-1 mx-6 rounded-2xl">
-          {(['student', 'parent', 'teacher', 'admin'] as const).map((role) => (
-            <button
-              key={role}
-              type="button"
-              onClick={() => {
-                setActiveTab(role);
-                setError('');
-              }}
-              className={`py-2.5 rounded-xl text-[11px] font-extrabold transition-all ${
-                activeTab === role
-                  ? 'bg-white dark:bg-slate-900 text-emerald-700 dark:text-emerald-300 shadow-sm'
-                  : 'text-slate-500 dark:text-slate-300'
-              }`}
-            >
-              {role === 'student'
-                ? t(TRANSLATIONS.login.studentTab)
-                : role === 'parent'
-                ? t(TRANSLATIONS.login.parentTab)
-                : role === 'teacher'
-                ? t(TRANSLATIONS.login.teacherTab)
-                : t(TRANSLATIONS.login.adminTab)}
-            </button>
-          ))}
-        </div>
+        {/* 3 Portal Tabs: Student, Parent, Teacher (Admin hidden from portals) */}
+        {!isAdminLoginRoute && (
+          <div className="grid grid-cols-3 gap-1 bg-slate-100 dark:bg-slate-800 p-1 mx-6 rounded-2xl">
+            {(['student', 'parent', 'teacher'] as const).map((role) => (
+              <button
+                key={role}
+                type="button"
+                onClick={() => {
+                  setActiveTab(role);
+                  setError('');
+                }}
+                className={`py-2.5 rounded-xl text-xs font-extrabold transition-all ${
+                  activeTab === role
+                    ? 'bg-white dark:bg-slate-900 text-emerald-700 dark:text-emerald-300 shadow-sm'
+                    : 'text-slate-500 dark:text-slate-300'
+                }`}
+              >
+                {role === 'student'
+                  ? t(TRANSLATIONS.login.studentTab)
+                  : role === 'parent'
+                  ? t(TRANSLATIONS.login.parentTab)
+                  : t(TRANSLATIONS.login.teacherTab)}
+              </button>
+            ))}
+          </div>
+        )}
 
         <form onSubmit={handleSubmit} className="p-8 pt-6 space-y-4">
           {error && (
@@ -2343,49 +2556,63 @@ const Login: React.FC = () => {
             </div>
           )}
 
-          {activeTab === 'admin' && (
-            <div className="p-4 rounded-2xl bg-emerald-50 dark:bg-emerald-950/50 border border-emerald-200 dark:border-emerald-800 space-y-3">
-              <div className="space-y-1">
-                <p className="text-xs font-extrabold text-emerald-900 dark:text-emerald-200">
-                  {lang === 'bn' ? 'Gmail দিয়ে ১-ক্লিক অ্যাডমিন লগইন' : '1-Click Admin Sign-In with Gmail'}
-                </p>
-                <p className="text-[11px] text-emerald-800/80 dark:text-emerald-300/90 leading-relaxed">
-                  {lang === 'bn'
-                    ? 'অনুমোদিত অ্যাডমিন Gmail (mdjahidulislam1025@gmail.com) দিয়ে পাসওয়ার্ড ছাড়াই সরাসরি প্রবেশ করুন:'
-                    : 'Sign in directly with your authorized Admin Gmail (mdjahidulislam1025@gmail.com):'}
-                </p>
+          {isAdminLoginRoute && (
+            <>
+              <div className="p-4 rounded-2xl bg-emerald-50 dark:bg-emerald-950/50 border border-emerald-200 dark:border-emerald-800 space-y-3">
+                <div className="space-y-1">
+                  <p className="text-xs font-extrabold text-emerald-900 dark:text-emerald-200">
+                    {lang === 'bn' ? 'Gmail দিয়ে ১-ক্লিক অ্যাডমিন লগইন' : '1-Click Admin Sign-In with Gmail'}
+                  </p>
+                  <p className="text-[11px] text-emerald-800/80 dark:text-emerald-300/90 leading-relaxed">
+                    {lang === 'bn'
+                      ? 'অনুমোদিত অ্যাডমিন Gmail (mdjahidulislam1025@gmail.com) দিয়ে পাসওয়ার্ড ছাড়াই সরাসরি প্রবেশ করুন:'
+                      : 'Sign in directly with your authorized Admin Gmail (mdjahidulislam1025@gmail.com):'}
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  disabled={isSubmitting}
+                  onClick={handleGoogleAuth}
+                  className="w-full py-3.5 px-4 rounded-xl bg-emerald-700 hover:bg-emerald-800 text-white text-xs font-extrabold flex items-center justify-center gap-2 shadow-md transition-all disabled:opacity-60"
+                >
+                  <ShieldCheck className="w-4 h-4" />
+                  {isSubmitting
+                    ? lang === 'bn'
+                      ? 'লগইন হচ্ছে...'
+                      : 'Signing in...'
+                    : lang === 'bn'
+                    ? 'Google (Gmail) দিয়ে অ্যাডমিন লগইন করুন'
+                    : 'Continue with Google (Admin Gmail)'}
+                </button>
               </div>
-              <button
-                type="button"
-                disabled={isSubmitting}
-                onClick={handleGoogleAuth}
-                className="w-full py-3.5 px-4 rounded-xl bg-emerald-700 hover:bg-emerald-800 text-white text-xs font-extrabold flex items-center justify-center gap-2 shadow-md transition-all disabled:opacity-60"
-              >
-                <ShieldCheck className="w-4 h-4" />
-                {isSubmitting
-                  ? lang === 'bn'
-                    ? 'লগইন হচ্ছে...'
-                    : 'Signing in...'
-                  : lang === 'bn'
-                  ? 'Google (Gmail) দিয়ে অ্যাডমিন লগইন করুন'
-                  : 'Continue with Google (Admin Gmail)'}
-              </button>
-            </div>
-          )}
 
-          {activeTab === 'admin' && (
-            <div className="flex items-center gap-3 py-1">
-              <div className="h-px flex-1 bg-slate-200 dark:bg-slate-800" />
-              <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400">
-                {lang === 'bn' ? 'অথবা ইমেইল ও পাসওয়ার্ড' : 'Or Email & Password'}
-              </span>
-              <div className="h-px flex-1 bg-slate-200 dark:bg-slate-800" />
-            </div>
+              <div className="flex items-center gap-3 py-1">
+                <div className="h-px flex-1 bg-slate-200 dark:bg-slate-800" />
+                <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400">
+                  {lang === 'bn' ? 'অথবা ইমেইল ও পাসওয়ার্ড' : 'Or Email & Password'}
+                </span>
+                <div className="h-px flex-1 bg-slate-200 dark:bg-slate-800" />
+              </div>
+            </>
           )}
 
           <div>
             <label className="text-xs font-bold text-slate-500">
-              {lang === 'bn' ? 'ইমেইল অথবা ইউজার আইডি' : 'Email or User ID'}
+              {isAdminLoginRoute
+                ? lang === 'bn'
+                  ? 'অ্যাডমিন ইমেইল'
+                  : 'Admin Email'
+                : activeTab === 'student'
+                ? lang === 'bn'
+                  ? 'রেজিস্ট্রেশন নম্বর (অথবা ইউজার আইডি)'
+                  : 'Registration Number (or User ID)'
+                : activeTab === 'teacher'
+                ? lang === 'bn'
+                  ? 'শিক্ষক আইডি, মোবাইল অথবা ইমেইল'
+                  : 'Teacher Code, Mobile or Email'
+                : lang === 'bn'
+                ? 'মোবাইল নম্বর অথবা ইমেইল'
+                : 'Mobile Number or Email'}
             </label>
             <div className="relative mt-1">
               <UserIcon className="w-4 h-4 text-slate-400 absolute left-3.5 top-1/2 -translate-y-1/2" />
@@ -2394,7 +2621,15 @@ const Login: React.FC = () => {
                 type="text"
                 value={userId}
                 onChange={(e) => setUserId(e.target.value)}
-                placeholder={activeTab === 'admin' ? 'mdjahidulislam1025@gmail.com' : `name@email.com or ${activeTab}01`}
+                placeholder={
+                  isAdminLoginRoute
+                    ? 'mdjahidulislam1025@gmail.com'
+                    : activeTab === 'student'
+                    ? 'RBMB-REG-2026-0901'
+                    : activeTab === 'teacher'
+                    ? 'RBMB-TCH-2026-001 or 01711...'
+                    : '01712-667788 or name@email.com'
+                }
                 className="w-full pl-10 pr-4 py-3 rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-sm font-semibold outline-none focus:ring-2 focus:ring-emerald-500"
               />
             </div>
@@ -2432,43 +2667,55 @@ const Login: React.FC = () => {
             {lang === 'bn' ? 'প্রবেশ করুন' : 'Sign In'} <ArrowRight className="w-4 h-4" />
           </button>
 
-          {activeTab !== 'admin' && (
-            <button
-              type="button"
-              disabled={isSubmitting}
-              onClick={handleGoogleAuth}
-              className="w-full py-3 rounded-xl border border-slate-200 dark:border-slate-700 hover:bg-slate-50 dark:hover:bg-slate-800 text-xs font-bold flex items-center justify-center gap-2"
-            >
-              <ShieldCheck className="w-4 h-4 text-emerald-600" />
-              {lang === 'bn' ? 'Google দিয়ে ক্লাউড লগইন' : 'Continue with Google Cloud'}
-            </button>
+          {!isAdminLoginRoute && (
+            <>
+              <button
+                type="button"
+                disabled={isSubmitting}
+                onClick={handleGoogleAuth}
+                className="w-full py-3 rounded-xl border border-slate-200 dark:border-slate-700 hover:bg-slate-50 dark:hover:bg-slate-800 text-xs font-bold flex items-center justify-center gap-2"
+              >
+                <ShieldCheck className="w-4 h-4 text-emerald-600" />
+                {lang === 'bn' ? 'Google দিয়ে ক্লাউড লগইন' : 'Continue with Google Cloud'}
+              </button>
+
+              {/* Non-admin Preview Helpers */}
+              <div className="pt-3 border-t border-slate-100 dark:border-slate-800 space-y-2">
+                <p className="text-[10px] font-bold uppercase text-center text-slate-400">
+                  {lang === 'bn' ? 'ডেমো পোর্টাল আইডি প্রিভিউ' : 'Demo Portal Preview'}
+                </p>
+                <div className="grid grid-cols-3 gap-1.5">
+                  {(['student', 'parent', 'teacher'] as const).map((r) => (
+                    <button
+                      key={r}
+                      type="button"
+                      onClick={() => handleQuickLogin(r)}
+                      className="py-1.5 rounded-lg bg-slate-100 dark:bg-slate-800 hover:bg-emerald-50 dark:hover:bg-emerald-950 text-[10px] font-extrabold capitalize text-slate-700 dark:text-slate-300"
+                    >
+                      {r === 'student'
+                        ? lang === 'bn'
+                          ? 'শিক্ষার্থী (Reg)'
+                          : 'Student'
+                        : r === 'parent'
+                        ? lang === 'bn'
+                          ? 'অভিভাবক'
+                          : 'Parent'
+                        : lang === 'bn'
+                        ? 'শিক্ষক'
+                        : 'Teacher'}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              <p className="text-center text-xs text-slate-500 pt-2">
+                {lang === 'bn' ? 'নতুন অ্যাকাউন্ট খুলতে চান?' : 'Need an account?'}{' '}
+                <Link to="/register" className="text-emerald-700 dark:text-emerald-400 font-bold hover:underline">
+                  {lang === 'bn' ? 'নিবন্ধন করুন' : 'Register Here'}
+                </Link>
+              </p>
+            </>
           )}
-
-          {/* Non-admin Preview Helpers */}
-          <div className="pt-3 border-t border-slate-100 dark:border-slate-800 space-y-2">
-            <p className="text-[10px] font-bold uppercase text-center text-slate-400">
-              {lang === 'bn' ? 'প্রিভিউ পোর্টাল আইডি' : 'Preview Non-Admin IDs'}
-            </p>
-            <div className="grid grid-cols-3 gap-1.5">
-              {(['student', 'parent', 'teacher'] as const).map((r) => (
-                <button
-                  key={r}
-                  type="button"
-                  onClick={() => handleQuickLogin(r)}
-                  className="py-1.5 rounded-lg bg-slate-100 dark:bg-slate-800 hover:bg-emerald-50 dark:hover:bg-emerald-950 text-[10px] font-extrabold capitalize text-slate-700 dark:text-slate-300"
-                >
-                  {r}
-                </button>
-              ))}
-            </div>
-          </div>
-
-          <p className="text-center text-xs text-slate-500 pt-2">
-            {lang === 'bn' ? 'নতুন অ্যাকাউন্ট খুলতে চান?' : 'Need an account?'}{' '}
-            <Link to="/register" className="text-emerald-700 dark:text-emerald-400 font-bold hover:underline">
-              {lang === 'bn' ? 'নিবন্ধন করুন' : 'Register Here'}
-            </Link>
-          </p>
         </form>
       </div>
     </div>

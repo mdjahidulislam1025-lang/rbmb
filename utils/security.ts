@@ -106,3 +106,32 @@ export function calculateOverallGpa(marks: ExamMark[]): { gpa: string; averagePc
     passedAll: true,
   };
 }
+
+export function normalizePhoneDigits(phone?: string | null): string {
+  if (!phone) return '';
+  let digits = String(phone).replace(/\D/g, '');
+  if (digits.startsWith('880') && digits.length === 13) {
+    digits = digits.slice(2);
+  }
+  return digits;
+}
+
+export function phonesMatch(a?: string | null, b?: string | null): boolean {
+  const da = normalizePhoneDigits(a);
+  const db = normalizePhoneDigits(b);
+  if (da.length < 6 || db.length < 6) return false;
+  if (da === db) return true;
+  if (da.length >= 10 && db.length >= 10) {
+    return da.slice(-10) === db.slice(-10);
+  }
+  return false;
+}
+
+export function buildStudentRegistrationNo(classId: string, roll: string, session = '2026'): string {
+  const cleanSession = (session || '2026').replace(/[^0-9]/g, '').slice(0, 4) || '2026';
+  const cleanClassDigits = String(classId || '6').replace(/[^0-9]/g, '').padStart(2, '0');
+  const numericRoll = String(roll || '01').replace(/[^0-9]/g, '');
+  const serialRoll = numericRoll ? numericRoll.padStart(2, '0') : String(roll || '01').trim().toUpperCase();
+  return `RBMB-REG-${cleanSession}-${cleanClassDigits}${serialRoll}`;
+}
+

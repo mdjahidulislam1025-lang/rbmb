@@ -137,14 +137,23 @@ export const TeacherPortal: React.FC = () => {
   const todayStr = new Date().toISOString().split('T')[0];
 
   const matchedTeacherIdx = useMemo(() => {
+    const uid = (user?.userId || '').trim().toLowerCase();
     const uName = (user?.name || '').trim().toLowerCase();
-    if (!uName) return -1;
-    return teachers.findIndex(
-      (tc) =>
-        tc.name.en.trim().toLowerCase() === uName ||
-        tc.name.bn.trim().toLowerCase() === uName
-    );
-  }, [teachers, user?.name]);
+    const uPhoneDigits = (user?.phone || '').replace(/\D/g, '').slice(-10);
+    return teachers.findIndex((tc) => {
+      if (uid && (tc.id.toLowerCase() === uid || tc.id.toLowerCase() === `tc-${uid}` || (tc.teacherCode || '').toLowerCase() === uid)) {
+        return true;
+      }
+      if (uPhoneDigits.length >= 6) {
+        const tDigits = (tc.phone || '').replace(/\D/g, '').slice(-10);
+        if (tDigits && tDigits === uPhoneDigits) return true;
+      }
+      if (uName && (tc.name.en.trim().toLowerCase() === uName || tc.name.bn.trim().toLowerCase() === uName)) {
+        return true;
+      }
+      return false;
+    });
+  }, [teachers, user?.userId, user?.name, user?.phone]);
 
   const resolvedTeacherCardProfile: Teacher = useMemo(() => {
     if (matchedTeacherIdx !== -1) {
@@ -153,17 +162,50 @@ export const TeacherPortal: React.FC = () => {
     }
     return {
       id: user?.userId || `t-${teachers.length + 1}`,
+      teacherCode: user?.userId?.startsWith('RBMB-') ? user.userId : undefined,
       name: { bn: user?.name || 'শিক্ষক', en: user?.name || 'Teacher' },
       designation: {
         bn: user?.designation || 'সহকারী শিক্ষক',
         en: user?.designation || 'Assistant Teacher',
       },
-      subject: { bn: 'সাধারণ বিভাগ', en: 'Faculty Member' },
-      qualification: { bn: 'আরবিএমবি ডিজিটাল ক্যাম্পাস', en: 'Rani Bazar Model High School' },
+      subject: {
+        bn: user?.subject || 'সাধারণ বিভাগ',
+        en: user?.subject || 'Faculty Member',
+      },
+      qualification: {
+        bn: user?.qualification || 'রাণীর বাজার মাধ্যমিক বিদ্যালয়',
+        en: user?.qualification || 'Ranir Bazar Secondary High School',
+      },
+      phone: user?.phone,
+      bloodGroup: user?.bloodGroup,
       photo: user?.photo || '',
       isPublic: true,
     };
   }, [matchedTeacherIdx, teachers, user]);
+
+  const myParentMessages = useMemo(() => {
+    const uid = (user?.userId || '').trim().toLowerCase();
+    const tId = (resolvedTeacherCardProfile.id || '').trim().toLowerCase();
+    const tCode = (resolvedTeacherCardProfile.teacherCode || '').trim().toLowerCase();
+    const tNameEn = (resolvedTeacherCardProfile.name?.en || '').trim().toLowerCase();
+    const tNameBn = (resolvedTeacherCardProfile.name?.bn || '').trim().toLowerCase();
+    const uName = (user?.name || '').trim().toLowerCase();
+
+    return parentMessages.filter((pm) => {
+      if (pm.recipientUid && uid && pm.recipientUid.trim().toLowerCase() === uid) {
+        return true;
+      }
+      const hasExplicitRecipient = Boolean(pm.recipientUid || pm.teacherId || pm.teacherCode);
+      if (hasExplicitRecipient) {
+        const matchId = Boolean(pm.teacherId && tId && pm.teacherId.trim().toLowerCase() === tId);
+        const matchUserId = Boolean(pm.teacherId && uid && pm.teacherId.trim().toLowerCase() === uid);
+        const matchCode = Boolean(pm.teacherCode && tCode && pm.teacherCode.trim().toLowerCase() === tCode);
+        return matchId || matchUserId || matchCode;
+      }
+      const pmTeacher = (pm.teacherName || '').trim().toLowerCase();
+      return Boolean(pmTeacher && (pmTeacher === tNameEn || pmTeacher === tNameBn || pmTeacher === uName));
+    });
+  }, [parentMessages, user?.userId, user?.name, resolvedTeacherCardProfile]);
 
   const openStudentCard = (st: SchoolStudent, mode: CardMode) => {
     setIdCardMode(mode);
@@ -1750,15 +1792,20 @@ export const TeacherPortal: React.FC = () => {
         </div>
       )}
 
-      {/* 8. Parent Messages */}
+      {/* 8. Parent Messages (Strictly Isolated to Target Teacher) */}
       {activeTab === 'parent-messages' && (
         <div className="space-y-3">
-          {parentMessages.length === 0 ? (
+          <div className="px-4 py-2.5 rounded-2xl bg-slate-50 dark:bg-slate-800/70 border border-slate-200 dark:border-slate-700 text-xs font-semibold text-slate-600 dark:text-slate-300">
+            {lang === 'bn'
+              ? 'অভিভাবক কর্তৃক শুধুমাত্র আপনার নিকট পাঠানো ব্যক্তিগত বার্তাগুলো এখানে দেখা যাচ্ছে।'
+              : 'Private guardian messages addressed exclusively to you are shown here.'}
+          </div>
+          {myParentMessages.length === 0 ? (
             <div className="p-10 text-center bg-white dark:bg-slate-900 rounded-3xl border border-slate-200 dark:border-slate-800 text-slate-400 font-bold text-sm">
-              {lang === 'bn' ? 'অভিভাবকদের কোনো বার্তা নেই।' : 'No guardian messages yet.'}
+              {lang === 'bn' ? 'আপনার নিকট কোনো অভিভাবক বার্তা নেই।' : 'No guardian messages directed to you yet.'}
             </div>
           ) : (
-            parentMessages.map((pm) => (
+            myParentMessages.map((pm) => (
               <div key={pm.id} className="bg-white dark:bg-slate-900 p-5 rounded-3xl border border-slate-200 dark:border-slate-800 space-y-2.5">
                 <div className="flex flex-wrap justify-between text-xs font-bold">
                   <span>{pm.parentName} — {pm.studentName} (C{pm.classId}, Roll {pm.roll})</span>
@@ -1904,6 +1951,8 @@ export const TeacherPortal: React.FC = () => {
           photoUrl={idCardStudent.photo}
           registrationDate={idCardStudent.registrationDate}
           session={idCardStudent.session}
+          cardIssueDate={idCardStudent.cardIssueDate}
+          cardValidUpto={idCardStudent.cardValidUpto}
           initialMode={idCardMode}
           rosterStudents={students.filter((s) => s.classId === idCardStudent.classId)}
           onSaveStudentDetails={(updates) => {
@@ -1917,6 +1966,8 @@ export const TeacherPortal: React.FC = () => {
               photo: updates.photo ?? target.photo,
               registrationDate: updates.registrationDate ?? target.registrationDate,
               session: updates.session ?? target.session,
+              cardIssueDate: updates.cardIssueDate ?? target.cardIssueDate,
+              cardValidUpto: updates.cardValidUpto ?? target.cardValidUpto,
             });
             notify(lang === 'bn' ? 'কার্ডের তথ্য ও ছবি সংরক্ষিত হয়েছে!' : 'Card details saved to student record!');
           }}
@@ -1939,12 +1990,34 @@ export const TeacherPortal: React.FC = () => {
         teacherIndex={matchedTeacherIdx !== -1 ? matchedTeacherIdx : teachers.length}
         allTeachers={user?.role === 'admin' ? teachers : undefined}
         phoneOverride={user?.phone}
+        onSaveProfile={(updates) => {
+          const target = teachers.find((tc) => tc.id === updates.id);
+          if (target && (user?.role === 'admin' || matchedTeacherIdx !== -1)) {
+            updateTeacher({
+              ...target,
+              teacherCode: updates.teacherCode,
+              phone: updates.phone,
+              bloodGroup: updates.bloodGroup,
+              cardIssueDate: updates.issueDate,
+              cardValidUpto: updates.validUpto,
+              photo: updates.photo ?? target.photo,
+            });
+          }
+          if (user && (user.userId === updates.id || matchedTeacherIdx !== -1)) {
+            void updateUser({
+              ...user,
+              ...(updates.phone ? { phone: updates.phone } : {}),
+              ...(updates.photo ? { photo: updates.photo } : {}),
+            });
+          }
+          notify(lang === 'bn' ? 'শিক্ষকের আইডি কার্ডের তথ্য সংরক্ষিত হয়েছে!' : 'Faculty ID Card details saved!');
+        }}
         onSavePhoto={(teacherId, photoDataUrl) => {
           if (user?.role === 'admin') {
             const target = teachers.find((tc) => tc.id === teacherId);
             if (target) updateTeacher({ ...target, photo: photoDataUrl });
           } else if (user) {
-            updateUser({ ...user, photo: photoDataUrl });
+            void updateUser({ ...user, photo: photoDataUrl });
           }
           notify(lang === 'bn' ? 'শিক্ষকের ছবি সংরক্ষিত হয়েছে!' : 'Teacher photo saved!');
         }}
