@@ -58,6 +58,7 @@ const Register: React.FC = () => {
     designation: 'সহকারী শিক্ষক',
     subject: 'Mathematics',
     qualification: 'M.Sc, B.Ed',
+    assignedClass: '',
     // Parent fields
     relationship: 'Father' as 'Father' | 'Mother' | 'Guardian',
   });
@@ -152,6 +153,7 @@ const Register: React.FC = () => {
       designation: formData.designation.trim(),
       subject: formData.subject.trim(),
       qualification: formData.qualification.trim(),
+      assignedClass: activeTab === 'teacher' && formData.assignedClass ? formData.assignedClass : undefined,
       relationship: formData.relationship,
     });
     setIsSubmitting(false);
@@ -253,7 +255,7 @@ const Register: React.FC = () => {
                   {successInfo.matchedStudents && successInfo.matchedStudents.length > 0 ? (
                     <div className="space-y-1.5">
                       {successInfo.matchedStudents.map((ms) => (
-                        <div key={ms.id} className="text-sm font-black text-slate-900 dark:text-white">
+                        <div key={`${ms.classId}-${ms.roll}`} className="text-sm font-black text-slate-900 dark:text-white">
                           {ms.name}{' '}
                           <span className="text-xs font-bold text-slate-600 dark:text-slate-300">
                             ({lang === 'bn' ? `শ্রেণী ${ms.classId} · রোল ${ms.roll}` : `Class ${ms.classId} · Roll ${ms.roll}`})
@@ -558,20 +560,49 @@ const Register: React.FC = () => {
                         />
                       </div>
                     </div>
-                    <div>
-                      <label className="text-[11px] font-bold text-slate-600 dark:text-slate-300">
-                        {lang === 'bn' ? 'শিক্ষাগত যোগ্যতা *' : 'Academic Qualification *'}
-                      </label>
-                      <input
-                        required
-                        type="text"
-                        name="qualification"
-                        value={formData.qualification}
-                        onChange={handleChange}
-                        placeholder="M.Sc in Mathematics, B.Ed"
-                        className="w-full mt-1 px-3 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 text-sm font-semibold"
-                      />
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                      <div>
+                        <label className="text-[11px] font-bold text-slate-600 dark:text-slate-300">
+                          {lang === 'bn' ? 'শিক্ষাগত যোগ্যতা *' : 'Academic Qualification *'}
+                        </label>
+                        <input
+                          required
+                          type="text"
+                          name="qualification"
+                          value={formData.qualification}
+                          onChange={handleChange}
+                          placeholder="M.Sc in Mathematics, B.Ed"
+                          className="w-full mt-1 px-3 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 text-sm font-semibold"
+                        />
+                      </div>
+                      <div>
+                        <label className="text-[11px] font-bold text-slate-600 dark:text-slate-300">
+                          {lang === 'bn' ? 'দায়িত্বপ্রাপ্ত শ্রেণী (ঐচ্ছিক)' : 'Assigned Class (Optional)'}
+                        </label>
+                        <select
+                          name="assignedClass"
+                          value={formData.assignedClass}
+                          onChange={handleChange}
+                          className="w-full mt-1 px-3 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 text-sm font-bold"
+                        >
+                          <option value="">
+                            {lang === 'bn'
+                              ? 'অ্যাডমিন / প্রধান শিক্ষক নির্ধারণ করবেন'
+                              : 'Set by Admin / Head Teacher'}
+                          </option>
+                          {['6', '7', '8', '9', '10'].map((c) => (
+                            <option key={c} value={c}>
+                              {lang === 'bn' ? `${c}ম শ্রেণী (Class ${c})` : `Class ${c}`}
+                            </option>
+                          ))}
+                        </select>
+                      </div>
                     </div>
+                    <p className="text-[11px] text-purple-800/80 dark:text-purple-300/90 font-medium">
+                      {lang === 'bn'
+                        ? 'কোন শিক্ষক কোন শ্রেণীর শ্রেণী শিক্ষক হবেন তা অ্যাডমিন এবং প্রধান শিক্ষক নির্ধারণ করবেন।'
+                        : 'Admin and Head Teacher assign which teacher serves as Class Teacher for each class.'}
+                    </p>
                   </div>
                 )}
 

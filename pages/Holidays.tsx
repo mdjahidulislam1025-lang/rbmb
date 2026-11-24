@@ -3,6 +3,7 @@ import { Calendar, Info, Clock, PlusCircle, X, Save, Pencil, Trash2, CalendarDay
 import { TRANSLATIONS } from '../constants';
 import { useApp } from '../App';
 import { Holiday } from '../types';
+import { getDhakaTodayISO, getDhakaYear, formatDhakaClock } from '../utils/dhakaTime';
 
 const { useState, useMemo } = React;
 
@@ -13,20 +14,20 @@ const Holidays: React.FC = () => {
   const [viewMode, setViewMode] = useState<'all' | 'upcoming'>('all');
 
   const isAdmin = user?.role === 'admin';
+  const activeYear = getDhakaYear();
+  const todayISO = getDhakaTodayISO();
 
   const upcomingHolidays = useMemo(() => {
-    const today = new Date();
-    today.setHours(0, 0, 0, 0);
-    const nextMonth = new Date(today);
-    nextMonth.setDate(today.getDate() + 30);
+    const todayDate = new Date(`${todayISO}T00:00:00+06:00`);
+    const nextMonth = new Date(todayDate.getTime() + 30 * 24 * 60 * 60 * 1000);
 
     return holidays
       .filter((h) => {
-        const hDate = new Date(h.date);
-        return hDate >= today && hDate <= nextMonth;
+        const hDate = new Date(`${h.date.slice(0, 10)}T00:00:00+06:00`);
+        return !isNaN(hDate.getTime()) && hDate >= todayDate && hDate <= nextMonth;
       })
-      .sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
-  }, [holidays]);
+      .sort((a, b) => a.date.localeCompare(b.date));
+  }, [holidays, todayISO]);
 
   const displayedHolidays = viewMode === 'all' ? holidays : upcomingHolidays;
 
@@ -80,8 +81,13 @@ const Holidays: React.FC = () => {
     <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-12 space-y-10">
       <div className="flex flex-col md:flex-row justify-between items-center gap-6 text-center md:text-left border-b border-slate-200 dark:border-slate-800 pb-8">
         <div className="space-y-3">
-          <div className="flex items-center justify-center md:justify-start gap-2 text-green-700 dark:text-green-400 font-black text-xs uppercase tracking-wider">
-            <Calendar className="w-4 h-4" /> 2026 Academic Schedule
+          <div className="flex flex-wrap items-center justify-center md:justify-start gap-2.5">
+            <span className="inline-flex items-center gap-2 text-green-700 dark:text-green-400 font-black text-xs uppercase tracking-wider">
+              <Calendar className="w-4 h-4" /> {activeYear} {lang === 'bn' ? 'NCTB ও সরকারি শিক্ষাবর্ষ সূচি' : 'NCTB Academic Schedule'}
+            </span>
+            <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-lg bg-emerald-50 dark:bg-emerald-950/60 border border-emerald-200 dark:border-emerald-800 text-emerald-800 dark:text-emerald-300 text-[11px] font-bold tabular-nums">
+              <Clock className="w-3 h-3" /> {formatDhakaClock(lang)}
+            </span>
           </div>
           <h1 className="text-3xl md:text-5xl font-black text-green-900 dark:text-white tracking-tight">
             {t(TRANSLATIONS.holiday.title)}

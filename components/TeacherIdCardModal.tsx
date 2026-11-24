@@ -825,9 +825,9 @@ export const TeacherIdCardModal: React.FC<TeacherIdCardModalProps> = ({
         {/* Printable Document */}
         <div
           id="printable-id-admit-card"
-          className="p-4 sm:p-8 overflow-y-auto flex-1 bg-slate-100 dark:bg-slate-950/60"
+          className="p-4 sm:p-8 print:p-0 overflow-y-auto print:overflow-visible flex-1 bg-slate-100 dark:bg-slate-950/60 print:bg-white"
         >
-          <div className="space-y-8">
+          <div className="space-y-6 print:space-y-4">
             {renderList.map((item, idx) => (
               <div
                 key={`${item.id}-${idx}`}

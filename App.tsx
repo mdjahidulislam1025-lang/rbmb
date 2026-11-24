@@ -146,6 +146,14 @@ import {
   markDirtyKey,
   clearDirtyKey,
 } from './utils/storage';
+import {
+  getDhakaTodayISO,
+  getDhakaYear,
+  getDhakaNoticeStamp,
+  attachDhakaTimeToDate,
+} from './utils/dhakaTime';
+import { mergeNctbHolidaysForActiveYear } from './utils/nctbHolidays';
+import { isHeadTeacherUser, findMatchingTeacher } from './utils/teacherRole';
 
 const { useState, createContext, useContext, useEffect, useRef, useMemo } = React;
 const { HashRouter: Router, Routes, Route, Link, useNavigate } = RouterDom;
@@ -165,6 +173,7 @@ export interface AuthUser {
   subject?: string;
   qualification?: string;
   bloodGroup?: string;
+  assignedClass?: string;
   registrationNo?: string;
   guardianName?: string;
   section?: string;
@@ -194,6 +203,7 @@ export interface SelfRegistrationPayload {
   designation?: string;
   subject?: string;
   qualification?: string;
+  assignedClass?: string;
   relationship?: 'Father' | 'Mother' | 'Guardian';
 }
 
@@ -210,12 +220,23 @@ export interface SelfRegistrationResult {
 }
 
 const DEFAULT_DEMO_PASSWORDS: Record<string, string> = {
+  headteacher: '123456',
   teacher01: '123456',
   student01: '123456',
   parent01: '123456',
 };
 
 const SEEDED_USER_TEMPLATES: Omit<AuthUser, 'passwordHash'>[] = [
+  {
+    userId: 'headteacher',
+    name: 'মোঃ আব্দুল করিম',
+    role: 'teacher',
+    email: 'headteacher@rbhs.edu',
+    phone: '+880 1711-000001',
+    designation: 'প্রধান শিক্ষক',
+    subject: 'ইংরেজি ও প্রশাসন',
+    qualification: 'এম.এ, বি.এড (ঢাকা বিশ্ববিদ্যালয়)',
+  },
   {
     userId: 'teacher01',
     name: 'মোসাঃ ফাতেমা বেগম',
@@ -224,6 +245,7 @@ const SEEDED_USER_TEMPLATES: Omit<AuthUser, 'passwordHash'>[] = [
     phone: '01711-000102',
     designation: 'সিনিয়র সহকারী শিক্ষক',
     subject: 'Science & Mathematics',
+    assignedClass: '9',
   },
   {
     userId: 'student01',
@@ -277,7 +299,12 @@ interface AppContextType {
   isCloudAdmin: boolean;
   isCloudTeacher: boolean;
   cloudUsers: CloudUserProfile[];
-  updateCloudUserRole: (uid: string, role: BaseUserRole) => Promise<void>;
+  updateCloudUserRole: (
+    uid: string,
+    role: BaseUserRole,
+    assignedClass?: string,
+    designation?: string
+  ) => Promise<void>;
   signInWithGoogle: () => Promise<{ ok: boolean; error?: string; code?: string; isAdmin?: boolean }>;
   signInWithEmail: (email: string, password: string) => Promise<{ ok: boolean; error?: string; needsVerification?: boolean }>;
   registerWithEmail: (payload: {
@@ -318,6 +345,30 @@ interface AppContextType {
   addTeacher: (teacher: Teacher) => void;
   updateTeacher: (teacher: Teacher) => void;
   deleteTeacher: (id: string) => void;
+  addClassTeacherByAdmin: (payload: {
+    nameBn: string;
+    nameEn?: string;
+    designationBn: string;
+    designationEn?: string;
+    subjectBn: string;
+    subjectEn?: string;
+    qualificationBn?: string;
+    qualificationEn?: string;
+    phone?: string;
+    email?: string;
+    bloodGroup?: string;
+    assignedClass?: string;
+    teacherCode?: string;
+    password?: string;
+    photo?: string;
+  }) => Promise<{ ok: boolean; teacher?: Teacher; teacherCode?: string; error?: string }>;
+  assignClassTeacher: (params: {
+    teacherId?: string;
+    userId?: string;
+    cloudUid?: string;
+    classId: string;
+    exclusiveForClass?: boolean;
+  }) => Promise<{ ok: boolean; error?: string }>;
   ebooks: EBook[];
   addEbook: (ebook: EBook) => void;
   updateEbook: (ebook: EBook) => void;
@@ -759,7 +810,9 @@ const App: React.FC = () => {
   const [teachers, setTeachers] = useState<Teacher[]>(() => safeLocalGet('db_teachers', TEACHERS));
   const [ebooks, setEbooks] = useState<EBook[]>(() => safeLocalGet('db_ebooks', INITIAL_EBOOKS));
   const [gallery, setGallery] = useState<GalleryItem[]>(() => safeLocalGet('db_gallery', INITIAL_GALLERY));
-  const [holidays, setHolidays] = useState<Holiday[]>(() => safeLocalGet('db_holidays', HOLIDAYS_2026));
+  const [holidays, setHolidays] = useState<Holiday[]>(() =>
+    mergeNctbHolidaysForActiveYear(safeLocalGet('db_holidays', HOLIDAYS_2026), getDhakaYear())
+  );
   const [admissions, setAdmissions] = useState<AdmissionApplication[]>(() => safeLocalGet('admission_applications', []));
   const [contactMessages, setContactMessages] = useState<ContactMessage[]>(() => safeLocalGet('contact_messages', []));
   const [students, setStudents] = useState<SchoolStudent[]>(() => safeLocalGet('db_students', INITIAL_STUDENTS));
@@ -871,6 +924,11 @@ const App: React.FC = () => {
     };
   }, []);
 
+  const effectiveHolidays = useMemo(
+    () => mergeNctbHolidaysForActiveYear(holidays, getDhakaYear()),
+    [holidays]
+  );
+
   // Keep latest state ref for initial cloud seeding when admin connects
   const latestStateRef = useRef({
     notices,
@@ -879,7 +937,7 @@ const App: React.FC = () => {
     teachers,
     ebooks,
     gallery,
-    holidays,
+    holidays: effectiveHolidays,
     settings,
     onlineExams,
     examRoutines,
@@ -900,7 +958,7 @@ const App: React.FC = () => {
       teachers,
       ebooks,
       gallery,
-      holidays,
+      holidays: effectiveHolidays,
       settings,
       onlineExams,
       examRoutines,
@@ -1118,6 +1176,7 @@ const App: React.FC = () => {
         extraChild = {
           ...(d.phone ? { phone: d.phone } : {}),
           ...(d.designation ? { designation: d.designation } : {}),
+          ...(d.assignedClass ? { assignedClass: d.assignedClass } : {}),
           ...(d.registrationNo ? { registrationNo: d.registrationNo } : {}),
           ...(d.linkedStudentId ? { linkedStudentId: d.linkedStudentId } : {}),
           ...(d.linkedChildClass ? { linkedChildClass: d.linkedChildClass } : {}),
@@ -2507,7 +2566,7 @@ const App: React.FC = () => {
     const cleanPhone = payload.phone.trim();
     const cleanEmail = (payload.email || '').trim();
     const cleanPassword = payload.password;
-    const todayStr = new Date().toISOString().split('T')[0];
+    const todayStr = getDhakaTodayISO();
 
     if (!cleanName) {
       return { ok: false, error: lang === 'bn' ? 'অনুগ্রহ করে সম্পূর্ণ নাম লিখুন।' : 'Please enter your full name.' };
@@ -2642,9 +2701,12 @@ const App: React.FC = () => {
         };
       }
 
-      const year = new Date().getFullYear();
+      const year = getDhakaYear();
       const serial = String(teachers.length + 1).padStart(3, '0');
       const teacherCode = `RBMB-TCH-${year}-${serial}`;
+      const cleanAssignedClass = ['6', '7', '8', '9', '10'].includes(payload.assignedClass || '')
+        ? payload.assignedClass
+        : undefined;
 
       const existingTeacher = teachers.find(
         (tc) =>
@@ -2665,6 +2727,7 @@ const App: React.FC = () => {
         qualification: { bn: cleanQual, en: cleanQual },
         phone: cleanPhone,
         bloodGroup: payload.bloodGroup || existingTeacher?.bloodGroup,
+        assignedClass: cleanAssignedClass || existingTeacher?.assignedClass,
         photo: safePhoto || existingTeacher?.photo || '',
         cardIssueDate: existingTeacher?.cardIssueDate || todayStr,
         cardValidUpto: existingTeacher?.cardValidUpto || `${year + 3}-12-31`,
@@ -2688,6 +2751,7 @@ const App: React.FC = () => {
         subject: cleanSubject,
         qualification: cleanQual,
         bloodGroup: payload.bloodGroup || undefined,
+        assignedClass: nextTeacher.assignedClass,
         photo: safePhoto || undefined,
         passwordHash,
       };
@@ -2831,7 +2895,8 @@ const App: React.FC = () => {
           email: (cleanInput.email || firebaseUser.email || 'user@rbhs.edu').slice(0, 150),
           ...(cleanInput.photo ? { photo: clampImageString(cleanInput.photo) } : {}),
           ...(cleanInput.phone ? { phone: cleanInput.phone.slice(0, 40) } : {}),
-          ...(cleanInput.designation ? { designation: cleanInput.designation.slice(0, 150) } : {}),
+          ...(isCloudAdmin && cleanInput.designation ? { designation: cleanInput.designation.slice(0, 150) } : {}),
+          ...(isCloudAdmin && cleanInput.assignedClass !== undefined ? { assignedClass: cleanInput.assignedClass.slice(0, 16) } : {}),
           ...(cleanInput.relationship ? { relationship: cleanInput.relationship } : {}),
           ...(cleanInput.linkedStudentId ? { linkedStudentId: cleanInput.linkedStudentId.slice(0, 128) } : {}),
           ...(cleanInput.linkedStudentIds && cleanInput.linkedStudentIds.length > 0
@@ -2894,7 +2959,7 @@ const App: React.FC = () => {
       targetCollection: targetCollection.slice(0, 64),
       targetId: sanitizeFirestoreId(targetId).slice(0, 128),
       summary: summary.slice(0, 500),
-      createdDate: new Date().toISOString().split('T')[0],
+      createdDate: getDhakaTodayISO(),
     };
 
     const nextLocal = [entry, ...auditLogs].slice(0, 100);
@@ -2922,7 +2987,12 @@ const App: React.FC = () => {
     }
   };
 
-  const updateCloudUserRole = async (uid: string, role: BaseUserRole) => {
+  const updateCloudUserRole = async (
+    uid: string,
+    role: BaseUserRole,
+    assignedClass?: string,
+    designation?: string
+  ) => {
     if (!isCloudAdmin) return;
     const safeUid = sanitizeFirestoreId(uid);
     const targetUser = cloudUsers.find((cu) => cu.uid === uid || cu.uid === safeUid);
@@ -2930,6 +3000,8 @@ const App: React.FC = () => {
       setDbStatus('syncing');
       await updateDoc(doc(db, 'users', safeUid), {
         role,
+        ...(assignedClass !== undefined ? { assignedClass: assignedClass.slice(0, 16) } : {}),
+        ...(designation !== undefined ? { designation: designation.slice(0, 150) } : {}),
         updatedAt: serverTimestamp(),
       });
 
@@ -2951,7 +3023,7 @@ const App: React.FC = () => {
         'ROLE_CHANGED',
         'users',
         safeUid,
-        `Updated user ${targetUser?.email || safeUid} role to ${role}`
+        `Updated user ${targetUser?.email || safeUid} role to ${role}${assignedClass ? ` (Class ${assignedClass})` : ''}${designation ? ` • ${designation}` : ''}`
       );
       setDbStatus('synced');
     } catch (err) {
@@ -3025,10 +3097,16 @@ const App: React.FC = () => {
     }
   };
 
-  // Notices (Teacher + Admin can publish/edit)
+  // Notices (Teacher + Admin can publish/edit — always auto-stamped with Asia/Dhaka GMT+6 date & time)
   const addNotice = (n: Notice) => {
     const id = sanitizeFirestoreId(n.id);
-    const item = { ...n, id };
+    const stampedDate =
+      n.date && /GMT\+6/i.test(n.date)
+        ? n.date.slice(0, 32)
+        : n.date && n.date.length >= 4
+        ? attachDhakaTimeToDate(n.date)
+        : getDhakaNoticeStamp();
+    const item = { ...n, id, date: stampedDate };
     const updated = [item, ...notices];
     setNotices(updated);
     persistLocal('db_notices', updated);
@@ -3038,7 +3116,7 @@ const App: React.FC = () => {
       {
         id,
         title: safeLoc(n.title, 'নোটিশ', 'Notice', 300),
-        date: (n.date && n.date.length >= 4 ? n.date : new Date().toISOString().split('T')[0]).slice(0, 32),
+        date: stampedDate,
         category: n.category || 'General',
         description: safeLoc(n.description, 'বিস্তারিত', 'Details', 5000),
         ...(n.pdfUrl ? { pdfUrl: n.pdfUrl.slice(0, 2000) } : {}),
@@ -3051,7 +3129,11 @@ const App: React.FC = () => {
 
   const updateNotice = (n: Notice) => {
     const id = sanitizeFirestoreId(n.id);
-    const updated = notices.map((i) => (i.id === n.id ? { ...n, id } : i));
+    const stampedDate =
+      n.date && /GMT\+6/i.test(n.date)
+        ? n.date.slice(0, 32)
+        : attachDhakaTimeToDate(n.date);
+    const updated = notices.map((i) => (i.id === n.id ? { ...n, id, date: stampedDate } : i));
     setNotices(updated);
     persistLocal('db_notices', updated);
     void syncDocUpsert(
@@ -3060,7 +3142,7 @@ const App: React.FC = () => {
       {
         id,
         title: safeLoc(n.title, 'নোটিশ', 'Notice', 300),
-        date: (n.date && n.date.length >= 4 ? n.date : new Date().toISOString().split('T')[0]).slice(0, 32),
+        date: stampedDate,
         category: n.category || 'General',
         description: safeLoc(n.description, 'বিস্তারিত', 'Details', 5000),
         ...(n.pdfUrl ? { pdfUrl: n.pdfUrl.slice(0, 2000) } : {}),
@@ -3095,7 +3177,7 @@ const App: React.FC = () => {
         summary: safeLoc(clean.summary, 'সারসংক্ষেপ', 'Summary', 600),
         content: safeLoc(clean.content, 'বিস্তারিত সংবাদ', 'News content', 5000),
         category: clean.category || 'Academic',
-        date: (clean.date && clean.date.length >= 4 ? clean.date : new Date().toISOString().split('T')[0]).slice(0, 32),
+        date: (clean.date && clean.date.length >= 4 ? clean.date : getDhakaTodayISO()).slice(0, 32),
         ...(img ? { imageUrl: img } : {}),
         ...(clean.author ? { author: clean.author.slice(0, 150) } : {}),
         isPublic: true,
@@ -3121,7 +3203,7 @@ const App: React.FC = () => {
         summary: safeLoc(clean.summary, 'সারসংক্ষেপ', 'Summary', 600),
         content: safeLoc(clean.content, 'বিস্তারিত সংবাদ', 'News content', 5000),
         category: clean.category || 'Academic',
-        date: (clean.date && clean.date.length >= 4 ? clean.date : new Date().toISOString().split('T')[0]).slice(0, 32),
+        date: (clean.date && clean.date.length >= 4 ? clean.date : getDhakaTodayISO()).slice(0, 32),
         ...(img ? { imageUrl: img } : {}),
         ...(clean.author ? { author: clean.author.slice(0, 150) } : {}),
         isPublic: true,
@@ -3152,7 +3234,7 @@ const App: React.FC = () => {
         id,
         title: safeLoc(clean.title, 'অনুষ্ঠান', 'Event', 300),
         description: safeLoc(clean.description, 'বিস্তারিত', 'Details', 3000),
-        date: (clean.date && clean.date.length >= 4 ? clean.date : new Date().toISOString().split('T')[0]).slice(0, 32),
+        date: (clean.date && clean.date.length >= 4 ? clean.date : getDhakaTodayISO()).slice(0, 32),
         time: (clean.time || '10:00 AM').slice(0, 64),
         location: safeLoc(clean.location, 'বিদ্যালয় প্রাঙ্গণ', 'Campus', 300),
         category: clean.category || 'Academic',
@@ -3176,7 +3258,7 @@ const App: React.FC = () => {
         id,
         title: safeLoc(clean.title, 'অনুষ্ঠান', 'Event', 300),
         description: safeLoc(clean.description, 'বিস্তারিত', 'Details', 3000),
-        date: (clean.date && clean.date.length >= 4 ? clean.date : new Date().toISOString().split('T')[0]).slice(0, 32),
+        date: (clean.date && clean.date.length >= 4 ? clean.date : getDhakaTodayISO()).slice(0, 32),
         time: (clean.time || '10:00 AM').slice(0, 64),
         location: safeLoc(clean.location, 'বিদ্যালয় প্রাঙ্গণ', 'Campus', 300),
         category: clean.category || 'Academic',
@@ -3215,6 +3297,7 @@ const App: React.FC = () => {
         ...(item.teacherCode ? { teacherCode: item.teacherCode.trim().slice(0, 40) } : {}),
         ...(item.phone ? { phone: item.phone.trim().slice(0, 40) } : {}),
         ...(item.bloodGroup ? { bloodGroup: item.bloodGroup.trim().slice(0, 16) } : {}),
+        ...(item.assignedClass ? { assignedClass: item.assignedClass.trim().slice(0, 16) } : {}),
         ...(item.cardIssueDate ? { cardIssueDate: item.cardIssueDate.trim().slice(0, 32) } : {}),
         ...(item.cardValidUpto ? { cardValidUpto: item.cardValidUpto.trim().slice(0, 32) } : {}),
         isPublic: true,
@@ -3253,6 +3336,11 @@ const App: React.FC = () => {
           ...(merged.teacherCode ? { teacherCode: merged.teacherCode.trim().slice(0, 40) } : {}),
           ...(merged.phone ? { phone: merged.phone.trim().slice(0, 40) } : {}),
           ...(merged.bloodGroup ? { bloodGroup: merged.bloodGroup.trim().slice(0, 16) } : {}),
+          ...('assignedClass' in teach
+            ? { assignedClass: (teach.assignedClass || '').trim().slice(0, 16) }
+            : merged.assignedClass !== undefined
+            ? { assignedClass: merged.assignedClass.trim().slice(0, 16) }
+            : {}),
           ...(merged.cardIssueDate ? { cardIssueDate: merged.cardIssueDate.trim().slice(0, 32) } : {}),
           ...(merged.cardValidUpto ? { cardValidUpto: merged.cardValidUpto.trim().slice(0, 32) } : {}),
           isPublic: true,
@@ -3291,6 +3379,395 @@ const App: React.FC = () => {
     setTeachers(updated);
     persistLocal('db_teachers', updated);
     void syncDocDelete('teachers', sanitizeFirestoreId(id));
+  };
+
+  const addClassTeacherByAdmin: AppContextType['addClassTeacherByAdmin'] = async (payload) => {
+    const canManage = user?.role === 'admin' || isCloudAdmin;
+    if (!canManage) {
+      return {
+        ok: false,
+        error: lang === 'bn' ? 'শুধুমাত্র অ্যাডমিন নতুন শ্রেণী শিক্ষক যোগ করতে পারবেন।' : 'Only Admin can add a new Class Teacher.',
+      };
+    }
+
+    const nameBn = payload.nameBn.trim() || payload.nameEn?.trim() || '';
+    const nameEn = payload.nameEn?.trim() || nameBn;
+    if (!nameBn) {
+      return {
+        ok: false,
+        error: lang === 'bn' ? 'শিক্ষকের নাম লিখুন।' : 'Please enter teacher name.',
+      };
+    }
+
+    const year = getDhakaYear();
+    const todayIso = getDhakaTodayISO();
+    const serial = String(teachers.length + 1).padStart(3, '0');
+    const cleanCode = (payload.teacherCode || '').trim() || `RBMB-TCH-${year}-${serial}`;
+    const teacherId = sanitizeFirestoreId(`tc-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 5)}`);
+    const cleanClass = ['6', '7', '8', '9', '10'].includes((payload.assignedClass || '').trim())
+      ? (payload.assignedClass || '').trim()
+      : '';
+    const safePhoto = clampImageString(payload.photo || '');
+    const cleanDesigBn = payload.designationBn.trim() || 'সহকারী শিক্ষক';
+    const cleanDesigEn = payload.designationEn?.trim() || cleanDesigBn;
+    const cleanSubBn = payload.subjectBn.trim() || 'সাধারণ';
+    const cleanSubEn = payload.subjectEn?.trim() || cleanSubBn;
+    const cleanQualBn = payload.qualificationBn?.trim() || 'স্নাতকোত্তর';
+    const cleanQualEn = payload.qualificationEn?.trim() || cleanQualBn;
+    const cleanPhone = (payload.phone || '').trim();
+    const cleanEmail = (payload.email || '').trim();
+    const cleanBlood = (payload.bloodGroup || '').trim();
+
+    const newTeacher: Teacher = {
+      id: teacherId,
+      teacherCode: cleanCode,
+      name: { bn: nameBn, en: nameEn },
+      designation: { bn: cleanDesigBn, en: cleanDesigEn },
+      subject: { bn: cleanSubBn, en: cleanSubEn },
+      qualification: { bn: cleanQualBn, en: cleanQualEn },
+      phone: cleanPhone || undefined,
+      bloodGroup: cleanBlood || undefined,
+      assignedClass: cleanClass || undefined,
+      photo: safePhoto,
+      cardIssueDate: todayIso,
+      cardValidUpto: `${year + 3}-12-31`,
+      isPublic: true,
+    };
+
+    const nextTeachers = [...teachers, newTeacher];
+    setTeachers(nextTeachers);
+    persistLocal('db_teachers', nextTeachers);
+
+    void syncDocUpsert(
+      'teachers',
+      teacherId,
+      {
+        id: teacherId,
+        teacherCode: cleanCode.slice(0, 40),
+        name: safeLoc(newTeacher.name, 'শিক্ষক', 'Teacher', 200),
+        designation: safeLoc(newTeacher.designation, 'সহকারী শিক্ষক', 'Assistant Teacher', 200),
+        subject: safeLoc(newTeacher.subject, 'সাধারণ', 'General', 200),
+        qualification: safeLoc(newTeacher.qualification, 'স্নাতকোত্তর', 'Graduate', 300),
+        photo: safePhoto,
+        ...(cleanPhone ? { phone: cleanPhone.slice(0, 40) } : {}),
+        ...(cleanBlood ? { bloodGroup: cleanBlood.slice(0, 16) } : {}),
+        assignedClass: cleanClass,
+        cardIssueDate: todayIso,
+        cardValidUpto: `${year + 3}-12-31`,
+        isPublic: true,
+      },
+      false
+    );
+
+    const rawPassword = (payload.password || '').trim() || '123456';
+    const passwordHash = await hashPassword(rawPassword);
+    const alreadyUserIdx = registeredUsers.findIndex(
+      (u) =>
+        u.userId.toLowerCase() === cleanCode.toLowerCase() ||
+        (cleanPhone && u.phone && phonesMatch(u.phone, cleanPhone) && u.role === 'teacher') ||
+        (cleanEmail && u.email && u.email.toLowerCase() === cleanEmail.toLowerCase())
+    );
+
+    const newAuthUser: AuthUser = {
+      userId: alreadyUserIdx !== -1 ? registeredUsers[alreadyUserIdx].userId : cleanCode,
+      role: 'teacher',
+      name: nameBn,
+      email: cleanEmail || `${cleanCode.toLowerCase()}@rbhs.edu`,
+      phone: cleanPhone || undefined,
+      designation: cleanDesigBn,
+      subject: cleanSubBn,
+      qualification: cleanQualBn,
+      bloodGroup: cleanBlood || undefined,
+      assignedClass: cleanClass || undefined,
+      photo: safePhoto || undefined,
+      passwordHash,
+    };
+
+    const nextUsers =
+      alreadyUserIdx !== -1
+        ? registeredUsers.map((u, idx) => (idx === alreadyUserIdx ? { ...u, ...newAuthUser } : u))
+        : [...registeredUsers, newAuthUser];
+    setRegisteredUsers(nextUsers);
+    persistLocal('registered_users', nextUsers);
+
+    void logAuditEvent(
+      'ROLE_CHANGED',
+      'teachers',
+      teacherId,
+      `Added teacher ${nameBn} (${cleanCode})${cleanClass ? ` as Class ${cleanClass} teacher` : ''}`
+    );
+
+    return { ok: true, teacher: newTeacher, teacherCode: cleanCode };
+  };
+
+  const assignClassTeacher: AppContextType['assignClassTeacher'] = async ({
+    teacherId,
+    userId,
+    cloudUid,
+    classId,
+    exclusiveForClass = false,
+  }) => {
+    const canAssign =
+      user?.role === 'admin' || isCloudAdmin || isHeadTeacherUser(user, teachers, settings);
+    if (!canAssign) {
+      return {
+        ok: false,
+        error:
+          lang === 'bn'
+            ? 'শুধুমাত্র অ্যাডমিন এবং প্রধান শিক্ষক শ্রেণী শিক্ষক নির্ধারণ করতে পারবেন।'
+            : 'Only Admin and Head Teacher can assign Class Teachers.',
+      };
+    }
+
+    const cleanClass = ['6', '7', '8', '9', '10'].includes(classId.trim()) ? classId.trim() : '';
+
+    // 1. Identify target teacher profile & account records
+    const localAuthMatch = registeredUsers.find(
+      (u) =>
+        u.role === 'teacher' &&
+        ((userId && u.userId.toLowerCase() === userId.toLowerCase()) ||
+          (cloudUid && u.userId === cloudUid))
+    );
+    const cloudMatch = cloudUsers.find(
+      (cu) => cu.role === 'teacher' && ((cloudUid && cu.uid === cloudUid) || (userId && cu.uid === userId))
+    );
+
+    let matchedTeacher =
+      (teacherId ? teachers.find((tc) => tc.id === teacherId) : undefined) ||
+      findMatchingTeacher(teachers, {
+        userId: userId || cloudUid || localAuthMatch?.userId,
+        name: localAuthMatch?.name || cloudMatch?.name,
+        phone: localAuthMatch?.phone || cloudMatch?.phone,
+      });
+
+    let workingTeachers = [...teachers];
+
+    // Auto-create Teacher directory profile when assigning a self-registered / cloud teacher user
+    if (!matchedTeacher && (localAuthMatch || cloudMatch)) {
+      const srcName = localAuthMatch?.name || cloudMatch?.name || 'Teacher';
+      const newTid = sanitizeFirestoreId(
+        `tc-${(cloudMatch?.uid || localAuthMatch?.userId || Date.now().toString(36)).slice(0, 60)}`
+      );
+      const year = getDhakaYear();
+      const createdTeacher: Teacher = {
+        id: newTid,
+        teacherCode:
+          localAuthMatch?.userId?.startsWith('RBMB-')
+            ? localAuthMatch.userId
+            : `RBMB-TCH-${year}-${String(workingTeachers.length + 1).padStart(3, '0')}`,
+        name: { bn: srcName, en: srcName },
+        designation: {
+          bn: localAuthMatch?.designation || cloudMatch?.designation || 'সহকারী শিক্ষক',
+          en: localAuthMatch?.designation || cloudMatch?.designation || 'Assistant Teacher',
+        },
+        subject: {
+          bn: localAuthMatch?.subject || cloudMatch?.subject || 'সাধারণ',
+          en: localAuthMatch?.subject || cloudMatch?.subject || 'General',
+        },
+        qualification: {
+          bn: localAuthMatch?.qualification || cloudMatch?.qualification || 'স্নাতকোত্তর',
+          en: localAuthMatch?.qualification || cloudMatch?.qualification || 'Graduate',
+        },
+        phone: localAuthMatch?.phone || cloudMatch?.phone,
+        bloodGroup: localAuthMatch?.bloodGroup || cloudMatch?.bloodGroup,
+        assignedClass: cleanClass,
+        photo: localAuthMatch?.photo || cloudMatch?.photo || '',
+        cardIssueDate: getDhakaTodayISO(),
+        cardValidUpto: `${year + 3}-12-31`,
+        isPublic: true,
+      };
+      matchedTeacher = createdTeacher;
+      workingTeachers = [...workingTeachers, createdTeacher];
+      if (isCloudAdmin) {
+        void syncDocUpsert(
+          'teachers',
+          newTid,
+          {
+            id: newTid,
+            teacherCode: createdTeacher.teacherCode,
+            name: safeLoc(createdTeacher.name, 'শিক্ষক', 'Teacher', 200),
+            designation: safeLoc(createdTeacher.designation, 'সহকারী শিক্ষক', 'Assistant Teacher', 200),
+            subject: safeLoc(createdTeacher.subject, 'সাধারণ', 'General', 200),
+            qualification: safeLoc(createdTeacher.qualification, 'স্নাতকোত্তর', 'Graduate', 300),
+            photo: createdTeacher.photo,
+            ...(createdTeacher.phone ? { phone: createdTeacher.phone.slice(0, 40) } : {}),
+            ...(createdTeacher.bloodGroup ? { bloodGroup: createdTeacher.bloodGroup.slice(0, 16) } : {}),
+            assignedClass: cleanClass,
+            cardIssueDate: createdTeacher.cardIssueDate,
+            cardValidUpto: createdTeacher.cardValidUpto,
+            isPublic: true,
+          },
+          false
+        );
+      }
+    }
+
+    const clearedTeacherIds = new Set<string>();
+    const clearedTeacherNames = new Set<string>();
+
+    // Update target & optionally clear previous Class Teacher(s) of cleanClass when picking exclusively
+    workingTeachers = workingTeachers.map((tc) => {
+      if (matchedTeacher && tc.id === matchedTeacher.id) {
+        return { ...tc, assignedClass: cleanClass };
+      }
+      if (exclusiveForClass && cleanClass && tc.assignedClass === cleanClass) {
+        clearedTeacherIds.add(tc.id);
+        clearedTeacherNames.add(tc.name.bn.trim().toLowerCase());
+        clearedTeacherNames.add(tc.name.en.trim().toLowerCase());
+        return { ...tc, assignedClass: '' };
+      }
+      return tc;
+    });
+
+    setTeachers(workingTeachers);
+    persistLocal('db_teachers', workingTeachers);
+
+    // Sync teacher updates to Firestore
+    const teachersToSync: Teacher[] = [];
+    if (matchedTeacher) {
+      const updatedTarget = workingTeachers.find((tc) => tc.id === matchedTeacher!.id);
+      if (updatedTarget) teachersToSync.push(updatedTarget);
+    }
+    clearedTeacherIds.forEach((cid) => {
+      const prevTc = workingTeachers.find((tc) => tc.id === cid);
+      if (prevTc) teachersToSync.push(prevTc);
+    });
+
+    for (const tc of teachersToSync) {
+      const safeTid = sanitizeFirestoreId(tc.id);
+      const nextAssigned = (tc.assignedClass || '').trim().slice(0, 16);
+      if (isCloudAdmin) {
+        void syncDocUpsert(
+          'teachers',
+          safeTid,
+          {
+            id: safeTid,
+            name: safeLoc(tc.name, 'শিক্ষক', 'Teacher', 200),
+            designation: safeLoc(tc.designation, 'সহকারী শিক্ষক', 'Assistant Teacher', 200),
+            subject: safeLoc(tc.subject, 'সাধারণ', 'General', 200),
+            qualification: safeLoc(tc.qualification, 'স্নাতকোত্তর', 'Graduate', 300),
+            photo: clampImageString(tc.photo || ''),
+            ...(tc.teacherCode ? { teacherCode: tc.teacherCode.trim().slice(0, 40) } : {}),
+            ...(tc.phone ? { phone: tc.phone.trim().slice(0, 40) } : {}),
+            ...(tc.bloodGroup ? { bloodGroup: tc.bloodGroup.trim().slice(0, 16) } : {}),
+            assignedClass: nextAssigned,
+            ...(tc.cardIssueDate ? { cardIssueDate: tc.cardIssueDate.trim().slice(0, 32) } : {}),
+            ...(tc.cardValidUpto ? { cardValidUpto: tc.cardValidUpto.trim().slice(0, 32) } : {}),
+            isPublic: true,
+          },
+          true
+        );
+      } else if (isCloudTeacher && firebaseUser?.emailVerified) {
+        // Head Teacher cloud update of assignedClass on teachers/{id}
+        try {
+          const tRef = doc(db, 'teachers', safeTid);
+          const snap = await getDoc(tRef);
+          if (snap.exists()) {
+            await updateDoc(tRef, {
+              assignedClass: nextAssigned,
+              updatedAt: serverTimestamp(),
+            });
+            clearDirtyKey('db_teachers');
+          }
+        } catch (err) {
+          safeListenerError(err, OperationType.UPDATE, `teachers/${safeTid}`);
+        }
+      }
+    }
+
+    // Helper to check if an AuthUser matches the target or cleared teachers
+    const matchesTargetUser = (u: {
+      userId?: string;
+      name?: string;
+      phone?: string;
+      role?: string | null;
+    }) => {
+      if (u.role !== 'teacher') return false;
+      if (userId && u.userId?.toLowerCase() === userId.toLowerCase()) return true;
+      if (cloudUid && u.userId === cloudUid) return true;
+      if (!matchedTeacher) return false;
+      const found = findMatchingTeacher([matchedTeacher], u);
+      return Boolean(found);
+    };
+
+    const matchesClearedUser = (u: {
+      userId?: string;
+      name?: string;
+      phone?: string;
+      role?: string | null;
+      assignedClass?: string;
+    }) => {
+      if (u.role !== 'teacher' || !exclusiveForClass || !cleanClass) return false;
+      if (u.assignedClass !== cleanClass) return false;
+      if (matchesTargetUser(u)) return false;
+      const uName = (u.name || '').trim().toLowerCase();
+      if (clearedTeacherNames.has(uName)) return true;
+      return clearedTeacherIds.size > 0 || true;
+    };
+
+    // Sync local registered_users
+    const nextRegUsers = registeredUsers.map((u) => {
+      if (matchesTargetUser(u)) {
+        return { ...u, assignedClass: cleanClass || undefined };
+      }
+      if (matchesClearedUser(u)) {
+        return { ...u, assignedClass: undefined };
+      }
+      return u;
+    });
+    setRegisteredUsers(nextRegUsers);
+    persistLocal('registered_users', nextRegUsers);
+
+    // Sync active session if affected
+    if (user && user.role === 'teacher') {
+      if (matchesTargetUser(user)) {
+        const nextSession: AuthUser = { ...user, assignedClass: cleanClass || undefined };
+        setUser(nextSession);
+        safeLocalSet('school_user', nextSession);
+      } else if (matchesClearedUser(user)) {
+        const nextSession: AuthUser = { ...user, assignedClass: undefined };
+        setUser(nextSession);
+        safeLocalSet('school_user', nextSession);
+      }
+    }
+
+    // Sync cloud users if Admin
+    if (isCloudAdmin) {
+      for (const cu of cloudUsers) {
+        if (cu.role !== 'teacher') continue;
+        if (
+          (cloudUid && cu.uid === cloudUid) ||
+          (matchedTeacher && findMatchingTeacher([matchedTeacher], { userId: cu.uid, name: cu.name, phone: cu.phone, role: cu.role }))
+        ) {
+          await updateDoc(doc(db, 'users', sanitizeFirestoreId(cu.uid)), {
+            assignedClass: cleanClass,
+            updatedAt: serverTimestamp(),
+          }).catch(() => {});
+        } else if (exclusiveForClass && cleanClass && cu.assignedClass === cleanClass) {
+          await updateDoc(doc(db, 'users', sanitizeFirestoreId(cu.uid)), {
+            assignedClass: '',
+            updatedAt: serverTimestamp(),
+          }).catch(() => {});
+        }
+      }
+    }
+
+    const displayName =
+      (matchedTeacher ? t(matchedTeacher.name) : '') ||
+      localAuthMatch?.name ||
+      cloudMatch?.name ||
+      userId ||
+      'Teacher';
+    void logAuditEvent(
+      'ROLE_CHANGED',
+      'teachers',
+      matchedTeacher?.id || userId || cloudUid || 'teacher',
+      cleanClass
+        ? `Assigned ${displayName} as Class ${cleanClass} Class Teacher`
+        : `Unassigned Class Teacher role from ${displayName}`
+    );
+
+    return { ok: true };
   };
 
   // E-Books / Digital Library (Teacher + Admin can add/update)
@@ -3420,7 +3897,7 @@ const App: React.FC = () => {
       {
         id,
         title: safeLoc(h.title, 'ছুটি', 'Holiday', 300),
-        date: (h.date && h.date.length >= 4 ? h.date : new Date().toISOString().split('T')[0]).slice(0, 32),
+        date: (h.date && h.date.length >= 4 ? h.date : getDhakaTodayISO()).slice(0, 32),
         duration: safeLoc(h.duration, '১ দিন', '1 Day', 100),
         type: h.type || 'National',
         isPublic: true,
@@ -3440,7 +3917,7 @@ const App: React.FC = () => {
       {
         id,
         title: safeLoc(h.title, 'ছুটি', 'Holiday', 300),
-        date: (h.date && h.date.length >= 4 ? h.date : new Date().toISOString().split('T')[0]).slice(0, 32),
+        date: (h.date && h.date.length >= 4 ? h.date : getDhakaTodayISO()).slice(0, 32),
         duration: safeLoc(h.duration, '১ দিন', '1 Day', 100),
         type: h.type || 'National',
         isPublic: true,
@@ -3680,7 +4157,7 @@ const App: React.FC = () => {
       ...msg,
       id,
       status: 'unread',
-      date: msg.date || new Date().toISOString().split('T')[0],
+      date: msg.date || getDhakaTodayISO(),
     };
     const updated = [cleanMsg, ...contactMessages];
     setContactMessages(updated);
@@ -4101,7 +4578,7 @@ const App: React.FC = () => {
         description: clean.description.slice(0, 3000),
         dueDate: clean.dueDate.slice(0, 32),
         assignedBy: clean.assignedBy.slice(0, 150),
-        createdDate: (clean.createdDate || new Date().toISOString().split('T')[0]).slice(0, 32),
+        createdDate: (clean.createdDate || getDhakaTodayISO()).slice(0, 32),
         isPublic: clean.isPublic,
       },
       false,
@@ -4126,7 +4603,7 @@ const App: React.FC = () => {
         description: clean.description.slice(0, 3000),
         dueDate: clean.dueDate.slice(0, 32),
         assignedBy: clean.assignedBy.slice(0, 150),
-        createdDate: (clean.createdDate || new Date().toISOString().split('T')[0]).slice(0, 32),
+        createdDate: (clean.createdDate || getDhakaTodayISO()).slice(0, 32),
         isPublic: clean.isPublic,
       },
       true,
@@ -4212,7 +4689,7 @@ const App: React.FC = () => {
           status: 'graded',
           marks: cleanMarks,
           feedback: cleanFeedback.slice(0, 1000),
-          submittedDate: (targetSub.submittedDate || new Date().toISOString().split('T')[0]).slice(0, 32),
+          submittedDate: (targetSub.submittedDate || getDhakaTodayISO()).slice(0, 32),
           createdAt: serverTimestamp(),
           updatedAt: serverTimestamp(),
         });
@@ -4636,7 +5113,7 @@ const App: React.FC = () => {
           reply: cleanReply.slice(0, 2000),
           repliedBy: repliedBy.slice(0, 150),
           status: 'replied',
-          createdDate: (targetMsg.createdDate || new Date().toISOString().split('T')[0]).slice(0, 32),
+          createdDate: (targetMsg.createdDate || getDhakaTodayISO()).slice(0, 32),
           createdAt: serverTimestamp(),
           updatedAt: serverTimestamp(),
         });
@@ -4665,7 +5142,7 @@ const App: React.FC = () => {
       roll: cleanRoll.slice(0, 20),
       relationship: payload.relationship,
       status: 'pending',
-      submittedDate: new Date().toISOString().split('T')[0],
+      submittedDate: getDhakaTodayISO(),
     };
 
     const next = [link, ...parentLinks.filter((l) => l.id !== id)];
@@ -4932,7 +5409,7 @@ const App: React.FC = () => {
           reason: (targetLeave.reason || 'Leave request').slice(0, 1500),
           status,
           ...(cleanRemark ? { adminRemark: cleanRemark.slice(0, 500) } : {}),
-          submittedDate: (targetLeave.submittedDate || new Date().toISOString().split('T')[0]).slice(0, 32),
+          submittedDate: (targetLeave.submittedDate || getDhakaTodayISO()).slice(0, 32),
           createdAt: serverTimestamp(),
           updatedAt: serverTimestamp(),
         });
@@ -5018,7 +5495,7 @@ const App: React.FC = () => {
           endDate: targetLeave.endDate.slice(0, 32),
           reason: targetLeave.reason.slice(0, 1500),
           status: 'pending',
-          submittedDate: (targetLeave.submittedDate || new Date().toISOString().split('T')[0]).slice(0, 32),
+          submittedDate: (targetLeave.submittedDate || getDhakaTodayISO()).slice(0, 32),
           createdAt: serverTimestamp(),
           updatedAt: serverTimestamp(),
         });
@@ -5068,7 +5545,7 @@ const App: React.FC = () => {
         ? { receiptNo: `RBMB-${Date.now().toString().slice(-6)}` }
         : {}),
       ...(computedStatus === 'paid' && !fee.paidDate
-        ? { paidDate: new Date().toISOString().split('T')[0] }
+        ? { paidDate: getDhakaTodayISO() }
         : {}),
       ...(allowedUids.length > 0 ? { allowedUids } : {}),
     };
@@ -5205,7 +5682,7 @@ const App: React.FC = () => {
     const nextStatus: FeeRecord['status'] =
       safePaid >= target.amount && target.amount > 0 ? 'paid' : safePaid > 0 ? 'partial' : 'pending';
     const nextReceipt = (receiptNo || target.receiptNo || `RBMB-${Date.now().toString().slice(-6)}`).slice(0, 64);
-    const nextPaidDate = new Date().toISOString().split('T')[0];
+    const nextPaidDate = getDhakaTodayISO();
     const recorder = (user?.name || firebaseUser?.displayName || target.recordedBy).slice(0, 150);
 
     const updated = feeRecords.map((f) =>
@@ -5321,7 +5798,7 @@ const App: React.FC = () => {
       id,
       classId: notif.classId || 'all',
       senderName: (notif.senderName || user?.name || 'Administration').slice(0, 150),
-      createdDate: (notif.createdDate || new Date().toISOString().split('T')[0]).slice(0, 32),
+      createdDate: (notif.createdDate || getDhakaTodayISO()).slice(0, 32),
     };
     const updated = [clean, ...portalNotifications];
     setPortalNotifications(updated);
@@ -5371,7 +5848,7 @@ const App: React.FC = () => {
       teachers,
       ebooks,
       gallery,
-      holidays,
+      holidays: effectiveHolidays,
       admissions,
       contactMessages,
       students,
@@ -5397,7 +5874,7 @@ const App: React.FC = () => {
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
-    a.download = `rbhs_school_backup_${new Date().toISOString().split('T')[0]}.json`;
+    a.download = `rbhs_school_backup_${getDhakaTodayISO()}.json`;
     a.click();
     URL.revokeObjectURL(url);
   };
@@ -5634,6 +6111,8 @@ Available Features: Online Admission (/admission), Online MCQ Exams (/exams), Di
         addTeacher,
         updateTeacher,
         deleteTeacher,
+        addClassTeacherByAdmin,
+        assignClassTeacher,
         ebooks,
         addEbook,
         updateEbook,
@@ -5642,7 +6121,7 @@ Available Features: Online Admission (/admission), Online MCQ Exams (/exams), Di
         addGalleryItem,
         updateGalleryItem,
         deleteGalleryItem,
-        holidays,
+        holidays: effectiveHolidays,
         addHoliday,
         updateHoliday,
         deleteHoliday,

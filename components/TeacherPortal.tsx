@@ -31,6 +31,9 @@ import {
   Clock,
   Sparkles,
   Loader2,
+  Lock,
+  ShieldAlert,
+  ShieldCheck,
 } from 'lucide-react';
 import { useApp } from '../App';
 import { CLASSES, CLASS_SUBJECTS, EXAM_TERMS } from '../constants';
@@ -47,14 +50,17 @@ import {
   Teacher,
 } from '../types';
 import { calculateGrade, isSafeHttpUrl } from '../utils/security';
+import { getDhakaTodayISO, getDhakaNoticeStamp, formatDhakaClock } from '../utils/dhakaTime';
 import { exportCsv } from '../utils/exportUtils';
 import { compressImageFile } from '../utils/imageUtils';
 import { FeeReceiptModal } from './FeeReceiptModal';
 import { StudentIdAdmitCard, CardMode } from './StudentIdAdmitCard';
 import { StudentCertificateModal } from './StudentCertificateModal';
 import { TeacherIdCardModal } from './TeacherIdCardModal';
+import { ClassTeacherAssignmentPanel } from './ClassTeacherAssignmentPanel';
+import { isHeadTeacherUser } from '../utils/teacherRole';
 
-const { useState, useEffect, useMemo } = React;
+const { useState, useEffect, useMemo, useRef } = React;
 
 type TeacherTab =
   | 'attendance'
@@ -64,6 +70,7 @@ type TeacherTab =
   | 'notices'
   | 'materials'
   | 'classes'
+  | 'class-teachers'
   | 'online-exams'
   | 'parent-messages'
   | 'my-leave'
@@ -125,6 +132,7 @@ export const TeacherPortal: React.FC = () => {
     deletePortalNotification,
     classRoutines,
     saveClassRoutine,
+    settings,
   } = useApp();
 
   const [activeTab, setActiveTab] = useState<TeacherTab>('attendance');
@@ -134,7 +142,7 @@ export const TeacherPortal: React.FC = () => {
   const [idCardMode, setIdCardMode] = useState<CardMode>('admit');
   const [certStudent, setCertStudent] = useState<SchoolStudent | null>(null);
   const [teacherIdCardOpen, setTeacherIdCardOpen] = useState(false);
-  const todayStr = new Date().toISOString().split('T')[0];
+  const todayStr = getDhakaTodayISO();
 
   const matchedTeacherIdx = useMemo(() => {
     const uid = (user?.userId || '').trim().toLowerCase();
@@ -183,6 +191,83 @@ export const TeacherPortal: React.FC = () => {
     };
   }, [matchedTeacherIdx, teachers, user]);
 
+  const matchedTeacherProfile = matchedTeacherIdx !== -1 ? teachers[matchedTeacherIdx] : undefined;
+  const isHeadTeacher = useMemo(
+    () => user?.role === 'admin' || isHeadTeacherUser(user, teachers, settings),
+    [user, teachers, settings]
+  );
+  const isRestrictedTeacher = user?.role === 'teacher' && !isHeadTeacher;
+  const resolvedAssignedClass = (
+    matchedTeacherProfile && matchedTeacherProfile.assignedClass !== undefined
+      ? matchedTeacherProfile.assignedClass
+      : user?.assignedClass || ''
+  ).trim();
+  const lockedClassId = isRestrictedTeacher
+    ? (['6', '7', '8', '9', '10'].includes(resolvedAssignedClass) ? resolvedAssignedClass : '__UNASSIGNED__')
+    : '';
+  const isClassLocked = isRestrictedTeacher && lockedClassId !== '__UNASSIGNED__';
+  const availableClassIds: ('6' | '7' | '8' | '9' | '10')[] = isClassLocked
+    ? [lockedClassId as '6' | '7' | '8' | '9' | '10']
+    : ['6', '7', '8', '9', '10'];
+
+  const visibleStudents = useMemo(
+    () => (isClassLocked ? students.filter((s) => s.classId === lockedClassId) : students),
+    [students, isClassLocked, lockedClassId]
+  );
+
+  const visibleHomeworks = useMemo(
+    () => (isClassLocked ? homeworkList.filter((h) => h.classId === lockedClassId) : homeworkList),
+    [homeworkList, isClassLocked, lockedClassId]
+  );
+
+  const visibleSubmissions = useMemo(
+    () => (isClassLocked ? assignmentSubmissions.filter((s) => s.classId === lockedClassId) : assignmentSubmissions),
+    [assignmentSubmissions, isClassLocked, lockedClassId]
+  );
+
+  const visibleExamMarks = useMemo(
+    () => (isClassLocked ? examMarks.filter((m) => m.classId === lockedClassId) : examMarks),
+    [examMarks, isClassLocked, lockedClassId]
+  );
+
+  const visibleExamRoutines = useMemo(
+    () => (isClassLocked ? examRoutines.filter((r) => r.classId === lockedClassId) : examRoutines),
+    [examRoutines, isClassLocked, lockedClassId]
+  );
+
+  const visibleOnlineExams = useMemo(
+    () => (isClassLocked ? onlineExams.filter((ex) => ex.classId === lockedClassId) : onlineExams),
+    [onlineExams, isClassLocked, lockedClassId]
+  );
+
+  const visibleFees = useMemo(
+    () => (isClassLocked ? feeRecords.filter((f) => f.classId === lockedClassId) : feeRecords),
+    [feeRecords, isClassLocked, lockedClassId]
+  );
+
+  const visibleParentLinks = useMemo(
+    () => (isClassLocked ? parentLinks.filter((pl) => pl.classId === lockedClassId) : parentLinks),
+    [parentLinks, isClassLocked, lockedClassId]
+  );
+
+  const visibleStudentLeaves = useMemo(
+    () => (isClassLocked ? studentLeaves.filter((sl) => sl.classId === lockedClassId) : studentLeaves),
+    [studentLeaves, isClassLocked, lockedClassId]
+  );
+
+  const visibleEbooks = useMemo(
+    () => (isClassLocked ? ebooks.filter((eb) => eb.classId === lockedClassId) : ebooks),
+    [ebooks, isClassLocked, lockedClassId]
+  );
+
+  const visiblePortalNotifications = useMemo(
+    () =>
+      isClassLocked
+        ? portalNotifications.filter((pn) => !pn.classId || pn.classId === 'all' || pn.classId === lockedClassId)
+        : portalNotifications,
+    [portalNotifications, isClassLocked, lockedClassId]
+  );
+
   const myParentMessages = useMemo(() => {
     const uid = (user?.userId || '').trim().toLowerCase();
     const tId = (resolvedTeacherCardProfile.id || '').trim().toLowerCase();
@@ -192,6 +277,9 @@ export const TeacherPortal: React.FC = () => {
     const uName = (user?.name || '').trim().toLowerCase();
 
     return parentMessages.filter((pm) => {
+      if (isClassLocked && pm.classId && pm.classId !== lockedClassId) {
+        return false;
+      }
       if (pm.recipientUid && uid && pm.recipientUid.trim().toLowerCase() === uid) {
         return true;
       }
@@ -205,7 +293,7 @@ export const TeacherPortal: React.FC = () => {
       const pmTeacher = (pm.teacherName || '').trim().toLowerCase();
       return Boolean(pmTeacher && (pmTeacher === tNameEn || pmTeacher === tNameBn || pmTeacher === uName));
     });
-  }, [parentMessages, user?.userId, user?.name, resolvedTeacherCardProfile]);
+  }, [parentMessages, user?.userId, user?.name, resolvedTeacherCardProfile, isClassLocked, lockedClassId]);
 
   const openStudentCard = (st: SchoolStudent, mode: CardMode) => {
     setIdCardMode(mode);
@@ -218,13 +306,13 @@ export const TeacherPortal: React.FC = () => {
   };
 
   // --- 1. Attendance ---
-  const [attClassId, setAttClassId] = useState<string>('9');
+  const [attClassId, setAttClassId] = useState<string>(isClassLocked ? lockedClassId : '9');
   const [attDate, setAttDate] = useState<string>(todayStr);
   const [attDraft, setAttDraft] = useState<Record<string, AttendanceStatus>>({});
 
   const attClassStudents = useMemo(
-    () => students.filter((s) => s.classId === attClassId).sort((a, b) => a.roll.localeCompare(b.roll, undefined, { numeric: true })),
-    [students, attClassId]
+    () => visibleStudents.filter((s) => s.classId === attClassId).sort((a, b) => a.roll.localeCompare(b.roll, undefined, { numeric: true })),
+    [visibleStudents, attClassId]
   );
 
   useEffect(() => {
@@ -294,16 +382,30 @@ export const TeacherPortal: React.FC = () => {
   };
 
   // --- 3. Exam Marks ---
-  const [markClassId, setMarkClassId] = useState<string>('9');
+  const [markClassId, setMarkClassId] = useState<string>(isClassLocked ? lockedClassId : '9');
   const [markTerm, setMarkTerm] = useState<string>(EXAM_TERMS[1].id);
   const [markSubject, setMarkSubject] = useState<string>(CLASS_SUBJECTS['9'][0]);
   const [markTotal, setMarkTotal] = useState<number>(100);
+  const [markSearch, setMarkSearch] = useState<string>('');
+  const [quickAddStudent, setQuickAddStudent] = useState({ roll: '', name: '', section: 'A', guardianMobile: '' });
   const [marksDraft, setMarksDraft] = useState<Record<string, string>>({});
+  const lastMarksKeyRef = useRef<string>('');
 
   const markClassStudents = useMemo(
-    () => students.filter((s) => s.classId === markClassId).sort((a, b) => a.roll.localeCompare(b.roll, undefined, { numeric: true })),
-    [students, markClassId]
+    () =>
+      visibleStudents
+        .filter((s) => s.classId === markClassId)
+        .sort((a, b) => a.roll.localeCompare(b.roll, undefined, { numeric: true })),
+    [visibleStudents, markClassId]
   );
+
+  const filteredMarkStudents = useMemo(() => {
+    const q = markSearch.trim().toLowerCase();
+    if (!q) return markClassStudents;
+    return markClassStudents.filter(
+      (st) => st.name.toLowerCase().includes(q) || st.roll.toLowerCase().includes(q) || st.section.toLowerCase().includes(q)
+    );
+  }, [markClassStudents, markSearch]);
 
   useEffect(() => {
     const subs = CLASS_SUBJECTS[markClassId] || ['Bangla'];
@@ -311,15 +413,29 @@ export const TeacherPortal: React.FC = () => {
   }, [markClassId, markSubject]);
 
   useEffect(() => {
-    const draft: Record<string, string> = {};
-    markClassStudents.forEach((st) => {
-      const existing = examMarks.find(
-        (m) => m.classId === markClassId && m.examTerm === markTerm && m.subject === markSubject && m.studentId === st.id
-      );
-      draft[st.id] = existing ? String(existing.obtainedMarks) : '';
+    const activeKey = `${markClassId}__${markTerm}__${markSubject}`;
+    const keyChanged = lastMarksKeyRef.current !== activeKey;
+    lastMarksKeyRef.current = activeKey;
+
+    setMarksDraft((prev) => {
+      const next: Record<string, string> = {};
+      markClassStudents.forEach((st) => {
+        const existing = visibleExamMarks.find(
+          (m) =>
+            m.classId === markClassId &&
+            m.examTerm === markTerm &&
+            m.subject === markSubject &&
+            (m.studentId === st.id || m.roll.trim() === st.roll.trim())
+        );
+        if (!keyChanged && prev[st.id] !== undefined && prev[st.id] !== '') {
+          next[st.id] = prev[st.id];
+        } else {
+          next[st.id] = existing ? String(existing.obtainedMarks) : '';
+        }
+      });
+      return next;
     });
-    setMarksDraft(draft);
-  }, [markClassId, markTerm, markSubject, examMarks, markClassStudents]);
+  }, [markClassId, markTerm, markSubject, visibleExamMarks, markClassStudents]);
 
   const handleSaveMarksBulk = () => {
     const toSave: ExamMark[] = [];
@@ -370,13 +486,13 @@ export const TeacherPortal: React.FC = () => {
     addNotice({
       id: `not-${Date.now()}`,
       title: { bn: newNotice.titleBn.trim() || newNotice.titleEn.trim(), en: newNotice.titleEn.trim() || newNotice.titleBn.trim() },
-      date: todayStr,
+      date: getDhakaNoticeStamp(),
       category: newNotice.category,
       description: { bn: newNotice.descBn.trim() || newNotice.descEn.trim(), en: newNotice.descEn.trim() || newNotice.descBn.trim() },
       isPublic: true,
     });
     setNewNotice({ titleBn: '', titleEn: '', category: 'General', descBn: '', descEn: '' });
-    notify(lang === 'bn' ? 'নতুন নোটিশ প্রকাশিত হয়েছে!' : 'Notice published!');
+    notify(lang === 'bn' ? 'নতুন নোটিশ GMT+6 সময়সহ প্রকাশিত হয়েছে!' : 'Notice published with GMT+6 timestamp!');
   };
 
   // --- 5. Upload Study Material ---
@@ -597,12 +713,12 @@ export const TeacherPortal: React.FC = () => {
   const [payAmounts, setPayAmounts] = useState<Record<string, string>>({});
 
   const filteredFees = useMemo(() => {
-    return feeRecords.filter((f) => {
+    return visibleFees.filter((f) => {
       if (feeClassFilter !== 'all' && f.classId !== feeClassFilter) return false;
       if (feeStatusFilter !== 'all' && f.status !== feeStatusFilter) return false;
       return true;
     });
-  }, [feeRecords, feeClassFilter, feeStatusFilter]);
+  }, [visibleFees, feeClassFilter, feeStatusFilter]);
 
   const feeStats = useMemo(() => {
     const billed = filteredFees.reduce((s, f) => s + f.amount, 0);
@@ -616,9 +732,28 @@ export const TeacherPortal: React.FC = () => {
     title: '',
     message: '',
     targetRole: 'all' as 'all' | 'student' | 'parent',
-    classId: 'all',
+    classId: isClassLocked ? lockedClassId : 'all',
     priority: 'normal' as 'normal' | 'urgent',
   });
+
+  useEffect(() => {
+    if (!isClassLocked) return;
+    setAttClassId(lockedClassId);
+    setHwFilterClass(lockedClassId);
+    setHwForm((p) => ({
+      ...p,
+      classId: lockedClassId,
+      subject: (CLASS_SUBJECTS[lockedClassId] || ['Bangla'])[0],
+    }));
+    setMarkClassId(lockedClassId);
+    setMatForm((p) => ({ ...p, classId: lockedClassId }));
+    setManageClassId(lockedClassId as '6' | '7' | '8' | '9' | '10');
+    setRoutineForm((p) => ({ ...p, classId: lockedClassId }));
+    setMcqForm((p) => ({ ...p, classId: lockedClassId }));
+    setFeeClassFilter(lockedClassId);
+    setBulkFeeForm((p) => ({ ...p, classId: lockedClassId }));
+    setBroadcastForm((p) => ({ ...p, classId: lockedClassId }));
+  }, [isClassLocked, lockedClassId]);
 
   // --- 13. Class Routine Editor (Phase 4) ---
   const [routineDayIdx, setRoutineDayIdx] = useState<number>(0);
@@ -643,11 +778,50 @@ export const TeacherPortal: React.FC = () => {
     { id: 'notices', label: lang === 'bn' ? 'নোটিশ ও ঘোষণা' : 'Notices & Alerts', icon: Bell },
     { id: 'materials', label: lang === 'bn' ? 'স্টাডি নোটস' : 'Study Materials', icon: BookOpen },
     { id: 'classes', label: lang === 'bn' ? 'শ্রেণী ও রুটিন' : 'Classes & Routines', icon: School },
+    ...(isHeadTeacher
+      ? [{ id: 'class-teachers' as TeacherTab, label: lang === 'bn' ? 'শ্রেণী শিক্ষক নির্ধারণ' : 'Class Teachers', icon: ShieldCheck }]
+      : []),
     { id: 'online-exams', label: lang === 'bn' ? 'MCQ পরীক্ষা তৈরি' : 'Create MCQ Exam', icon: Trophy },
     { id: 'parent-messages', label: lang === 'bn' ? 'অভিভাবক বার্তা' : 'Parent Messages', icon: MessageSquare },
     { id: 'my-leave', label: lang === 'bn' ? 'নিজের ছুটি' : 'My Leave', icon: CalendarPlus },
     { id: 'student-leaves', label: lang === 'bn' ? 'শিক্ষার্থীর ছুটি' : 'Student Leaves', icon: UserCheck },
   ];
+
+  if (isRestrictedTeacher && lockedClassId === '__UNASSIGNED__') {
+    return (
+      <div className="space-y-6">
+        <div className="p-8 rounded-3xl bg-amber-50 dark:bg-amber-950/40 border border-amber-200 dark:border-amber-800 text-center space-y-4">
+          <div className="w-14 h-14 rounded-2xl bg-amber-100 dark:bg-amber-900/60 text-amber-700 dark:text-amber-300 flex items-center justify-center mx-auto">
+            <ShieldAlert className="w-7 h-7" />
+          </div>
+          <h3 className="text-xl font-black text-slate-900 dark:text-white">
+            {lang === 'bn' ? 'আপনার জন্য এখনো কোনো শ্রেণী নির্ধারিত হয়নি' : 'No Class Assigned Yet'}
+          </h3>
+          <p className="text-sm text-slate-600 dark:text-slate-300 max-w-lg mx-auto leading-relaxed">
+            {lang === 'bn'
+              ? 'বিদ্যালয়ের নিরাপত্তা নীতি অনুযায়ী প্রতিটি শ্রেণীর শিক্ষক শুধুমাত্র নিজের নির্ধারিত শ্রেণীর সকল তথ্য দেখতে ও পরিচালনা করতে পারবেন। অনুগ্রহ করে স্কুল অ্যাডমিনের মাধ্যমে আপনার অ্যাকাউন্টে আপনার শ্রেণী (৬ষ্ঠ–১০ম) যুক্ত করে নিন।'
+              : 'Per school privacy rules, each Class Teacher can access and manage records exclusively for their assigned class. Please contact Admin to assign your Class (6–10) to your teacher profile.'}
+          </p>
+          <button
+            type="button"
+            onClick={() => setTeacherIdCardOpen(true)}
+            className="px-5 py-2.5 rounded-xl bg-emerald-700 hover:bg-emerald-800 text-white text-xs font-bold inline-flex items-center gap-2 shadow-sm"
+          >
+            <IdCard className="w-4 h-4" />
+            <span>{lang === 'bn' ? 'আমার শিক্ষক আইডি কার্ড' : 'My Teacher ID Card'}</span>
+          </button>
+        </div>
+
+        <TeacherIdCardModal
+          open={teacherIdCardOpen}
+          onClose={() => setTeacherIdCardOpen(false)}
+          teacher={resolvedTeacherCardProfile}
+          teacherIndex={matchedTeacherIdx !== -1 ? matchedTeacherIdx : teachers.length}
+          phoneOverride={user?.phone}
+        />
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-6">
@@ -658,7 +832,7 @@ export const TeacherPortal: React.FC = () => {
         </div>
       )}
 
-      {/* Cloud Sync Banner */}
+      {/* Cloud Sync & Class Isolation Banner */}
       <div
         className={`flex flex-wrap items-center justify-between gap-4 p-4 rounded-2xl border ${
           isCloudTeacher
@@ -666,7 +840,7 @@ export const TeacherPortal: React.FC = () => {
             : 'bg-amber-50 dark:bg-amber-950/50 border-amber-200 dark:border-amber-800 text-amber-900 dark:text-amber-200'
         }`}
       >
-        <div className="flex items-center gap-3 text-xs font-bold">
+        <div className="flex flex-wrap items-center gap-3 text-xs font-bold">
           {isCloudTeacher ? <Cloud className="w-5 h-5 text-emerald-600" /> : <CloudOff className="w-5 h-5 text-amber-600" />}
           <span>
             {isCloudTeacher
@@ -676,6 +850,21 @@ export const TeacherPortal: React.FC = () => {
               : lang === 'bn'
               ? 'লোকাল মোড সক্রিয় — ক্লাউডে সেভ করতে Google দিয়ে যুক্ত হতে পারেন।'
               : 'Local storage mode — connect Google to sync to cloud.'}
+          </span>
+          {isHeadTeacher ? (
+            <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-xl bg-amber-100 dark:bg-amber-950/70 border border-amber-300 dark:border-amber-800 text-amber-900 dark:text-amber-200 font-extrabold">
+              <ShieldCheck className="w-3.5 h-3.5" />
+              {lang === 'bn' ? 'প্রধান শিক্ষক — সকল শ্রেণী ও শ্রেণী শিক্ষক নির্ধারণ' : 'Head Teacher — All Classes & Class Teacher Control'}
+            </span>
+          ) : isClassLocked ? (
+            <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-xl bg-purple-100 dark:bg-purple-950/70 border border-purple-300 dark:border-purple-800 text-purple-800 dark:text-purple-200 font-extrabold">
+              <Lock className="w-3.5 h-3.5" />
+              {lang === 'bn' ? `শ্রেণী শিক্ষক: শুধুমাত্র ${lockedClassId}ম শ্রেণী` : `Class Teacher: Class ${lockedClassId} Only`}
+            </span>
+          ) : null}
+          <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-xl bg-white/80 dark:bg-slate-900/70 border border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-300 tabular-nums">
+            <Clock className="w-3 h-3 text-emerald-600" />
+            {formatDhakaClock(lang)}
           </span>
         </div>
         <div className="flex flex-wrap items-center gap-2">
@@ -729,10 +918,11 @@ export const TeacherPortal: React.FC = () => {
                 <label className="text-[10px] font-bold uppercase text-slate-400 block mb-1">{lang === 'bn' ? 'শ্রেণী' : 'Class'}</label>
                 <select
                   value={attClassId}
+                  disabled={isClassLocked}
                   onChange={(e) => setAttClassId(e.target.value)}
-                  className="px-4 py-2.5 rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-sm font-bold"
+                  className="px-4 py-2.5 rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-sm font-bold disabled:opacity-75"
                 >
-                  {['6', '7', '8', '9', '10'].map((c) => (
+                  {availableClassIds.map((c) => (
                     <option key={c} value={c}>Class {c}</option>
                   ))}
                 </select>
@@ -815,13 +1005,14 @@ export const TeacherPortal: React.FC = () => {
             <div className="grid grid-cols-2 gap-3">
               <select
                 value={hwForm.classId}
+                disabled={isClassLocked}
                 onChange={(e) => {
                   const cid = e.target.value;
                   setHwForm((p) => ({ ...p, classId: cid, subject: (CLASS_SUBJECTS[cid] || ['Bangla'])[0] }));
                 }}
-                className="px-3 py-2.5 rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-sm font-bold"
+                className="px-3 py-2.5 rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-sm font-bold disabled:opacity-75"
               >
-                {['6', '7', '8', '9', '10'].map((c) => <option key={c} value={c}>Class {c}</option>)}
+                {availableClassIds.map((c) => <option key={c} value={c}>Class {c}</option>)}
               </select>
               <select
                 value={hwForm.subject}
@@ -861,16 +1052,18 @@ export const TeacherPortal: React.FC = () => {
           <div className="lg:col-span-7 space-y-4">
             <div className="flex items-center justify-between">
               <h4 className="font-extrabold text-sm">{lang === 'bn' ? 'চলমান হোমওয়ার্ক' : 'Active Assignments'}</h4>
-              <select
-                value={hwFilterClass}
-                onChange={(e) => setHwFilterClass(e.target.value)}
-                className="px-3 py-1.5 rounded-xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 text-xs font-bold"
-              >
-                <option value="all">{lang === 'bn' ? 'সব শ্রেণী' : 'All Classes'}</option>
-                {['6', '7', '8', '9', '10'].map((c) => <option key={c} value={c}>Class {c}</option>)}
-              </select>
+              {!isClassLocked && (
+                <select
+                  value={hwFilterClass}
+                  onChange={(e) => setHwFilterClass(e.target.value)}
+                  className="px-3 py-1.5 rounded-xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 text-xs font-bold"
+                >
+                  <option value="all">{lang === 'bn' ? 'সব শ্রেণী' : 'All Classes'}</option>
+                  {['6', '7', '8', '9', '10'].map((c) => <option key={c} value={c}>Class {c}</option>)}
+                </select>
+              )}
             </div>
-            {homeworkList
+            {visibleHomeworks
               .filter((h) => hwFilterClass === 'all' || h.classId === hwFilterClass)
               .map((hw) => (
                 <div key={hw.id} className="bg-white dark:bg-slate-900 p-4 rounded-2xl border border-slate-200 dark:border-slate-800 flex justify-between gap-3">
@@ -891,10 +1084,10 @@ export const TeacherPortal: React.FC = () => {
               ))}
 
             {/* Student Submissions to Grade */}
-            {assignmentSubmissions.length > 0 && (
+            {visibleSubmissions.length > 0 && (
               <div className="pt-4 space-y-3">
                 <h4 className="font-extrabold text-sm">{lang === 'bn' ? 'জমাকৃত অ্যাসাইনমেন্ট মূল্যায়ন' : 'Submitted Assignments to Grade'}</h4>
-                {assignmentSubmissions.map((sub) => {
+                {visibleSubmissions.map((sub) => {
                   const draft = gradeDrafts[sub.id] || { marks: String(sub.marks ?? ''), feedback: sub.feedback ?? '' };
                   return (
                     <div key={sub.id} className="bg-white dark:bg-slate-900 p-4 rounded-2xl border border-slate-200 dark:border-slate-800 space-y-2 text-xs">
@@ -942,38 +1135,70 @@ export const TeacherPortal: React.FC = () => {
       {/* 3. Exam Marks Entry */}
       {activeTab === 'marks' && (
         <div className="bg-white dark:bg-slate-900 p-6 rounded-3xl border border-slate-200 dark:border-slate-800 space-y-5">
-          <div className="grid grid-cols-2 lg:grid-cols-5 gap-3 items-end">
-            <div>
-              <label className="text-[10px] font-bold uppercase text-slate-400 block mb-1">Term</label>
-              <select value={markTerm} onChange={(e) => setMarkTerm(e.target.value)} className="w-full px-3 py-2.5 rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-xs font-bold">
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-12 gap-3 items-end">
+            <div className="lg:col-span-3">
+              <label className="text-[10px] font-bold uppercase text-slate-400 block mb-1">
+                {lang === 'bn' ? 'পরীক্ষার টার্ম' : 'Term'}
+              </label>
+              <select
+                value={markTerm}
+                onChange={(e) => setMarkTerm(e.target.value)}
+                className="w-full px-3 py-2.5 rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-xs font-bold"
+              >
                 {EXAM_TERMS.map((term) => <option key={term.id} value={term.id}>{t(term)}</option>)}
               </select>
             </div>
-            <div>
-              <label className="text-[10px] font-bold uppercase text-slate-400 block mb-1">Class</label>
-              <select value={markClassId} onChange={(e) => setMarkClassId(e.target.value)} className="w-full px-3 py-2.5 rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-xs font-bold">
-                {['6', '7', '8', '9', '10'].map((c) => <option key={c} value={c}>Class {c}</option>)}
+            <div className="lg:col-span-2">
+              <label className="text-[10px] font-bold uppercase text-slate-400 block mb-1">
+                {lang === 'bn' ? 'শ্রেণী' : 'Class'}
+              </label>
+              <select
+                value={markClassId}
+                disabled={isClassLocked}
+                onChange={(e) => setMarkClassId(e.target.value)}
+                className="w-full px-3 py-2.5 rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-xs font-bold disabled:opacity-75"
+              >
+                {availableClassIds.map((c) => <option key={c} value={c}>Class {c}</option>)}
               </select>
             </div>
-            <div>
-              <label className="text-[10px] font-bold uppercase text-slate-400 block mb-1">Subject</label>
-              <select value={markSubject} onChange={(e) => setMarkSubject(e.target.value)} className="w-full px-3 py-2.5 rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-xs font-bold">
+            <div className="lg:col-span-3">
+              <label className="text-[10px] font-bold uppercase text-slate-400 block mb-1">
+                {lang === 'bn' ? 'বিষয়' : 'Subject'}
+              </label>
+              <select
+                value={markSubject}
+                onChange={(e) => setMarkSubject(e.target.value)}
+                className="w-full px-3 py-2.5 rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-xs font-bold"
+              >
                 {(CLASS_SUBJECTS[markClassId] || ['Bangla']).map((s) => <option key={s} value={s}>{s}</option>)}
               </select>
             </div>
-            <div>
-              <label className="text-[10px] font-bold uppercase text-slate-400 block mb-1">Full Marks</label>
-              <input type="number" min={10} max={200} value={markTotal} onChange={(e) => setMarkTotal(Number(e.target.value) || 100)} className="w-full px-3 py-2.5 rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-xs font-bold" />
+            <div className="lg:col-span-1">
+              <label className="text-[10px] font-bold uppercase text-slate-400 block mb-1">
+                {lang === 'bn' ? 'পূর্ণমান' : 'Full'}
+              </label>
+              <input
+                type="number"
+                min={10}
+                max={200}
+                value={markTotal}
+                onChange={(e) => setMarkTotal(Math.max(1, Number(e.target.value) || 100))}
+                className="w-full px-3 py-2.5 rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-xs font-bold tabular-nums"
+              />
             </div>
-            <div className="flex gap-2">
-              <button onClick={handleSaveMarksBulk} className="flex-1 py-2.5 px-4 rounded-xl bg-emerald-700 hover:bg-emerald-800 text-white text-xs font-bold flex items-center justify-center gap-1.5">
-                <Save className="w-4 h-4" />
-                {lang === 'bn' ? 'নম্বর প্রকাশ' : 'Publish'}
+            <div className="sm:col-span-2 lg:col-span-3 flex gap-2">
+              <button
+                type="button"
+                onClick={handleSaveMarksBulk}
+                className="flex-1 py-2.5 px-4 rounded-xl bg-emerald-700 hover:bg-emerald-800 text-white text-xs font-bold flex items-center justify-center gap-1.5 whitespace-nowrap"
+              >
+                <Save className="w-4 h-4 shrink-0" />
+                <span>{lang === 'bn' ? 'নম্বর প্রকাশ' : 'Publish Marks'}</span>
               </button>
               <button
                 type="button"
                 onClick={() => {
-                  const classMarks = examMarks.filter((m) => m.classId === markClassId && m.examTerm === markTerm);
+                  const classMarks = visibleExamMarks.filter((m) => m.classId === markClassId && m.examTerm === markTerm);
                   exportCsv(
                     `marks_class_${markClassId}_${markTerm}`,
                     ['Term', 'Class', 'Roll', 'Student Name', 'Subject', 'Obtained', 'Total', 'Grade'],
@@ -981,43 +1206,117 @@ export const TeacherPortal: React.FC = () => {
                   );
                 }}
                 title={lang === 'bn' ? 'CSV ডাউনলোড' : 'Export Class Marks CSV'}
-                className="py-2.5 px-3 rounded-xl bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-xs font-bold flex items-center justify-center"
+                className="py-2.5 px-3 rounded-xl bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-xs font-bold flex items-center justify-center shrink-0"
               >
                 <Download className="w-4 h-4" />
               </button>
             </div>
           </div>
 
-          <div className="divide-y divide-slate-100 dark:divide-slate-800">
-            {markClassStudents.map((st) => {
-              const val = marksDraft[st.id] ?? '';
-              const g = val !== '' ? calculateGrade(Number(val) || 0, markTotal).grade : '-';
-              return (
-                <div key={st.id} className="py-3 flex items-center justify-between gap-3">
-                  <div>
-                    <span className="font-bold text-sm">#{st.roll} — {st.name}</span>
-                  </div>
-                  <div className="flex items-center gap-3">
-                    <input
-                      type="number"
-                      min={0}
-                      max={markTotal}
-                      value={val}
-                      onChange={(e) => setMarksDraft((p) => ({ ...p, [st.id]: e.target.value }))}
-                      placeholder={`/ ${markTotal}`}
-                      className="w-24 px-3 py-1.5 rounded-lg bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-sm font-bold"
-                    />
-                    <span className="w-10 text-center text-xs font-black text-emerald-700 dark:text-emerald-400">{g}</span>
-                  </div>
-                </div>
-              );
-            })}
+          <div className="flex flex-wrap items-center justify-between gap-3 pt-1">
+            <div className="relative flex-1 min-w-[220px]">
+              <Search className="w-4 h-4 text-slate-400 absolute left-3.5 top-1/2 -translate-y-1/2" />
+              <input
+                type="text"
+                value={markSearch}
+                onChange={(e) => setMarkSearch(e.target.value)}
+                placeholder={lang === 'bn' ? 'শিক্ষার্থীর নাম বা রোল লিখে খুঁজুন...' : 'Search student by name or roll...'}
+                className="w-full pl-10 pr-4 py-2 rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-xs font-semibold"
+              />
+            </div>
+            <span className="text-xs font-bold text-slate-500 dark:text-slate-400 tabular-nums">
+              {lang === 'bn'
+                ? `${filteredMarkStudents.length} / ${markClassStudents.length} জন শিক্ষার্থী`
+                : `${filteredMarkStudents.length} of ${markClassStudents.length} students`}
+            </span>
           </div>
-          {examMarks.filter((m) => m.classId === markClassId).length > 0 && (
+
+          {markClassStudents.length === 0 ? (
+            <div className="p-6 rounded-2xl bg-slate-50 dark:bg-slate-800/70 border border-dashed border-slate-300 dark:border-slate-700 space-y-4">
+              <div className="text-center space-y-1">
+                <p className="text-sm font-black text-slate-800 dark:text-white">
+                  {lang === 'bn' ? `Class ${markClassId}-এ এখনো কোনো শিক্ষার্থী যুক্ত নেই` : `No students enrolled in Class ${markClassId} yet`}
+                </p>
+                <p className="text-xs text-slate-500 dark:text-slate-400">
+                  {lang === 'bn' ? 'নিচ থেকে সরাসরি শিক্ষার্থী যোগ করে নম্বর এন্ট্রি শুরু করুন।' : 'Quickly add a student below to start entering marks.'}
+                </p>
+              </div>
+              <div className="grid grid-cols-2 sm:grid-cols-5 gap-2">
+                <input
+                  value={quickAddStudent.roll}
+                  onChange={(e) => setQuickAddStudent((p) => ({ ...p, roll: e.target.value }))}
+                  placeholder={lang === 'bn' ? 'রোল (যেমন: 01)' : 'Roll (e.g. 01)'}
+                  className="px-3 py-2 rounded-xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 text-xs font-bold"
+                />
+                <input
+                  value={quickAddStudent.name}
+                  onChange={(e) => setQuickAddStudent((p) => ({ ...p, name: e.target.value }))}
+                  placeholder={lang === 'bn' ? 'শিক্ষার্থীর নাম' : 'Student Name'}
+                  className="sm:col-span-2 px-3 py-2 rounded-xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 text-xs font-bold"
+                />
+                <input
+                  value={quickAddStudent.guardianMobile}
+                  onChange={(e) => setQuickAddStudent((p) => ({ ...p, guardianMobile: e.target.value }))}
+                  placeholder={lang === 'bn' ? 'অভিভাবকের মোবাইল' : 'Guardian Mobile'}
+                  className="px-3 py-2 rounded-xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 text-xs font-bold"
+                />
+                <button
+                  type="button"
+                  onClick={() => {
+                    if (!quickAddStudent.roll.trim() || !quickAddStudent.name.trim()) return;
+                    addStudent({
+                      id: `st-${markClassId}-${Date.now()}`,
+                      classId: markClassId,
+                      roll: quickAddStudent.roll.trim(),
+                      name: quickAddStudent.name.trim(),
+                      section: quickAddStudent.section.trim() || 'A',
+                      guardianMobile: quickAddStudent.guardianMobile.trim() || '01700000000',
+                      registrationDate: todayStr,
+                    });
+                    setQuickAddStudent({ roll: '', name: '', section: 'A', guardianMobile: '' });
+                    notify(lang === 'bn' ? 'শিক্ষার্থী যুক্ত হয়েছে! এখন নম্বর দিন।' : 'Student added! You can now enter marks.');
+                  }}
+                  className="px-3 py-2 rounded-xl bg-emerald-700 hover:bg-emerald-800 text-white text-xs font-bold inline-flex items-center justify-center gap-1 whitespace-nowrap"
+                >
+                  <Plus className="w-3.5 h-3.5" /> {lang === 'bn' ? 'শিক্ষার্থী যোগ' : 'Quick Add'}
+                </button>
+              </div>
+            </div>
+          ) : (
+            <div className="divide-y divide-slate-100 dark:divide-slate-800">
+              {filteredMarkStudents.map((st) => {
+                const val = marksDraft[st.id] ?? '';
+                const g = val !== '' ? calculateGrade(Number(val) || 0, markTotal).grade : '-';
+                return (
+                  <div key={st.id} className="py-3 flex items-center justify-between gap-3">
+                    <div>
+                      <span className="font-bold text-sm">#{st.roll} — {st.name}</span>
+                      <span className="ml-2 text-xs text-slate-400">({st.section})</span>
+                    </div>
+                    <div className="flex items-center gap-3">
+                      <input
+                        type="number"
+                        min={0}
+                        max={markTotal}
+                        step="any"
+                        value={val}
+                        onChange={(e) => setMarksDraft((p) => ({ ...p, [st.id]: e.target.value }))}
+                        placeholder={`/ ${markTotal}`}
+                        className="w-24 px-3 py-1.5 rounded-lg bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-sm font-bold tabular-nums"
+                      />
+                      <span className="w-10 text-center text-xs font-black text-emerald-700 dark:text-emerald-400">{g}</span>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          )}
+
+          {visibleExamMarks.filter((m) => m.classId === markClassId).length > 0 && (
             <div className="pt-3 border-t border-slate-100 dark:border-slate-800">
               <p className="text-xs font-bold text-slate-400 mb-2">{lang === 'bn' ? 'প্রকাশিত নম্বর তালিকা' : 'Recent Saved Marks'}</p>
               <div className="flex flex-wrap gap-2">
-                {examMarks.filter((m) => m.classId === markClassId && m.examTerm === markTerm && m.subject === markSubject).map((m) => (
+                {visibleExamMarks.filter((m) => m.classId === markClassId && m.examTerm === markTerm && m.subject === markSubject).map((m) => (
                   <span key={m.id} className="inline-flex items-center gap-2 px-3 py-1 rounded-xl bg-slate-100 dark:bg-slate-800 text-xs font-bold">
                     #{m.roll}: {m.obtainedMarks} ({m.grade})
                     <button onClick={() => deleteExamMark(m.id)} className="text-red-500"><X className="w-3.5 h-3.5" /></button>
@@ -1084,8 +1383,8 @@ export const TeacherPortal: React.FC = () => {
                   className="space-y-3"
                 >
                   <div className="grid grid-cols-2 gap-2">
-                    <select value={bulkFeeForm.classId} onChange={(e) => setBulkFeeForm((p) => ({ ...p, classId: e.target.value }))} className="px-3 py-2.5 rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-xs font-bold">
-                      {['6', '7', '8', '9', '10'].map((c) => <option key={c} value={c}>Class {c}</option>)}
+                    <select value={bulkFeeForm.classId} disabled={isClassLocked} onChange={(e) => setBulkFeeForm((p) => ({ ...p, classId: e.target.value }))} className="px-3 py-2.5 rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-xs font-bold disabled:opacity-75">
+                      {availableClassIds.map((c) => <option key={c} value={c}>Class {c}</option>)}
                     </select>
                     <select value={bulkFeeForm.category} onChange={(e) => setBulkFeeForm((p) => ({ ...p, category: e.target.value as FeeCategory }))} className="px-3 py-2.5 rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-xs font-bold">
                       {['Tuition', 'Exam', 'Admission', 'Library', 'Lab', 'Sports', 'Other'].map((cat) => <option key={cat} value={cat}>{cat}</option>)}
@@ -1105,7 +1404,7 @@ export const TeacherPortal: React.FC = () => {
                 <form
                   onSubmit={(e) => {
                     e.preventDefault();
-                    const st = students.find((s) => s.id === singleFeeForm.studentId) || students[0];
+                    const st = visibleStudents.find((s) => s.id === singleFeeForm.studentId) || visibleStudents[0];
                     if (!st) return;
                     addFeeRecord({
                       id: `fee-${Date.now()}`,
@@ -1126,8 +1425,8 @@ export const TeacherPortal: React.FC = () => {
                   }}
                   className="space-y-3"
                 >
-                  <select value={singleFeeForm.studentId || students[0]?.id || ''} onChange={(e) => setSingleFeeForm((p) => ({ ...p, studentId: e.target.value }))} className="w-full px-3 py-2.5 rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-xs font-bold">
-                    {students.map((st) => (
+                  <select value={singleFeeForm.studentId || visibleStudents[0]?.id || ''} onChange={(e) => setSingleFeeForm((p) => ({ ...p, studentId: e.target.value }))} className="w-full px-3 py-2.5 rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-xs font-bold">
+                    {visibleStudents.map((st) => (
                       <option key={st.id} value={st.id}>Class {st.classId} · #{st.roll} {st.name}</option>
                     ))}
                   </select>
@@ -1150,10 +1449,12 @@ export const TeacherPortal: React.FC = () => {
             <div className="lg:col-span-8 space-y-4">
               <div className="flex flex-wrap items-center justify-between gap-3">
                 <div className="flex flex-wrap gap-2">
-                  <select value={feeClassFilter} onChange={(e) => setFeeClassFilter(e.target.value)} className="px-3 py-2 rounded-xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 text-xs font-bold">
-                    <option value="all">{lang === 'bn' ? 'সব শ্রেণী' : 'All Classes'}</option>
-                    {['6', '7', '8', '9', '10'].map((c) => <option key={c} value={c}>Class {c}</option>)}
-                  </select>
+                  {!isClassLocked && (
+                    <select value={feeClassFilter} onChange={(e) => setFeeClassFilter(e.target.value)} className="px-3 py-2 rounded-xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 text-xs font-bold">
+                      <option value="all">{lang === 'bn' ? 'সব শ্রেণী' : 'All Classes'}</option>
+                      {['6', '7', '8', '9', '10'].map((c) => <option key={c} value={c}>Class {c}</option>)}
+                    </select>
+                  )}
                   <select value={feeStatusFilter} onChange={(e) => setFeeStatusFilter(e.target.value)} className="px-3 py-2 rounded-xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 text-xs font-bold">
                     <option value="all">{lang === 'bn' ? 'সব অবস্থা' : 'All Status'}</option>
                     <option value="pending">Pending</option>
@@ -1329,9 +1630,9 @@ export const TeacherPortal: React.FC = () => {
                   <option value="student">{lang === 'bn' ? 'শুধু শিক্ষার্থী' : 'Students Only'}</option>
                   <option value="parent">{lang === 'bn' ? 'শুধু অভিভাবক' : 'Parents Only'}</option>
                 </select>
-                <select value={broadcastForm.classId} onChange={(e) => setBroadcastForm((p) => ({ ...p, classId: e.target.value }))} className="px-3 py-2.5 rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-xs font-bold">
-                  <option value="all">{lang === 'bn' ? 'সব শ্রেণী' : 'All Classes'}</option>
-                  {['6', '7', '8', '9', '10'].map((c) => <option key={c} value={c}>Class {c}</option>)}
+                <select value={broadcastForm.classId} disabled={isClassLocked} onChange={(e) => setBroadcastForm((p) => ({ ...p, classId: e.target.value }))} className="px-3 py-2.5 rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-xs font-bold disabled:opacity-75">
+                  {!isClassLocked && <option value="all">{lang === 'bn' ? 'সব শ্রেণী' : 'All Classes'}</option>}
+                  {availableClassIds.map((c) => <option key={c} value={c}>Class {c}</option>)}
                 </select>
                 <select value={broadcastForm.priority} onChange={(e) => setBroadcastForm((p) => ({ ...p, priority: e.target.value as 'normal' | 'urgent' }))} className="px-3 py-2.5 rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-xs font-bold">
                   <option value="normal">{lang === 'bn' ? 'সাধারণ' : 'Normal'}</option>
@@ -1344,9 +1645,9 @@ export const TeacherPortal: React.FC = () => {
                 {lang === 'bn' ? 'পোর্টাল ঘোষণা পাঠান' : 'Send Portal Alert'}
               </button>
 
-              {portalNotifications.length > 0 && (
+              {visiblePortalNotifications.length > 0 && (
                 <div className="pt-3 border-t border-slate-100 dark:border-slate-800 space-y-2 max-h-52 overflow-y-auto">
-                  {portalNotifications.slice(0, 6).map((pn) => (
+                  {visiblePortalNotifications.slice(0, 6).map((pn) => (
                     <div key={pn.id} className="p-3 rounded-xl bg-slate-50 dark:bg-slate-800 flex items-start justify-between gap-2 text-xs">
                       <div>
                         <p className="font-bold text-emerald-700 dark:text-emerald-400 uppercase">
@@ -1393,8 +1694,8 @@ export const TeacherPortal: React.FC = () => {
             <input required value={matForm.titleBn} onChange={(e) => setMatForm((p) => ({ ...p, titleBn: e.target.value }))} placeholder="বই বা নোটের নাম (বাংলা)" className="w-full px-4 py-2.5 rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-sm" />
             <input value={matForm.titleEn} onChange={(e) => setMatForm((p) => ({ ...p, titleEn: e.target.value }))} placeholder="Resource Title (English)" className="w-full px-4 py-2.5 rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-sm" />
             <div className="grid grid-cols-2 gap-3">
-              <select value={matForm.classId} onChange={(e) => setMatForm((p) => ({ ...p, classId: e.target.value }))} className="px-3 py-2.5 rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-xs font-bold">
-                {['6', '7', '8', '9', '10'].map((c) => <option key={c} value={c}>Class {c}</option>)}
+              <select value={matForm.classId} disabled={isClassLocked} onChange={(e) => setMatForm((p) => ({ ...p, classId: e.target.value }))} className="px-3 py-2.5 rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-xs font-bold disabled:opacity-75">
+                {availableClassIds.map((c) => <option key={c} value={c}>Class {c}</option>)}
               </select>
               <select value={matForm.category} onChange={(e) => setMatForm((p) => ({ ...p, category: e.target.value as LibraryCategory }))} className="px-3 py-2.5 rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-xs font-bold">
                 {['Notes', 'StudyMaterial', 'ChapterPDF', 'BoardQuestion', 'ModelTest', 'Practical', 'MathSolution', 'EnglishGrammar', 'ICT', 'Textbook'].map((cat) => (
@@ -1411,7 +1712,7 @@ export const TeacherPortal: React.FC = () => {
           </form>
 
           <div className="lg:col-span-7 space-y-3">
-            {ebooks.slice(0, 8).map((eb) => (
+            {visibleEbooks.slice(0, 8).map((eb) => (
               <div key={eb.id} className="bg-white dark:bg-slate-900 p-4 rounded-2xl border border-slate-200 dark:border-slate-800 flex items-center justify-between gap-3">
                 <div>
                   <span className="text-[10px] font-bold px-2 py-0.5 rounded bg-emerald-100 dark:bg-emerald-950 text-emerald-700 dark:text-emerald-300">
@@ -1433,14 +1734,14 @@ export const TeacherPortal: React.FC = () => {
             <div className="flex flex-wrap items-center justify-between gap-2">
               <h4 className="font-extrabold text-base">{lang === 'bn' ? 'শিক্ষার্থী তালিকা ও কার্ড' : 'Student Roster & Cards'}</h4>
               <div className="flex items-center gap-2">
-                <select value={manageClassId} onChange={(e) => setManageClassId(e.target.value as '6' | '7' | '8' | '9' | '10')} className="px-3 py-2 rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-xs font-bold">
-                  {CLASSES.map((c) => <option key={c.classId} value={c.classId}>Class {c.classId}</option>)}
+                <select value={manageClassId} disabled={isClassLocked} onChange={(e) => setManageClassId(e.target.value as '6' | '7' | '8' | '9' | '10')} className="px-3 py-2 rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-xs font-bold disabled:opacity-75">
+                  {availableClassIds.map((c) => <option key={c} value={c}>Class {c}</option>)}
                 </select>
-                {students.some((s) => s.classId === manageClassId) && (
+                {visibleStudents.some((s) => s.classId === manageClassId) && (
                   <button
                     type="button"
                     onClick={() => {
-                      const list = students.filter((s) => s.classId === manageClassId);
+                      const list = visibleStudents.filter((s) => s.classId === manageClassId);
                       if (list[0]) openStudentCard(list[0], 'admit');
                     }}
                     className="px-3 py-2 rounded-xl bg-emerald-700 hover:bg-emerald-800 text-white text-xs font-bold inline-flex items-center gap-1.5 whitespace-nowrap"
@@ -1480,7 +1781,7 @@ export const TeacherPortal: React.FC = () => {
               </div>
             </form>
             <div className="divide-y divide-slate-100 dark:divide-slate-800">
-              {students.filter((s) => s.classId === manageClassId).map((st) => (
+              {visibleStudents.filter((s) => s.classId === manageClassId).map((st) => (
                 <div key={st.id} className="py-2.5 flex flex-wrap items-center justify-between gap-2 text-xs">
                   <span><b>#{st.roll}</b> {st.name} ({st.section})</span>
                   <div className="flex flex-wrap items-center gap-1">
@@ -1500,8 +1801,8 @@ export const TeacherPortal: React.FC = () => {
             <h4 className="font-extrabold text-base">{lang === 'bn' ? 'পরীক্ষার রুটিন যুক্ত করুন' : 'Exam Routine Schedule'}</h4>
             <div className="space-y-2.5">
               <div className="grid grid-cols-2 gap-2">
-                <select value={routineForm.classId} onChange={(e) => setRoutineForm((p) => ({ ...p, classId: e.target.value }))} className="px-3 py-2 rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-xs font-bold">
-                  {['6', '7', '8', '9', '10'].map((c) => <option key={c} value={c}>Class {c}</option>)}
+                <select value={routineForm.classId} disabled={isClassLocked} onChange={(e) => setRoutineForm((p) => ({ ...p, classId: e.target.value }))} className="px-3 py-2 rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-xs font-bold disabled:opacity-75">
+                  {availableClassIds.map((c) => <option key={c} value={c}>Class {c}</option>)}
                 </select>
                 <input value={routineForm.subject} onChange={(e) => setRoutineForm((p) => ({ ...p, subject: e.target.value }))} placeholder="Subject" className="px-3 py-2 rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-xs font-bold" />
               </div>
@@ -1520,7 +1821,7 @@ export const TeacherPortal: React.FC = () => {
               </button>
             </div>
             <div className="space-y-2 max-h-60 overflow-y-auto">
-              {examRoutines.map((r) => (
+              {visibleExamRoutines.map((r) => (
                 <div key={r.id} className="flex items-center justify-between p-2.5 rounded-xl bg-slate-50 dark:bg-slate-800 text-xs">
                   <span><b>C{r.classId}</b> {r.subject} — {r.date}</span>
                   <button onClick={() => deleteExamRoutine(r.id)} className="text-red-500"><Trash2 className="w-3.5 h-3.5" /></button>
@@ -1617,18 +1918,18 @@ export const TeacherPortal: React.FC = () => {
           )}
 
           {/* Pending Parent-Student Verification Requests */}
-          {parentLinks.length > 0 && (
+          {visibleParentLinks.length > 0 && (
             <div className="lg:col-span-12 bg-white dark:bg-slate-900 p-6 rounded-3xl border border-slate-200 dark:border-slate-800 space-y-4">
               <div className="flex items-center justify-between">
                 <h4 className="font-extrabold text-base">
                   {lang === 'bn' ? 'অভিভাবক-শিক্ষার্থী লিংক যাচাই' : 'Parent-Student Link Verification'}
                 </h4>
                 <span className="px-3 py-1 rounded-lg bg-amber-100 dark:bg-amber-950 text-amber-800 dark:text-amber-300 text-xs font-black">
-                  {parentLinks.filter((l) => l.status === 'pending').length} {lang === 'bn' ? 'টি অপেক্ষমাণ' : 'Pending'}
+                  {visibleParentLinks.filter((l) => l.status === 'pending').length} {lang === 'bn' ? 'টি অপেক্ষমাণ' : 'Pending'}
                 </span>
               </div>
               <div className="grid md:grid-cols-2 gap-3">
-                {parentLinks.map((pl) => (
+                {visibleParentLinks.map((pl) => (
                   <div key={pl.id} className="p-4 rounded-2xl bg-slate-50 dark:bg-slate-800 flex flex-wrap justify-between items-center gap-3 text-xs">
                     <div>
                       <p className="font-extrabold text-sm">
@@ -1703,8 +2004,8 @@ export const TeacherPortal: React.FC = () => {
               <input required value={mcqForm.titleEn} onChange={(e) => setMcqForm((p) => ({ ...p, titleEn: e.target.value }))} placeholder="Title (English)" className="px-3.5 py-2.5 rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-sm" />
             </div>
             <div className="grid grid-cols-3 gap-2">
-              <select value={mcqForm.classId} onChange={(e) => setMcqForm((p) => ({ ...p, classId: e.target.value }))} className="px-3 py-2.5 rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-xs font-bold">
-                {['6', '7', '8', '9', '10'].map((c) => <option key={c} value={c}>Class {c}</option>)}
+              <select value={mcqForm.classId} disabled={isClassLocked} onChange={(e) => setMcqForm((p) => ({ ...p, classId: e.target.value }))} className="px-3 py-2.5 rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-xs font-bold disabled:opacity-75">
+                {availableClassIds.map((c) => <option key={c} value={c}>Class {c}</option>)}
               </select>
               <input value={mcqForm.subject} onChange={(e) => setMcqForm((p) => ({ ...p, subject: e.target.value }))} placeholder="Subject" className="px-3 py-2.5 rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-xs font-bold" />
               <input value={mcqForm.chapter} onChange={(e) => setMcqForm((p) => ({ ...p, chapter: e.target.value }))} placeholder="Chapter / Topic" className="px-3 py-2.5 rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-xs font-bold" />
@@ -1775,7 +2076,7 @@ export const TeacherPortal: React.FC = () => {
           </form>
 
           <div className="lg:col-span-6 space-y-3">
-            {onlineExams.map((ex) => (
+            {visibleOnlineExams.map((ex) => (
               <div key={ex.id} className="bg-white dark:bg-slate-900 p-4 rounded-2xl border border-slate-200 dark:border-slate-800 flex items-center justify-between gap-3">
                 <div>
                   <span className="text-[10px] font-bold uppercase text-emerald-700 dark:text-emerald-400">
@@ -1901,7 +2202,12 @@ export const TeacherPortal: React.FC = () => {
       {/* 10. Student Leave Approval */}
       {activeTab === 'student-leaves' && (
         <div className="space-y-3">
-          {studentLeaves.map((sl) => (
+          {visibleStudentLeaves.length === 0 ? (
+            <div className="p-10 text-center bg-white dark:bg-slate-900 rounded-3xl border border-slate-200 dark:border-slate-800 text-slate-400 font-bold text-sm">
+              {lang === 'bn' ? 'এই শ্রেণীর কোনো ছুটির আবেদন নেই।' : 'No student leave requests for this class.'}
+            </div>
+          ) : (
+            visibleStudentLeaves.map((sl) => (
             <div key={sl.id} className="bg-white dark:bg-slate-900 p-5 rounded-3xl border border-slate-200 dark:border-slate-800 space-y-2.5">
               <div className="flex flex-wrap justify-between items-center gap-2 text-xs">
                 <span className="font-extrabold text-sm">{sl.studentName} — Class {sl.classId} (Roll {sl.roll})</span>
@@ -1933,8 +2239,14 @@ export const TeacherPortal: React.FC = () => {
                 </button>
               </div>
             </div>
-          ))}
+            ))
+          )}
         </div>
+      )}
+
+      {/* 12. Head Teacher Class Teacher Assignment Panel */}
+      {activeTab === 'class-teachers' && isHeadTeacher && (
+        <ClassTeacherAssignmentPanel allowAddNew={false} onNotify={notify} />
       )}
 
       <FeeReceiptModal fee={activeReceipt} onClose={() => setActiveReceipt(null)} />

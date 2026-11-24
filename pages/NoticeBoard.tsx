@@ -22,6 +22,13 @@ import { CAMPUS_BRAND, TRANSLATIONS } from '../constants';
 import { useApp } from '../App';
 import { Notice, NewsArticle, CampusEvent } from '../types';
 import { heroCampusImg } from '../src/assets/media';
+import {
+  getDhakaTodayISO,
+  attachDhakaTimeToDate,
+  extractIsoDate,
+  formatNoticeDateBadge,
+  formatDhakaClock,
+} from '../utils/dhakaTime';
 
 const { useState, useMemo, useEffect } = React;
 const { Link } = RouterDom;
@@ -125,7 +132,7 @@ const NoticeBoard: React.FC<NoticeBoardProps> = ({ initialTab = 'notices' }) => 
       title: { bn: f.titleBn.value.trim(), en: f.titleEn.value.trim() },
       description: { bn: f.descBn.value.trim(), en: f.descEn.value.trim() },
       category: f.category.value as Notice['category'],
-      date: f.date.value,
+      date: attachDhakaTimeToDate(f.date.value),
       isPublic: true,
     };
     if (editingNotice) updateNotice(data);
@@ -222,16 +229,21 @@ const NoticeBoard: React.FC<NoticeBoardProps> = ({ initialTab = 'notices' }) => 
 
         <div className="flex flex-col md:flex-row justify-between items-start md:items-end gap-6 border-b border-slate-200 dark:border-slate-800 pb-6">
           <div className="space-y-2">
-            <p className="text-emerald-700 dark:text-emerald-400 font-bold text-xs uppercase tracking-widest flex items-center gap-2">
-              <Megaphone className="w-4 h-4" /> {t(CAMPUS_BRAND)} · Notice, News & Events
-            </p>
+            <div className="flex flex-wrap items-center gap-3">
+              <p className="text-emerald-700 dark:text-emerald-400 font-bold text-xs uppercase tracking-widest flex items-center gap-2">
+                <Megaphone className="w-4 h-4" /> {t(CAMPUS_BRAND)} · Notice, News & Events
+              </p>
+              <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-lg bg-emerald-50 dark:bg-emerald-950/60 border border-emerald-200 dark:border-emerald-800 text-emerald-800 dark:text-emerald-300 text-[11px] font-bold tabular-nums">
+                <Clock className="w-3 h-3" /> {formatDhakaClock(lang)}
+              </span>
+            </div>
             <h1 className="text-3xl md:text-4xl font-black text-slate-900 dark:text-white tracking-tight">
               {t(TRANSLATIONS.nav.noticeNews)}
             </h1>
             <p className="text-slate-500 dark:text-slate-400 font-medium text-sm md:text-base max-w-2xl">
               {lang === 'bn'
-                ? `${t(settings.name)}-এর প্রাতিষ্ঠানিক বিজ্ঞপ্তি, সর্বশেষ ক্যাম্পাস সংবাদ ও আসন্ন ইভেন্টসমূহ।`
-                : `Official notices, campus news dispatches, and scheduled events for ${t(settings.name)}.`}
+                ? `${t(settings.name)}-এর প্রাতিষ্ঠানিক বিজ্ঞপ্তি, সর্বশেষ ক্যাম্পাস সংবাদ ও আসন্ন ইভেন্টসমূহ (বাংলাদেশ সময় GMT+6 অনুযায়ী স্বয়ংক্রিয়ভাবে সংরক্ষিত)।`
+                : `Official notices, campus news dispatches, and scheduled events for ${t(settings.name)} (Auto-timestamped in Bangladesh Time GMT+6).`}
             </p>
           </div>
           {canManage && (
@@ -395,8 +407,7 @@ const NoticeBoard: React.FC<NoticeBoardProps> = ({ initialTab = 'notices' }) => 
         <div className="grid grid-cols-1 gap-4">
           {filteredNotices.length > 0 ? (
             filteredNotices.map((notice) => {
-              const parsedDate = new Date(notice.date);
-              const hasValidDate = !isNaN(parsedDate.getTime());
+              const badge = formatNoticeDateBadge(notice.date, lang);
               return (
                 <div
                   key={notice.id}
@@ -404,10 +415,10 @@ const NoticeBoard: React.FC<NoticeBoardProps> = ({ initialTab = 'notices' }) => 
                 >
                   <div className="bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 p-3.5 rounded-xl flex flex-col items-center justify-center min-w-[76px] h-[76px] shrink-0">
                     <span className="text-[10px] font-bold uppercase text-slate-500 dark:text-slate-400">
-                      {hasValidDate ? parsedDate.toLocaleString('default', { month: 'short' }) : '2026'}
+                      {badge.monthLabel} {badge.yearLabel}
                     </span>
                     <span className="text-2xl font-black text-slate-900 dark:text-white leading-none tabular-nums mt-0.5">
-                      {hasValidDate ? parsedDate.getDate() : '--'}
+                      {badge.dayLabel}
                     </span>
                   </div>
 
@@ -697,10 +708,16 @@ const NoticeBoard: React.FC<NoticeBoardProps> = ({ initialTab = 'notices' }) => 
                     required
                     type="date"
                     name="date"
-                    defaultValue={editingNotice?.date || new Date().toISOString().split('T')[0]}
+                    defaultValue={extractIsoDate(editingNotice?.date) || getDhakaTodayISO()}
                     className="px-4 py-3 rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-white font-semibold text-sm"
                   />
                 </div>
+                <p className="text-[11px] font-semibold text-emerald-700 dark:text-emerald-400 flex items-center gap-1.5">
+                  <Clock className="w-3.5 h-3.5" />
+                  {lang === 'bn'
+                    ? 'প্রকাশের সময় বাংলাদেশ সময় (GMT+6) অনুযায়ী স্বয়ংক্রিয়ভাবে যুক্ত হবে।'
+                    : 'Current Bangladesh Time (GMT+6) will be attached automatically on publish.'}
+                </p>
                 <div className="flex gap-3 pt-2">
                   <button
                     type="submit"
@@ -786,7 +803,7 @@ const NoticeBoard: React.FC<NoticeBoardProps> = ({ initialTab = 'notices' }) => 
                     required
                     type="date"
                     name="date"
-                    defaultValue={editingNews?.date || new Date().toISOString().split('T')[0]}
+                    defaultValue={extractIsoDate(editingNews?.date) || getDhakaTodayISO()}
                     className="px-4 py-3 rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-sm font-semibold"
                   />
                   <input
@@ -879,7 +896,7 @@ const NoticeBoard: React.FC<NoticeBoardProps> = ({ initialTab = 'notices' }) => 
                     required
                     type="date"
                     name="date"
-                    defaultValue={editingEvent?.date || new Date().toISOString().split('T')[0]}
+                    defaultValue={extractIsoDate(editingEvent?.date) || getDhakaTodayISO()}
                     className="px-4 py-3 rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-sm font-semibold"
                   />
                   <input
@@ -939,7 +956,7 @@ const NoticeBoard: React.FC<NoticeBoardProps> = ({ initialTab = 'notices' }) => 
               </div>
             </div>
 
-            <div id="printable-notice" className="p-8 sm:p-10 bg-white dark:bg-slate-950 text-slate-900 dark:text-slate-100 space-y-6">
+            <div id="printable-notice" className="p-8 sm:p-10 print:p-2 bg-white dark:bg-slate-950 print:bg-white text-slate-900 dark:text-slate-100 print:text-slate-900 space-y-6">
               <div className="text-center border-b-2 border-slate-900 dark:border-slate-700 pb-5 space-y-1">
                 <div className="inline-flex items-center justify-center w-11 h-11 rounded-xl bg-emerald-800 text-white mb-1">
                   <GraduationCap className="w-5 h-5" />

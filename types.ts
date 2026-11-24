@@ -67,6 +67,7 @@ export interface Teacher {
   teacherCode?: string;
   phone?: string;
   bloodGroup?: string;
+  assignedClass?: string;
   cardIssueDate?: string;
   cardValidUpto?: string;
   isPublic?: boolean;
@@ -210,6 +211,7 @@ export interface UserAccount {
   subject?: string;
   qualification?: string;
   bloodGroup?: string;
+  assignedClass?: string;
   registrationNo?: string;
   guardianName?: string;
   section?: string;
@@ -233,6 +235,7 @@ export interface CloudUserProfile {
   subject?: string;
   qualification?: string;
   bloodGroup?: string;
+  assignedClass?: string;
   registrationNo?: string;
   guardianName?: string;
   section?: string;

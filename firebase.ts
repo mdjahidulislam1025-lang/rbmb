@@ -8,10 +8,12 @@ import {
   memoryLocalCache,
   doc,
   getDocFromServer,
+  setLogLevel,
 } from 'firebase/firestore';
 import firebaseConfig from './firebase-applet-config.json';
 
 const app = initializeApp(firebaseConfig);
+setLogLevel('error');
 
 function createFirestoreClient() {
   try {

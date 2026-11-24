@@ -33,6 +33,17 @@ service cloud.firestore {
         && get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'teacher'
       );
     }
+    function isHeadTeacher() {
+      return isAdmin() || (
+        isSignedIn()
+        && exists(/databases/$(database)/documents/users/$(request.auth.uid))
+        && get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'teacher'
+        && 'designation' in get(/databases/$(database)/documents/users/$(request.auth.uid)).data
+        && get(/databases/$(database)/documents/users/$(request.auth.uid)).data.designation is string
+        && get(/databases/$(database)/documents/users/$(request.auth.uid)).data.designation.matches('.*(প্রধান শিক্ষক|Head Teacher|Headmaster|Headmistress|Principal).*')
+        && !get(/databases/$(database)/documents/users/$(request.auth.uid)).data.designation.matches('.*(সহকারী প্রধান|Assistant Head|Vice Principal).*')
+      );
+    }
     function isOwner(uid) {
       return isSignedIn() && request.auth.uid == uid;
     }
@@ -116,7 +127,7 @@ service cloud.firestore {
 
     function isValidTeacher(data) {
       return data.keys().hasAll(['id', 'name', 'designation', 'subject', 'qualification', 'photo', 'isPublic', 'createdAt', 'updatedAt'])
-        && data.keys().hasOnly(['id', 'name', 'designation', 'subject', 'qualification', 'photo', 'teacherCode', 'phone', 'bloodGroup', 'cardIssueDate', 'cardValidUpto', 'isPublic', 'createdAt', 'updatedAt'])
+        && data.keys().hasOnly(['id', 'name', 'designation', 'subject', 'qualification', 'photo', 'teacherCode', 'phone', 'bloodGroup', 'assignedClass', 'cardIssueDate', 'cardValidUpto', 'isPublic', 'createdAt', 'updatedAt'])
         && isValidId(data.id)
         && isLocalizedString(data.name, 200)
         && isLocalizedString(data.designation, 200)
@@ -126,6 +137,7 @@ service cloud.firestore {
         && (!('teacherCode' in data) || (data.teacherCode is string && data.teacherCode.size() <= 40))
         && (!('phone' in data) || (data.phone is string && data.phone.size() <= 40))
         && (!('bloodGroup' in data) || (data.bloodGroup is string && data.bloodGroup.size() <= 16))
+        && (!('assignedClass' in data) || (data.assignedClass is string && data.assignedClass.size() <= 16))
         && (!('cardIssueDate' in data) || (data.cardIssueDate is string && data.cardIssueDate.size() <= 32))
         && (!('cardValidUpto' in data) || (data.cardValidUpto is string && data.cardValidUpto.size() <= 32))
         && data.isPublic is bool
@@ -212,7 +224,7 @@ service cloud.firestore {
 
     function isValidUserProfile(data) {
       return data.keys().hasAll(['uid', 'name', 'email', 'role', 'createdAt', 'updatedAt'])
-        && data.keys().hasOnly(['uid', 'name', 'email', 'role', 'photo', 'phone', 'designation', 'subject', 'qualification', 'bloodGroup', 'registrationNo', 'guardianName', 'section', 'session', 'relationship', 'linkedStudentId', 'linkedStudentIds', 'linkedChildClass', 'linkedChildRoll', 'linkedChildName', 'createdAt', 'updatedAt'])
+        && data.keys().hasOnly(['uid', 'name', 'email', 'role', 'photo', 'phone', 'designation', 'subject', 'qualification', 'bloodGroup', 'assignedClass', 'registrationNo', 'guardianName', 'section', 'session', 'relationship', 'linkedStudentId', 'linkedStudentIds', 'linkedChildClass', 'linkedChildRoll', 'linkedChildName', 'createdAt', 'updatedAt'])
         && isValidId(data.uid)
         && data.name is string && data.name.size() >= 1 && data.name.size() <= 150
         && data.email is string && data.email.size() >= 3 && data.email.size() <= 150
@@ -223,6 +235,7 @@ service cloud.firestore {
         && (!('subject' in data) || (data.subject is string && data.subject.size() <= 150))
         && (!('qualification' in data) || (data.qualification is string && data.qualification.size() <= 200))
         && (!('bloodGroup' in data) || (data.bloodGroup is string && data.bloodGroup.size() <= 16))
+        && (!('assignedClass' in data) || (data.assignedClass is string && data.assignedClass.size() <= 16))
         && (!('registrationNo' in data) || (data.registrationNo is string && data.registrationNo.size() <= 64))
         && (!('guardianName' in data) || (data.guardianName is string && data.guardianName.size() <= 150))
         && (!('section' in data) || (data.section is string && data.section.size() <= 40))
@@ -656,6 +669,10 @@ service cloud.firestore {
         && (
           isAdmin()
           || (
+            isHeadTeacher()
+            && incoming().diff(existing()).affectedKeys().hasOnly(['assignedClass', 'updatedAt'])
+          )
+          || (
             isTeacher()
             && incoming().diff(existing()).affectedKeys().hasOnly(['photo', 'teacherCode', 'phone', 'bloodGroup', 'cardIssueDate', 'cardValidUpto', 'updatedAt'])
           )
@@ -749,10 +766,10 @@ service cloud.firestore {
             isOwner(uid)
             && incoming().role == existing().role
             && (
-              incoming().diff(existing()).affectedKeys().hasOnly(['name', 'email', 'photo', 'phone', 'designation', 'updatedAt'])
+              incoming().diff(existing()).affectedKeys().hasOnly(['name', 'email', 'photo', 'phone', 'updatedAt'])
               || (
                 !('linkedChildClass' in existing())
-                && incoming().diff(existing()).affectedKeys().hasOnly(['name', 'email', 'photo', 'phone', 'designation', 'relationship', 'linkedStudentId', 'linkedStudentIds', 'linkedChildClass', 'linkedChildRoll', 'linkedChildName', 'updatedAt'])
+                && incoming().diff(existing()).affectedKeys().hasOnly(['name', 'email', 'photo', 'phone', 'relationship', 'linkedStudentId', 'linkedStudentIds', 'linkedChildClass', 'linkedChildRoll', 'linkedChildName', 'updatedAt'])
               )
             )
           )

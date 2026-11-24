@@ -48,7 +48,7 @@ export const FeeReceiptModal: React.FC<FeeReceiptModalProps> = ({ fee, onClose }
           </div>
         </div>
 
-        <div id="printable-fee-receipt" className="p-6 sm:p-8 space-y-6 bg-white dark:bg-slate-900 text-slate-900 dark:text-slate-100">
+        <div id="printable-fee-receipt" className="p-6 sm:p-8 print:p-2 space-y-6 bg-white dark:bg-slate-900 print:bg-white text-slate-900 dark:text-slate-100 print:text-slate-900">
           {/* Header */}
           <div className="text-center border-b-2 border-slate-900 dark:border-slate-700 pb-4 space-y-1">
             <p className="text-[11px] font-bold uppercase tracking-widest text-emerald-700 dark:text-emerald-400">

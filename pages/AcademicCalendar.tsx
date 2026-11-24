@@ -171,7 +171,7 @@ const AcademicCalendar: React.FC = () => {
 
   const PrintableCalendar = () => (
     <div id="printable-calendar" className="hidden print:block bg-white text-black p-0">
-      <div className="border-[10px] border-double border-green-900 p-8 min-h-[1050px]">
+      <div className="border-[10px] border-double border-green-900 p-8 print:min-h-0">
         <div className="text-center space-y-2 border-b-4 border-green-900 pb-5 mb-6">
           <GraduationCap className="text-green-800 w-10 h-10 mx-auto" />
           <h1 className="text-3xl font-black uppercase text-green-900">{t(settings.name)}</h1>

@@ -21,10 +21,14 @@ import {
   ShieldCheck,
   Clock,
   XCircle,
+  Camera,
+  Trash2,
 } from 'lucide-react';
 import { CLASSES } from '../constants';
 import { useApp } from '../App';
 import { AdmissionStatusProjection } from '../types';
+import { compressImageFile } from '../utils/imageUtils';
+import { getDhakaTodayISO, getDhakaYear } from '../utils/dhakaTime';
 
 const { useState } = React;
 
@@ -34,12 +38,15 @@ const Admission: React.FC = () => {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [submitError, setSubmitError] = useState('');
   const [submittedAppId, setSubmittedAppId] = useState('');
+  const [applicantPhoto, setApplicantPhoto] = useState('');
   const [statusQuery, setStatusQuery] = useState('');
   const [isCheckingStatus, setIsCheckingStatus] = useState(false);
   const [hasSearchedStatus, setHasSearchedStatus] = useState(false);
   const [last4Input, setLast4Input] = useState('');
   const [matchedStatus, setMatchedStatus] = useState<AdmissionStatusProjection | null>(null);
   const { lang, t, settings, addAdmission, lookupAdmissionStatus } = useApp();
+  const activeYear = getDhakaYear();
+  const todayDhaka = getDhakaTodayISO();
 
   const [formData, setFormData] = useState({
     studentName: '',
@@ -87,7 +94,7 @@ const Admission: React.FC = () => {
         ...formData,
         appId,
         status: 'pending',
-        submittedDate: new Date().toLocaleDateString(),
+        submittedDate: todayDhaka,
       });
       setSubmittedAppId(appId);
       setIsSubmitted(true);
@@ -105,86 +112,123 @@ const Admission: React.FC = () => {
 
   const PrintableForm = () => (
     <div id="printable-admission-form" className="hidden print:block bg-white text-black font-serif p-0">
-      <div className="border-[10px] border-double border-green-900 p-8 min-h-[1050px] relative overflow-hidden">
-        <div className="text-center space-y-2 border-b-4 border-green-900 pb-5 mb-6 relative">
-          <div className="flex justify-center mb-2">
-            <div className="bg-green-800 p-3 rounded-full">
-              <GraduationCap className="text-white w-9 h-9" />
+      <div className="print-card-avoid-break border-[6px] border-double border-green-900 p-6 relative overflow-hidden">
+        <div className="text-center space-y-1.5 border-b-2 border-green-900 pb-3.5 mb-4">
+          <div className="flex justify-center mb-1">
+            <div className="bg-green-800 p-2 rounded-full">
+              <GraduationCap className="text-white w-7 h-7" />
             </div>
           </div>
-          <h1 className="text-3xl font-black uppercase text-green-900 leading-none">{t(settings.name)}</h1>
-          <p className="text-base font-bold">EIIN: {settings.eiin} | স্থাপিত: ১৯৫৮</p>
-          <p className="text-sm font-medium">{t(settings.location)}</p>
-          <div className="mt-3">
-            <span className="inline-block px-8 py-1.5 border-2 border-green-900 font-black text-lg uppercase bg-green-50 rounded-lg">
-              {lang === 'bn' ? 'ভর্তি আবেদন ফরম - ২০২৬' : 'Admission Application Form - 2026'}
+          <h1 className="text-2xl font-black uppercase text-green-900 leading-none">{t(settings.name)}</h1>
+          <p className="text-sm font-bold">EIIN: {settings.eiin} | স্থাপিত: ১৯৫৮</p>
+          <p className="text-xs font-medium">{t(settings.location)}</p>
+          <div className="pt-1">
+            <span className="inline-block px-6 py-1 border-2 border-green-900 font-black text-sm uppercase bg-green-50 rounded-md">
+              {lang === 'bn' ? `ভর্তি আবেদন ফরম - ${activeYear}` : `Admission Application Form - ${activeYear}`}
             </span>
           </div>
         </div>
 
-        <div className="flex justify-between items-center mb-8 text-sm font-black uppercase">
-          <div className="bg-slate-100 px-4 py-2 rounded-lg border border-slate-200">
-            App ID: <span className="text-green-800">{submittedAppId || '#RBHS-2026'}</span>
+        <div className="flex justify-between items-center mb-4 text-xs font-black uppercase">
+          <div className="bg-slate-100 px-3 py-1.5 rounded border border-slate-300">
+            App ID: <span className="text-green-800">{submittedAppId || `#RBHS-${activeYear}`}</span>
           </div>
-          <div className="bg-slate-100 px-4 py-2 rounded-lg border border-slate-200">
-            Date: {new Date().toLocaleDateString()}
+          <div className="bg-slate-100 px-3 py-1.5 rounded border border-slate-300 tabular-nums">
+            Date (GMT+6): {todayDhaka}
           </div>
         </div>
 
-        <div className="absolute top-52 right-12 w-28 h-36 border-2 border-green-900 flex items-center justify-center text-[10px] text-gray-500 text-center p-2 bg-slate-50 font-bold">
-          {lang === 'bn' ? 'পাসপোর্ট সাইজ ছবি' : 'Passport Size Photo'}
-        </div>
-
-        <div className="space-y-6 text-base mt-8 mr-36">
-          {[
-            { label: 'শিক্ষার্থীর নাম', en: "Student's Name", value: formData.studentName },
-            { label: 'জন্ম তারিখ', en: 'Date of Birth', value: formData.birthDate },
-            { label: 'পিতার নাম', en: "Father's Name", value: formData.fatherName },
-            { label: 'মাতার নাম', en: "Mother's Name", value: formData.motherName },
-            { label: 'আবেদিত শ্রেণী', en: 'Applied Class', value: formData.targetClass },
-            { label: 'বিভাগ (৯ম-১০ম)', en: 'Group', value: formData.targetGroup },
-            { label: 'অভিভাবকের মোবাইল', en: 'Mobile No', value: formData.guardianMobile },
-            { label: 'রক্তের গ্রুপ', en: 'Blood Group', value: formData.bloodGroup || 'N/A' },
-          ].map((item, i) => (
-            <div key={i} className="flex items-end gap-4">
-              <span className="font-bold min-w-[200px] whitespace-nowrap">
-                {lang === 'bn' ? item.label : item.en} :
+        {/* Side-by-side layout: Personal Details on left, Passport Photo Frame on right (Zero Overlap) */}
+        <div className="flex items-start justify-between gap-5">
+          <div className="flex-1 space-y-2.5 text-sm">
+            {[
+              { label: 'শিক্ষার্থীর নাম', en: "Student's Name", value: formData.studentName },
+              { label: 'জন্ম তারিখ', en: 'Date of Birth', value: formData.birthDate },
+              { label: 'পিতার নাম', en: "Father's Name", value: formData.fatherName },
+              { label: 'মাতার নাম', en: "Mother's Name", value: formData.motherName },
+              { label: 'আবেদিত শ্রেণী', en: 'Applied Class', value: formData.targetClass },
+              { label: 'বিভাগ (৯ম-১০ম)', en: 'Group', value: formData.targetGroup },
+              { label: 'অভিভাবকের মোবাইল', en: 'Mobile No', value: formData.guardianMobile },
+              { label: 'রক্তের গ্রুপ', en: 'Blood Group', value: formData.bloodGroup || 'N/A' },
+              { label: 'পূর্ববর্তী বিদ্যালয়', en: 'Previous School', value: formData.prevSchool || '-' },
+            ].map((item, i) => (
+              <div key={i} className="flex items-end gap-3">
+                <span className="font-bold min-w-[165px] whitespace-nowrap text-xs">
+                  {lang === 'bn' ? item.label : item.en} :
+                </span>
+                <span className="flex-grow border-b border-dotted border-gray-500 font-bold text-xs min-h-[20px] px-1">
+                  {item.value}
+                </span>
+              </div>
+            ))}
+            <div className="flex items-start gap-3 pt-1">
+              <span className="font-bold min-w-[165px] whitespace-nowrap text-xs">
+                {lang === 'bn' ? 'বর্তমান ঠিকানা' : 'Present Address'} :
               </span>
-              <span className="flex-grow border-b-2 border-dotted border-gray-400 font-bold h-6">
-                {item.value}
-              </span>
+              <div className="flex-grow border-b border-dotted border-gray-500 min-h-[32px] font-medium text-xs px-1">
+                {formData.address}
+              </div>
             </div>
-          ))}
-          <div className="flex items-start gap-4">
-            <span className="font-bold min-w-[200px]">{lang === 'bn' ? 'বর্তমান ঠিকানা' : 'Address'} :</span>
-            <div className="flex-grow border-b-2 border-dotted border-gray-400 min-h-[50px] font-medium">
-              {formData.address}
+          </div>
+
+          <div className="w-28 shrink-0 flex flex-col items-center gap-1">
+            <div className="w-28 h-34 border-2 border-green-900 bg-slate-50 flex items-center justify-center text-center overflow-hidden">
+              {applicantPhoto ? (
+                <img src={applicantPhoto} alt="Passport Size" className="w-full h-full object-cover" />
+              ) : (
+                <div className="p-2 space-y-1 text-[10px] font-bold text-slate-600 leading-tight">
+                  <p>{lang === 'bn' ? 'পাসপোর্ট সাইজ ছবি সংযুক্ত করুন' : 'Attach Passport Size Photo'}</p>
+                  <p className="text-[9px] text-slate-400">(35 × 45 mm)</p>
+                </div>
+              )}
             </div>
+            <span className="text-[9px] font-bold uppercase text-slate-600">
+              {lang === 'bn' ? 'সত্যায়িত ছবি' : 'Applicant Photo'}
+            </span>
           </div>
         </div>
 
-        <div className="mt-14 p-5 border-2 border-slate-200 bg-slate-50 rounded-xl">
-          <p className="font-black text-xs uppercase mb-2 border-b border-slate-200 pb-1">Important Instructions:</p>
-          <ul className="text-xs space-y-1.5 font-medium">
-            <li>• আবেদনের প্রিন্ট কপি এবং ৩০০/- (তিনশত) টাকা ফি স্কুল অফিসে জমা দিয়ে অ্যাডমিট কার্ড সংগ্রহ করুন।</li>
-            <li>• প্রয়োজনীয় কাগজপত্র: জন্ম নিবন্ধনের কপি, পিতা ও মাতার এনআইডি কপি এবং ৪ কপি পাসপোর্ট সাইজ ছবি।</li>
+        {/* Important Instructions & Required School Office Submission Papers */}
+        <div className="mt-5 p-3.5 border-2 border-slate-300 bg-slate-50 rounded-lg space-y-2">
+          <p className="font-black text-xs uppercase border-b border-slate-300 pb-1 text-green-900">
+            {lang === 'bn'
+              ? 'গুরুত্বপূর্ণ নির্দেশনা ও অফিসে জমাদানের কাগজপত্র (Important Instructions):'
+              : 'Important Instructions & Required Papers for School Office Submission:'}
+          </p>
+          <ul className="text-[11px] space-y-1 font-medium leading-snug">
+            <li>• আবেদনের এই প্রিন্ট কপি এবং ৩০০/- (তিনশত) টাকা ভর্তি আবেদন ফি স্কুল অফিসে জমা দিয়ে প্রবেশপত্র সংগ্রহ করুন।</li>
+            <li>• ভর্তি ফরম অফিসে জমাদানের সময় নিচের সকল প্রয়োজনীয় কাগজপত্র অবশ্যই সংযুক্ত করতে হবে:</li>
           </ul>
+          <div className="grid grid-cols-2 gap-x-4 gap-y-1 pt-1 text-[10px] font-bold text-slate-800 border-t border-slate-200">
+            <p>১. অনলাইন জন্ম নিবন্ধন সনদের ফটোকপি</p>
+            <p>২. পিতা ও মাতার এনআইডি (NID) কার্ডের ফটোকপি</p>
+            <p>৩. শিক্ষার্থীর ৪ কপি পাসপোর্ট সাইজ রঙিন ছবি</p>
+            <p>৪. পূর্ববর্তী বিদ্যালয়ের মূল ছাড়পত্র (TC)</p>
+            <p>৫. পূর্ববর্তী শ্রেণীর বার্ষিক ফলাফল / মার্কশিটের কপি</p>
+            <p>৬. অভিভাবকের সচল মোবাইল নম্বর ও স্বাক্ষর</p>
+          </div>
         </div>
 
-        <div className="mt-16 grid grid-cols-2 gap-16">
-          <div className="p-4 bg-white border-2 border-slate-200 rounded-xl text-[10px] space-y-2">
-            <p className="font-black border-b border-slate-200 pb-1 uppercase text-green-800">Office Verification</p>
+        <div className="mt-6 grid grid-cols-3 gap-6 items-end pt-2">
+          <div className="p-2.5 bg-white border border-slate-300 rounded text-[10px] space-y-1.5">
+            <p className="font-black border-b border-slate-200 pb-0.5 uppercase text-green-800">Office Verification</p>
             <div className="flex justify-between">
-              <span>Payment Status:</span> <span className="w-20 border-b border-black">Paid / Due</span>
+              <span>Fee (৳300):</span> <span className="w-16 border-b border-black text-right">Paid / Due</span>
             </div>
             <div className="flex justify-between">
-              <span>Admission Roll:</span> <span className="w-20 border-b border-black"></span>
+              <span>Adm. Roll:</span> <span className="w-16 border-b border-black"></span>
             </div>
           </div>
           <div className="flex flex-col justify-end items-center">
-            <div className="w-full border-t-2 border-black mb-1" />
-            <p className="text-[11px] font-black uppercase text-center">
-              {lang === 'bn' ? 'প্রধান শিক্ষকের স্বাক্ষর' : "Principal's Signature"}
+            <div className="w-full border-t border-black mb-1" />
+            <p className="text-[10px] font-black uppercase text-center">
+              {lang === 'bn' ? 'অভিভাবকের স্বাক্ষর' : "Guardian's Signature"}
+            </p>
+          </div>
+          <div className="flex flex-col justify-end items-center">
+            <div className="w-full border-t border-black mb-1" />
+            <p className="text-[10px] font-black uppercase text-center">
+              {lang === 'bn' ? 'প্রধান শিক্ষকের স্বাক্ষর' : "Head Teacher's Signature"}
             </p>
           </div>
         </div>
@@ -270,13 +314,66 @@ const Admission: React.FC = () => {
 
             <form onSubmit={handleSubmit} className="p-8 md:p-10 space-y-10">
               <div className="space-y-6">
-                <div className="flex items-center gap-3 border-b border-slate-100 dark:border-slate-800 pb-4">
-                  <div className="bg-green-100 dark:bg-green-950 p-3 rounded-2xl text-green-700 dark:text-green-400">
-                    <User className="w-5 h-5" />
+                <div className="flex items-center justify-between gap-3 border-b border-slate-100 dark:border-slate-800 pb-4">
+                  <div className="flex items-center gap-3">
+                    <div className="bg-green-100 dark:bg-green-950 p-3 rounded-2xl text-green-700 dark:text-green-400">
+                      <User className="w-5 h-5" />
+                    </div>
+                    <h3 className="text-lg font-black text-slate-900 dark:text-white">
+                      {lang === 'bn' ? 'শিক্ষার্থীর ব্যক্তিগত তথ্য ও ছবি' : 'Student Personal Information & Photo'}
+                    </h3>
                   </div>
-                  <h3 className="text-lg font-black text-slate-900 dark:text-white">
-                    {lang === 'bn' ? 'শিক্ষার্থীর ব্যক্তিগত তথ্য' : 'Student Personal Information'}
-                  </h3>
+                </div>
+
+                {/* Optional Local Passport Photo Upload for Print Form */}
+                <div className="p-4 rounded-2xl bg-slate-50 dark:bg-slate-800/70 border border-slate-200 dark:border-slate-700 flex flex-wrap items-center justify-between gap-4">
+                  <div className="flex items-center gap-4">
+                    <div className="w-16 h-20 rounded-xl border-2 border-dashed border-emerald-600/60 bg-white dark:bg-slate-900 flex items-center justify-center overflow-hidden shrink-0">
+                      {applicantPhoto ? (
+                        <img src={applicantPhoto} alt="Passport Preview" className="w-full h-full object-cover" />
+                      ) : (
+                        <Camera className="w-6 h-6 text-slate-400" />
+                      )}
+                    </div>
+                    <div className="space-y-0.5">
+                      <p className="text-xs font-extrabold text-slate-800 dark:text-white">
+                        {lang === 'bn' ? 'শিক্ষার্থীর পাসপোর্ট সাইজ ছবি (প্রিন্টের জন্য)' : 'Passport Size Photo (Printed on Form)'}
+                      </p>
+                      <p className="text-[11px] text-slate-500 dark:text-slate-400">
+                        {lang === 'bn'
+                          ? 'প্রিন্ট কপিতে স্বয়ংক্রিয়ভাবে ছবি যুক্ত করতে আপলোড করুন অথবা প্রিন্টের পর ছবি সংযুক্ত করুন।'
+                          : 'Upload here to embed on your printed copy, or paste a physical photo after printing.'}
+                      </p>
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <label className="px-4 py-2 rounded-xl bg-emerald-700 hover:bg-emerald-800 text-white text-xs font-bold inline-flex items-center gap-1.5 cursor-pointer">
+                      <Camera className="w-3.5 h-3.5" />
+                      <span>{applicantPhoto ? (lang === 'bn' ? 'ছবি বদলান' : 'Change Photo') : (lang === 'bn' ? 'ছবি আপলোড' : 'Upload Photo')}</span>
+                      <input
+                        type="file"
+                        accept="image/*"
+                        className="hidden"
+                        onChange={async (e) => {
+                          const file = e.target.files?.[0];
+                          if (file) {
+                            const compressed = await compressImageFile(file, 400, 0.8);
+                            setApplicantPhoto(compressed);
+                          }
+                        }}
+                      />
+                    </label>
+                    {applicantPhoto && (
+                      <button
+                        type="button"
+                        onClick={() => setApplicantPhoto('')}
+                        className="p-2 rounded-xl bg-red-50 dark:bg-red-950/50 text-red-600"
+                        title="Remove Photo"
+                      >
+                        <Trash2 className="w-4 h-4" />
+                      </button>
+                    )}
+                  </div>
                 </div>
                 <div className="grid md:grid-cols-2 gap-6">
                   <div className="space-y-1.5">

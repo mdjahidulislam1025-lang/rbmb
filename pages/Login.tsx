@@ -43,18 +43,22 @@ import { useApp } from '../App';
 import { Notice, Teacher, GalleryItem, EBook, UserRole, FeeCategory, FeeRecord, PaymentMethod, SchoolStudent } from '../types';
 import { compressImageFile } from '../utils/imageUtils';
 import { exportCsv } from '../utils/exportUtils';
+import { getDhakaTodayISO, attachDhakaTimeToDate, extractIsoDate, formatDhakaClock } from '../utils/dhakaTime';
 import { TeacherPortal } from '../components/TeacherPortal';
 import { StudentPortal } from '../components/StudentPortal';
 import { ParentPortal } from '../components/ParentPortal';
 import { FeeReceiptModal } from '../components/FeeReceiptModal';
 import { StudentIdAdmitCard, CardMode } from '../components/StudentIdAdmitCard';
 import { TeacherIdCardModal } from '../components/TeacherIdCardModal';
+import { ClassTeacherAssignmentPanel } from '../components/ClassTeacherAssignmentPanel';
+import { isHeadTeacherDesignation } from '../utils/teacherRole';
 
 const { useState, useEffect, useRef, useMemo } = React;
 const { useLocation, Link, useNavigate } = RouterDom;
 
 type ManagementTab =
   | 'analytics'
+  | 'class-teachers'
   | 'cards'
   | 'fees'
   | 'broadcasts'
@@ -111,6 +115,7 @@ const Login: React.FC = () => {
     addTeacher,
     updateTeacher,
     deleteTeacher,
+    assignClassTeacher,
     ebooks,
     addEbook,
     updateEbook,
@@ -148,6 +153,7 @@ const Login: React.FC = () => {
     updateStudent,
     attendanceRecords,
     studentAttendance,
+    homeworkList,
     examMarks,
     examAttempts,
     studentLeaves,
@@ -199,8 +205,10 @@ const Login: React.FC = () => {
   const [cardSearch, setCardSearch] = useState<string>('');
   const [adminAdmitTerm, setAdminAdmitTerm] = useState<string>(EXAM_TERMS[1]?.id || EXAM_TERMS[0]?.id || 'Half-Yearly Exam 2026');
   const [adminTeacherCard, setAdminTeacherCard] = useState<{ teacher: Teacher; index: number } | null>(null);
+  const [selectedExplorerClass, setSelectedExplorerClass] = useState<'6' | '7' | '8' | '9' | '10'>('6');
+  const [explorerSubTab, setExplorerSubTab] = useState<'students' | 'marks' | 'fees' | 'attendance' | 'homework'>('students');
 
-  const todayStr = new Date().toISOString().split('T')[0];
+  const todayStr = getDhakaTodayISO();
 
   // Admin Fee Ledger States
   const [adminFeeMode, setAdminFeeMode] = useState<'bulk' | 'single'>('bulk');
@@ -397,7 +405,7 @@ const Login: React.FC = () => {
     examTerm: EXAM_TERMS[1].id,
     classId: '9',
     subject: 'Bangla',
-    date: new Date().toISOString().split('T')[0],
+    date: getDhakaTodayISO(),
     time: '10:00 AM - 01:00 PM',
     room: 'Room 101',
   });
@@ -602,17 +610,19 @@ const Login: React.FC = () => {
           title: { bn: f.titleBn.value, en: f.titleEn.value },
           description: { bn: f.descBn.value, en: f.descEn.value },
           category: f.category.value,
-          date: f.date.value,
+          date: attachDhakaTimeToDate(f.date.value),
           isPublic: true,
         };
         isEdit ? updateNotice(data) : addNotice(data);
       } else if (managementTab === 'teachers') {
+        const assignedClassVal = String(f.assignedClass?.value || '').trim();
         const data: Teacher = {
           id,
           name: { bn: f.nameBn.value, en: f.nameEn.value },
           designation: { bn: f.desigBn.value, en: f.desigEn.value },
           subject: { bn: f.subBn.value, en: f.subEn.value },
           qualification: { bn: f.qualBn.value, en: f.qualEn.value },
+          assignedClass: assignedClassVal,
           photo: tempImage || editingItem?.photo || '',
           isPublic: true,
         };
@@ -647,12 +657,14 @@ const Login: React.FC = () => {
       } else if (managementTab === 'users') {
         const nextRole = f.userRole.value as UserRole;
         const passVal = f.userPass.value.trim();
+        const assignedClassVal = nextRole === 'teacher' ? String(f.userAssignedClass?.value || '').trim() : '';
         if (isEdit) {
           await updateUser({
             ...editingItem,
             name: f.userName.value,
             email: f.userEmail.value,
             role: nextRole,
+            assignedClass: assignedClassVal || undefined,
             ...(passVal ? { password: passVal } : {}),
             photo: tempImage || editingItem.photo,
           });
@@ -663,6 +675,7 @@ const Login: React.FC = () => {
             email: f.userEmail.value,
             password: passVal || '123456',
             role: nextRole,
+            ...(assignedClassVal ? { assignedClass: assignedClassVal } : {}),
             photo: tempImage || '',
           });
           if (!ok) {
@@ -762,9 +775,14 @@ const Login: React.FC = () => {
       );
     }
 
+    if (user.role === 'student') {
+      return <StudentPortal />;
+    }
+
     const allUsers = getUsers();
     const adminTabs: { id: ManagementTab; label: string }[] = [
       { id: 'analytics', label: lang === 'bn' ? 'অ্যানালিটিক্স' : 'Analytics' },
+      { id: 'class-teachers', label: lang === 'bn' ? 'শ্রেণী শিক্ষক' : 'Class Teachers' },
       { id: 'cards', label: lang === 'bn' ? 'অ্যাডমিট, রেজি ও আইডি' : 'Student Cards' },
       { id: 'fees', label: lang === 'bn' ? 'ফি ও হিসাব' : 'Fee Ledger' },
       { id: 'broadcasts', label: lang === 'bn' ? 'পোর্টাল ঘোষণা' : 'Broadcasts' },
@@ -807,9 +825,11 @@ const Login: React.FC = () => {
               </div>
               <div className="text-center md:text-left">
                 <h1 className="text-2xl md:text-3xl font-black">{user.name}</h1>
-                <p className="opacity-80 font-bold uppercase tracking-widest text-xs mt-1">
+                <p className="opacity-85 font-bold uppercase tracking-widest text-xs mt-1">
                   {user.role} Portal • ID: {user.userId}
+                  {user.role === 'teacher' && user.assignedClass ? ` • Class ${user.assignedClass}` : ''}
                 </p>
+                <p className="text-[11px] font-semibold opacity-80 mt-0.5 tabular-nums">{formatDhakaClock(lang)}</p>
               </div>
             </div>
 
@@ -1030,8 +1050,14 @@ const Login: React.FC = () => {
                             </thead>
                             <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
                               {analyticsSummary.classBreakdown.map((row) => (
-                                <tr key={row.classId}>
-                                  <td className="py-3 pr-3 font-extrabold">Class {row.classId}</td>
+                                <tr
+                                  key={row.classId}
+                                  onClick={() => setSelectedExplorerClass(row.classId as '6' | '7' | '8' | '9' | '10')}
+                                  className={`cursor-pointer transition-colors hover:bg-emerald-50/70 dark:hover:bg-emerald-950/30 ${
+                                    selectedExplorerClass === row.classId ? 'bg-emerald-50/60 dark:bg-emerald-950/20' : ''
+                                  }`}
+                                >
+                                  <td className="py-3 pr-3 font-extrabold text-emerald-700 dark:text-emerald-400">Class {row.classId}</td>
                                   <td className="py-3 px-3 tabular-nums font-bold">{row.studentCount}</td>
                                   <td className="py-3 px-3 tabular-nums">
                                     <div className="flex items-center gap-2">
@@ -1121,7 +1147,353 @@ const Login: React.FC = () => {
                         </div>
                       </div>
                     </div>
+
+                    {/* Interactive Class-Wise Data Explorer (Classes 6-10 Isolated View) */}
+                    {(() => {
+                      const clsStudents = students
+                        .filter((s) => s.classId === selectedExplorerClass)
+                        .sort((a, b) => a.roll.localeCompare(b.roll, undefined, { numeric: true }));
+                      const clsMarks = examMarks.filter((m) => m.classId === selectedExplorerClass);
+                      const clsFees = feeRecords.filter((f) => f.classId === selectedExplorerClass);
+                      const clsHomework = homeworkList.filter((h) => h.classId === selectedExplorerClass);
+                      const clsRoutine = classRoutines.find((r) => r.classId === selectedExplorerClass);
+                      const clsNormalizedAtt = studentAttendance
+                        .filter((a) => a.classId === selectedExplorerClass)
+                        .sort((a, b) => b.date.localeCompare(a.date));
+                      const clsLegacyAtt = attendanceRecords
+                        .filter((r) => r.classId === selectedExplorerClass)
+                        .sort((a, b) => b.date.localeCompare(a.date));
+                      const clsAssignedTeachers = [
+                        ...teachers
+                          .filter((tc) => tc.assignedClass === selectedExplorerClass)
+                          .map((tc) => t(tc.name)),
+                        ...cloudUsers
+                          .filter((cu) => cu.role === 'teacher' && cu.assignedClass === selectedExplorerClass)
+                          .map((cu) => cu.name),
+                      ].filter((name, idx, arr) => Boolean(name) && arr.indexOf(name) === idx);
+
+                      const clsFeeDueTotal = clsFees.reduce(
+                        (sum, f) => (f.status === 'waived' ? sum : sum + Math.max(0, f.amount - f.paidAmount)),
+                        0
+                      );
+
+                      return (
+                        <div className="p-5 sm:p-6 rounded-2xl border border-emerald-200 dark:border-emerald-900/70 bg-white dark:bg-slate-900 space-y-5">
+                          <div className="flex flex-col md:flex-row md:items-center justify-between gap-3">
+                            <div>
+                              <h4 className="font-black text-base text-slate-900 dark:text-white">
+                                {lang === 'bn'
+                                  ? 'শ্রেণীভিত্তিক পৃথক ডাটা এক্সপ্লোরার (Class-Wise Data)'
+                                  : 'Class-Wise Data Explorer (Isolated Per Class)'}
+                              </h4>
+                              <p className="text-xs text-slate-500 dark:text-slate-400">
+                                {lang === 'bn'
+                                  ? `Class ${selectedExplorerClass}-এর শিক্ষার্থী, হাজিরা, নম্বর, বেতন ও হোমওয়ার্ক আলাদাভাবে দেখুন।`
+                                  : `Inspect Class ${selectedExplorerClass} students, attendance, exam marks, fees, and homework separately.`}
+                              </p>
+                            </div>
+                            <div className="flex flex-wrap gap-1.5 bg-slate-100 dark:bg-slate-800 p-1 rounded-xl">
+                              {(['6', '7', '8', '9', '10'] as const).map((cid) => (
+                                <button
+                                  key={cid}
+                                  type="button"
+                                  onClick={() => setSelectedExplorerClass(cid)}
+                                  className={`px-3.5 py-1.5 rounded-lg text-xs font-extrabold transition-colors whitespace-nowrap ${
+                                    selectedExplorerClass === cid
+                                      ? 'bg-emerald-700 text-white shadow-sm'
+                                      : 'text-slate-600 dark:text-slate-300 hover:bg-white dark:hover:bg-slate-900'
+                                  }`}
+                                >
+                                  {lang === 'bn' ? `${cid}ম শ্রেণী` : `Class ${cid}`}
+                                </button>
+                              ))}
+                            </div>
+                          </div>
+
+                          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 text-xs">
+                            <div className="p-3.5 rounded-xl bg-slate-50 dark:bg-slate-800/70 border border-slate-200 dark:border-slate-700 flex items-center justify-between gap-2">
+                              <div className="min-w-0">
+                                <p className="text-[10px] font-bold uppercase text-slate-400">
+                                  {lang === 'bn' ? 'শ্রেণী শিক্ষক' : 'Class Teacher'}
+                                </p>
+                                <p className="font-extrabold text-slate-900 dark:text-white mt-0.5 truncate">
+                                  {clsAssignedTeachers.length > 0
+                                    ? clsAssignedTeachers.join(', ')
+                                    : lang === 'bn'
+                                    ? 'নির্ধারিত নয়'
+                                    : 'Not Assigned'}
+                                </p>
+                              </div>
+                              <button
+                                type="button"
+                                onClick={() => setManagementTab('class-teachers')}
+                                className="px-2.5 py-1 rounded-lg bg-emerald-700 hover:bg-emerald-800 text-white text-[10px] font-bold shrink-0"
+                              >
+                                {lang === 'bn' ? 'নির্ধারণ' : 'Assign'}
+                              </button>
+                            </div>
+                            <div className="p-3.5 rounded-xl bg-slate-50 dark:bg-slate-800/70 border border-slate-200 dark:border-slate-700">
+                              <p className="text-[10px] font-bold uppercase text-slate-400">
+                                {lang === 'bn' ? 'শিক্ষার্থী সংখ্যা' : 'Class Students'}
+                              </p>
+                              <p className="font-black text-lg text-emerald-700 dark:text-emerald-400 tabular-nums">
+                                {clsStudents.length}
+                              </p>
+                            </div>
+                            <div className="p-3.5 rounded-xl bg-slate-50 dark:bg-slate-800/70 border border-slate-200 dark:border-slate-700">
+                              <p className="text-[10px] font-bold uppercase text-slate-400">
+                                {lang === 'bn' ? 'নম্বর এন্ট্রি' : 'Marks Entries'}
+                              </p>
+                              <p className="font-black text-lg text-blue-700 dark:text-blue-400 tabular-nums">
+                                {clsMarks.length}
+                              </p>
+                            </div>
+                            <div className="p-3.5 rounded-xl bg-slate-50 dark:bg-slate-800/70 border border-slate-200 dark:border-slate-700">
+                              <p className="text-[10px] font-bold uppercase text-slate-400">
+                                {lang === 'bn' ? 'বকেয়া ফি' : 'Class Fee Due'}
+                              </p>
+                              <p className="font-black text-lg text-amber-600 dark:text-amber-400 tabular-nums">
+                                ৳{clsFeeDueTotal.toLocaleString()}
+                              </p>
+                            </div>
+                          </div>
+
+                          <div className="flex flex-wrap gap-1.5 border-b border-slate-200 dark:border-slate-800 pb-3">
+                            {(
+                              [
+                                { id: 'students', label: lang === 'bn' ? `শিক্ষার্থী (${clsStudents.length})` : `Students (${clsStudents.length})` },
+                                { id: 'marks', label: lang === 'bn' ? `পরীক্ষার নম্বর (${clsMarks.length})` : `Marks (${clsMarks.length})` },
+                                { id: 'fees', label: lang === 'bn' ? `ফি ও বেতন (${clsFees.length})` : `Fees (${clsFees.length})` },
+                                {
+                                  id: 'attendance',
+                                  label:
+                                    lang === 'bn'
+                                      ? `হাজিরা (${clsNormalizedAtt.length || clsLegacyAtt.length})`
+                                      : `Attendance (${clsNormalizedAtt.length || clsLegacyAtt.length})`,
+                                },
+                                { id: 'homework', label: lang === 'bn' ? `হোমওয়ার্ক ও রুটিন (${clsHomework.length})` : `Homework & Routine (${clsHomework.length})` },
+                              ] as const
+                            ).map((sub) => (
+                              <button
+                                key={sub.id}
+                                type="button"
+                                onClick={() => setExplorerSubTab(sub.id)}
+                                className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-colors ${
+                                  explorerSubTab === sub.id
+                                    ? 'bg-slate-900 dark:bg-emerald-700 text-white'
+                                    : 'bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300'
+                                }`}
+                              >
+                                {sub.label}
+                              </button>
+                            ))}
+                          </div>
+
+                          {explorerSubTab === 'students' && (
+                            <div className="overflow-x-auto">
+                              {clsStudents.length === 0 ? (
+                                <p className="text-xs text-slate-400 text-center py-6">
+                                  {lang === 'bn' ? `Class ${selectedExplorerClass}-এ এখনো কোনো শিক্ষার্থী যুক্ত হয়নি।` : `No students enrolled in Class ${selectedExplorerClass} yet.`}
+                                </p>
+                              ) : (
+                                <table className="w-full text-left text-xs">
+                                  <thead className="border-b border-slate-200 dark:border-slate-800 text-[10px] font-bold uppercase text-slate-400">
+                                    <tr>
+                                      <th className="py-2 pr-3">Roll</th>
+                                      <th className="py-2 px-3">Name</th>
+                                      <th className="py-2 px-3">Section</th>
+                                      <th className="py-2 px-3">Mobile</th>
+                                      <th className="py-2 px-3 text-right">Due</th>
+                                      <th className="py-2 pl-3 text-right">Admit Status</th>
+                                    </tr>
+                                  </thead>
+                                  <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
+                                    {clsStudents.map((st) => {
+                                      const stDue = clsFees
+                                        .filter((f) => f.roll.trim() === st.roll.trim() && f.status !== 'waived')
+                                        .reduce((sum, f) => sum + Math.max(0, f.amount - f.paidAmount), 0);
+                                      return (
+                                        <tr key={st.id}>
+                                          <td className="py-2.5 pr-3 font-black tabular-nums">#{st.roll}</td>
+                                          <td className="py-2.5 px-3 font-bold">{st.name}</td>
+                                          <td className="py-2.5 px-3">{st.section}</td>
+                                          <td className="py-2.5 px-3 tabular-nums text-slate-500">{st.guardianMobile}</td>
+                                          <td className="py-2.5 px-3 text-right font-bold tabular-nums">
+                                            {stDue > 0 ? (
+                                              <span className="text-red-600">৳{stDue.toLocaleString()}</span>
+                                            ) : (
+                                              <span className="text-emerald-700 dark:text-emerald-400">Paid</span>
+                                            )}
+                                          </td>
+                                          <td className="py-2.5 pl-3 text-right">
+                                            <span
+                                              className={`px-2 py-0.5 rounded text-[10px] font-extrabold ${
+                                                st.admitCardApproved && stDue <= 0
+                                                  ? 'bg-emerald-100 text-emerald-800 dark:bg-emerald-950 dark:text-emerald-300'
+                                                  : 'bg-slate-100 dark:bg-slate-800 text-slate-500'
+                                              }`}
+                                            >
+                                              {st.admitCardApproved && stDue <= 0 ? 'Approved' : 'Locked'}
+                                            </span>
+                                          </td>
+                                        </tr>
+                                      );
+                                    })}
+                                  </tbody>
+                                </table>
+                              )}
+                            </div>
+                          )}
+
+                          {explorerSubTab === 'marks' && (
+                            <div className="overflow-x-auto">
+                              {clsMarks.length === 0 ? (
+                                <p className="text-xs text-slate-400 text-center py-6">
+                                  {lang === 'bn' ? `Class ${selectedExplorerClass}-এর কোনো নম্বর এন্ট্রি পাওয়া যায়নি।` : `No exam marks entered for Class ${selectedExplorerClass}.`}
+                                </p>
+                              ) : (
+                                <table className="w-full text-left text-xs">
+                                  <thead className="border-b border-slate-200 dark:border-slate-800 text-[10px] font-bold uppercase text-slate-400">
+                                    <tr>
+                                      <th className="py-2 pr-3">Roll</th>
+                                      <th className="py-2 px-3">Student</th>
+                                      <th className="py-2 px-3">Term</th>
+                                      <th className="py-2 px-3">Subject</th>
+                                      <th className="py-2 px-3 text-right">Marks</th>
+                                      <th className="py-2 pl-3 text-right">Grade</th>
+                                    </tr>
+                                  </thead>
+                                  <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
+                                    {clsMarks.slice(0, 40).map((m) => (
+                                      <tr key={m.id}>
+                                        <td className="py-2 pr-3 font-black tabular-nums">#{m.roll}</td>
+                                        <td className="py-2 px-3 font-bold">{m.studentName}</td>
+                                        <td className="py-2 px-3 text-slate-500">{m.examTerm}</td>
+                                        <td className="py-2 px-3">{m.subject}</td>
+                                        <td className="py-2 px-3 text-right font-bold tabular-nums">{m.obtainedMarks}/{m.totalMarks}</td>
+                                        <td className="py-2 pl-3 text-right font-black text-emerald-700 dark:text-emerald-400">{m.grade}</td>
+                                      </tr>
+                                    ))}
+                                  </tbody>
+                                </table>
+                              )}
+                            </div>
+                          )}
+
+                          {explorerSubTab === 'fees' && (
+                            <div className="overflow-x-auto">
+                              {clsFees.length === 0 ? (
+                                <p className="text-xs text-slate-400 text-center py-6">
+                                  {lang === 'bn' ? `Class ${selectedExplorerClass}-এর কোনো ফি রেকর্ড নেই।` : `No fee records for Class ${selectedExplorerClass}.`}
+                                </p>
+                              ) : (
+                                <table className="w-full text-left text-xs">
+                                  <thead className="border-b border-slate-200 dark:border-slate-800 text-[10px] font-bold uppercase text-slate-400">
+                                    <tr>
+                                      <th className="py-2 pr-3">Roll</th>
+                                      <th className="py-2 px-3">Student</th>
+                                      <th className="py-2 px-3">Particular</th>
+                                      <th className="py-2 px-3 text-right">Amount</th>
+                                      <th className="py-2 px-3 text-right">Paid</th>
+                                      <th className="py-2 pl-3 text-right">Status</th>
+                                    </tr>
+                                  </thead>
+                                  <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
+                                    {clsFees.slice(0, 40).map((f) => (
+                                      <tr key={f.id}>
+                                        <td className="py-2 pr-3 font-black tabular-nums">#{f.roll}</td>
+                                        <td className="py-2 px-3 font-bold">{f.studentName}</td>
+                                        <td className="py-2 px-3">{f.title}</td>
+                                        <td className="py-2 px-3 text-right tabular-nums">৳{f.amount.toLocaleString()}</td>
+                                        <td className="py-2 px-3 text-right font-bold text-emerald-700 dark:text-emerald-400 tabular-nums">৳{f.paidAmount.toLocaleString()}</td>
+                                        <td className="py-2 pl-3 text-right uppercase font-black">{f.status}</td>
+                                      </tr>
+                                    ))}
+                                  </tbody>
+                                </table>
+                              )}
+                            </div>
+                          )}
+
+                          {explorerSubTab === 'attendance' && (
+                            <div className="space-y-2">
+                              {clsNormalizedAtt.length > 0 ? (
+                                clsNormalizedAtt.slice(0, 30).map((att) => (
+                                  <div key={att.id} className="p-3 rounded-xl bg-slate-50 dark:bg-slate-800 flex items-center justify-between text-xs">
+                                    <span className="font-bold tabular-nums">
+                                      {att.date} · #{att.roll} {att.studentName} ({att.teacherName})
+                                    </span>
+                                    <span className="px-2.5 py-0.5 rounded font-black uppercase bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700">
+                                      {att.status}
+                                    </span>
+                                  </div>
+                                ))
+                              ) : clsLegacyAtt.length > 0 ? (
+                                clsLegacyAtt.slice(0, 15).map((sheet) => {
+                                  const vals = Object.values(sheet.records || {});
+                                  const present = vals.filter((v) => v === 'present' || v === 'late').length;
+                                  return (
+                                    <div key={sheet.id} className="p-3 rounded-xl bg-slate-50 dark:bg-slate-800 flex items-center justify-between text-xs">
+                                      <span className="font-bold tabular-nums">{sheet.date} · {sheet.teacherName}</span>
+                                      <span className="font-extrabold text-emerald-700 dark:text-emerald-400 tabular-nums">
+                                        {present}/{vals.length} Present
+                                      </span>
+                                    </div>
+                                  );
+                                })
+                              ) : (
+                                <p className="text-xs text-slate-400 text-center py-6">
+                                  {lang === 'bn' ? `Class ${selectedExplorerClass}-এর কোনো হাজিরা রেকর্ড নেই।` : `No attendance records for Class ${selectedExplorerClass}.`}
+                                </p>
+                              )}
+                            </div>
+                          )}
+
+                          {explorerSubTab === 'homework' && (
+                            <div className="space-y-3">
+                              {clsRoutine && (
+                                <div className="p-3.5 rounded-xl bg-emerald-50 dark:bg-emerald-950/40 border border-emerald-200 dark:border-emerald-800 text-xs flex flex-wrap items-center justify-between gap-2">
+                                  <span className="font-extrabold text-emerald-900 dark:text-emerald-200">
+                                    {lang === 'bn'
+                                      ? `Class ${selectedExplorerClass} রুটিন: ${clsRoutine.days.length} কর্মদিবস`
+                                      : `Class ${selectedExplorerClass} Routine: ${clsRoutine.days.length} active school days`}
+                                  </span>
+                                  <button
+                                    type="button"
+                                    onClick={() => {
+                                      setRoutineClassId(selectedExplorerClass);
+                                      setManagementTab('class-routine');
+                                    }}
+                                    className="px-3 py-1 rounded-lg bg-emerald-700 text-white font-bold"
+                                  >
+                                    {lang === 'bn' ? 'রুটিন সম্পাদনা' : 'Edit Routine'}
+                                  </button>
+                                </div>
+                              )}
+                              {clsHomework.length === 0 ? (
+                                <p className="text-xs text-slate-400 text-center py-6">
+                                  {lang === 'bn' ? `Class ${selectedExplorerClass}-এর কোনো হোমওয়ার্ক নেই।` : `No homework items for Class ${selectedExplorerClass}.`}
+                                </p>
+                              ) : (
+                                clsHomework.map((hw) => (
+                                  <div key={hw.id} className="p-3.5 rounded-xl bg-slate-50 dark:bg-slate-800 flex items-center justify-between gap-2 text-xs">
+                                    <div>
+                                      <p className="font-extrabold">{hw.subject}: {hw.title}</p>
+                                      <p className="text-slate-500">By {hw.teacherName} · Due {hw.dueDate}</p>
+                                    </div>
+                                  </div>
+                                ))
+                              )}
+                            </div>
+                          )}
+                        </div>
+                      );
+                    })()}
                   </div>
+                )}
+
+                {managementTab === 'class-teachers' && (
+                  <ClassTeacherAssignmentPanel allowAddNew={true} onNotify={notifyAdmin} />
                 )}
 
                 {managementTab === 'fees' && (
@@ -1554,48 +1926,94 @@ const Login: React.FC = () => {
 
                 {managementTab === 'teachers' && (
                   <div className="space-y-4">
-                    {teachers.length > 0 && (
-                      <div className="flex flex-wrap items-center justify-between gap-3 p-4 rounded-2xl bg-emerald-50 dark:bg-emerald-950/50 border border-emerald-200 dark:border-emerald-800">
-                        <div className="text-xs font-bold text-emerald-900 dark:text-emerald-200">
-                          {lang === 'bn'
-                            ? `মোট ${teachers.length} জন শিক্ষকের অফিশিয়াল আইডি কার্ড স্বয়ংক্রিয়ভাবে প্রস্তুত`
-                            : `${teachers.length} Faculty ID Cards automatically ready for view & batch print`}
-                        </div>
+                    <div className="flex flex-wrap items-center justify-between gap-3 p-4 rounded-2xl bg-emerald-50 dark:bg-emerald-950/50 border border-emerald-200 dark:border-emerald-800">
+                      <div className="text-xs font-bold text-emerald-900 dark:text-emerald-200">
+                        {lang === 'bn'
+                          ? `মোট ${teachers.length} জন শিক্ষকের অফিশিয়াল আইডি কার্ড প্রস্তুত — শ্রেণী শিক্ষক যোগ ও নির্ধারণ করতে ডানদিকের বাটনে ক্লিক করুন`
+                          : `${teachers.length} Faculty ID Cards ready — assign or add Class Teachers anytime`}
+                      </div>
+                      <div className="flex flex-wrap items-center gap-2">
                         <button
                           type="button"
-                          onClick={() => setAdminTeacherCard({ teacher: teachers[0], index: 0 })}
-                          className="px-4 py-2 rounded-xl bg-emerald-700 hover:bg-emerald-800 text-white text-xs font-bold inline-flex items-center gap-1.5"
+                          onClick={() => setManagementTab('class-teachers')}
+                          className="px-4 py-2 rounded-xl bg-slate-900 dark:bg-slate-800 hover:bg-emerald-800 text-white text-xs font-bold inline-flex items-center gap-1.5"
                         >
-                          <IdCard className="w-4 h-4" />
-                          {lang === 'bn'
-                            ? `সব শিক্ষকের আইডি কার্ড (${teachers.length})`
-                            : `All Teachers ID Cards (${teachers.length})`}
+                          <Users className="w-4 h-4" />
+                          {lang === 'bn' ? 'শ্রেণী শিক্ষক যোগ / নির্ধারণ' : 'Manage Class Teachers'}
                         </button>
+                        {teachers.length > 0 && (
+                          <button
+                            type="button"
+                            onClick={() => setAdminTeacherCard({ teacher: teachers[0], index: 0 })}
+                            className="px-4 py-2 rounded-xl bg-emerald-700 hover:bg-emerald-800 text-white text-xs font-bold inline-flex items-center gap-1.5"
+                          >
+                            <IdCard className="w-4 h-4" />
+                            {lang === 'bn'
+                              ? `সব শিক্ষকের আইডি কার্ড (${teachers.length})`
+                              : `All Teachers ID Cards (${teachers.length})`}
+                          </button>
+                        )}
                       </div>
-                    )}
+                    </div>
                     <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-4">
                       {teachers.map((tc, idx) => (
-                        <div key={tc.id} className="p-4 rounded-2xl bg-slate-50 dark:bg-slate-800 flex items-center justify-between gap-3">
-                          <div className="flex items-center gap-3 min-w-0">
-                            <div className="w-11 h-11 rounded-xl bg-emerald-100 dark:bg-emerald-950 flex items-center justify-center overflow-hidden shrink-0">
-                              {tc.photo ? <img src={tc.photo} alt="" className="w-full h-full object-cover" /> : <UserIcon className="w-5 h-5 text-emerald-700" />}
+                        <div key={tc.id} className="p-4 rounded-2xl bg-slate-50 dark:bg-slate-800 space-y-2.5">
+                          <div className="flex items-center justify-between gap-3">
+                            <div className="flex items-center gap-3 min-w-0">
+                              <div className="w-11 h-11 rounded-xl bg-emerald-100 dark:bg-emerald-950 flex items-center justify-center overflow-hidden shrink-0">
+                                {tc.photo ? <img src={tc.photo} alt="" className="w-full h-full object-cover" /> : <UserIcon className="w-5 h-5 text-emerald-700" />}
+                              </div>
+                              <div className="min-w-0">
+                                <p className="font-bold text-sm truncate">{t(tc.name)}</p>
+                                <p className="text-xs text-slate-500 truncate">
+                                  {t(tc.designation)}
+                                  {isHeadTeacherDesignation(t(tc.designation)) && (
+                                    <span className="ml-1.5 px-1.5 py-0.5 rounded bg-amber-100 dark:bg-amber-950 text-amber-800 dark:text-amber-300 text-[10px] font-black">
+                                      {lang === 'bn' ? 'প্রধান' : 'Head'}
+                                    </span>
+                                  )}
+                                </p>
+                              </div>
                             </div>
-                            <div className="min-w-0">
-                              <p className="font-bold text-sm truncate">{t(tc.name)}</p>
-                              <p className="text-xs text-slate-500 truncate">{t(tc.designation)}</p>
+                            <div className="flex items-center gap-1 shrink-0">
+                              <button
+                                type="button"
+                                onClick={() => setAdminTeacherCard({ teacher: tc, index: idx })}
+                                title={lang === 'bn' ? 'শিক্ষক আইডি কার্ড' : 'Teacher ID Card'}
+                                className="px-2.5 py-1.5 rounded-lg bg-emerald-700 hover:bg-emerald-800 text-white text-[11px] font-bold inline-flex items-center gap-1"
+                              >
+                                <IdCard className="w-3.5 h-3.5" /> ID
+                              </button>
+                              <button onClick={() => openEditModal(tc)} className="p-1.5 text-blue-600"><Pencil className="w-4 h-4" /></button>
+                              <button onClick={() => deleteTeacher(tc.id)} className="p-1.5 text-red-600"><Trash2 className="w-4 h-4" /></button>
                             </div>
                           </div>
-                          <div className="flex items-center gap-1 shrink-0">
-                            <button
-                              type="button"
-                              onClick={() => setAdminTeacherCard({ teacher: tc, index: idx })}
-                              title={lang === 'bn' ? 'শিক্ষক আইডি কার্ড' : 'Teacher ID Card'}
-                              className="px-2.5 py-1.5 rounded-lg bg-emerald-700 hover:bg-emerald-800 text-white text-[11px] font-bold inline-flex items-center gap-1"
+                          <div className="flex items-center justify-between gap-2 pt-2 border-t border-slate-200/70 dark:border-slate-700 text-[11px]">
+                            <span className="font-bold text-slate-500 dark:text-slate-400">
+                              {lang === 'bn' ? 'দায়িত্বপ্রাপ্ত শ্রেণী:' : 'Assigned Class:'}
+                            </span>
+                            <select
+                              value={tc.assignedClass || ''}
+                              onChange={(e) => {
+                                const val = e.target.value;
+                                void assignClassTeacher({ teacherId: tc.id, classId: val });
+                                notifyAdmin(
+                                  val
+                                    ? lang === 'bn'
+                                      ? `${t(tc.name)} এখন Class ${val}-এর শ্রেণী শিক্ষক।`
+                                      : `${t(tc.name)} assigned as Class ${val} teacher.`
+                                    : lang === 'bn'
+                                    ? `${t(tc.name)}-এর শ্রেণী দায়িত্ব সরানো হয়েছে।`
+                                    : `Removed assigned class for ${t(tc.name)}.`
+                                );
+                              }}
+                              className="px-2.5 py-1 rounded-lg bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 font-bold text-emerald-700 dark:text-emerald-400"
                             >
-                              <IdCard className="w-3.5 h-3.5" /> ID
-                            </button>
-                            <button onClick={() => openEditModal(tc)} className="p-1.5 text-blue-600"><Pencil className="w-4 h-4" /></button>
-                            <button onClick={() => deleteTeacher(tc.id)} className="p-1.5 text-red-600"><Trash2 className="w-4 h-4" /></button>
+                              <option value="">{lang === 'bn' ? 'নির্ধারিত নয়' : 'Unassigned'}</option>
+                              {['6', '7', '8', '9', '10'].map((c) => (
+                                <option key={c} value={c}>Class {c}</option>
+                              ))}
+                            </select>
                           </div>
                         </div>
                       ))}
@@ -1875,11 +2293,18 @@ const Login: React.FC = () => {
                     <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-3">
                       {allUsers.map((u) => (
                         <div key={u.userId} className="p-4 rounded-2xl bg-slate-50 dark:bg-slate-800 flex items-center justify-between gap-2 text-xs">
-                          <div>
-                            <p className="font-extrabold text-sm">{u.name}</p>
-                            <p className="text-slate-500">ID: {u.userId} • Role: <b className="uppercase">{u.role}</b></p>
+                          <div className="min-w-0">
+                            <p className="font-extrabold text-sm truncate">{u.name}</p>
+                            <p className="text-slate-500 truncate">
+                              ID: {u.userId} • Role: <b className="uppercase">{u.role}</b>
+                              {u.role === 'teacher' && (
+                                <span className="ml-1.5 px-1.5 py-0.5 rounded bg-emerald-100 dark:bg-emerald-950 text-emerald-700 dark:text-emerald-300 font-bold">
+                                  {u.assignedClass ? `Class ${u.assignedClass}` : 'Unassigned'}
+                                </span>
+                              )}
+                            </p>
                           </div>
-                          <div className="flex gap-1">
+                          <div className="flex gap-1 shrink-0">
                             <button onClick={() => openEditModal(u)} className="p-1.5 text-blue-600"><Pencil className="w-4 h-4" /></button>
                             <button onClick={() => deleteUser(u.userId)} className="p-1.5 text-red-600"><Trash2 className="w-4 h-4" /></button>
                           </div>
@@ -1890,18 +2315,65 @@ const Login: React.FC = () => {
                       <div className="space-y-2 pt-4 border-t border-slate-200 dark:border-slate-700">
                         <p className="text-xs font-extrabold uppercase text-slate-400">Cloud Firebase Users</p>
                         {cloudUsers.map((cu) => (
-                          <div key={cu.uid} className="p-3 rounded-xl bg-slate-50 dark:bg-slate-800 flex items-center justify-between text-xs">
+                          <div key={cu.uid} className="p-3 rounded-xl bg-slate-50 dark:bg-slate-800 flex flex-wrap items-center justify-between gap-2 text-xs">
                             <span><b>{cu.name}</b> ({cu.email})</span>
-                            <select
-                              value={cu.role}
-                              onChange={(e) => updateCloudUserRole(cu.uid, e.target.value as 'student' | 'teacher' | 'parent' | 'admin')}
-                              className="px-2.5 py-1 rounded-lg bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 font-bold"
-                            >
-                              <option value="student">student</option>
-                              <option value="parent">parent</option>
-                              <option value="teacher">teacher</option>
-                              <option value="admin">admin</option>
-                            </select>
+                            <div className="flex flex-wrap items-center gap-2">
+                              {cu.role === 'teacher' && (
+                                <>
+                                  <select
+                                    value={cu.assignedClass || ''}
+                                    onChange={(e) => void assignClassTeacher({ cloudUid: cu.uid, classId: e.target.value })}
+                                    className="px-2.5 py-1 rounded-lg bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 font-bold text-emerald-700 dark:text-emerald-400"
+                                  >
+                                    <option value="">{lang === 'bn' ? 'শ্রেণী নির্ধারণ' : 'No Class'}</option>
+                                    {['6', '7', '8', '9', '10'].map((c) => (
+                                      <option key={c} value={c}>Class {c}</option>
+                                    ))}
+                                  </select>
+                                  <button
+                                    type="button"
+                                    onClick={() => {
+                                      const nextIsHead = !isHeadTeacherDesignation(cu.designation);
+                                      void updateCloudUserRole(
+                                        cu.uid,
+                                        'teacher',
+                                        cu.assignedClass,
+                                        nextIsHead ? 'প্রধান শিক্ষক (Head Teacher)' : 'সহকারী শিক্ষক'
+                                      );
+                                    }}
+                                    className={`px-2.5 py-1 rounded-lg border text-[11px] font-bold ${
+                                      isHeadTeacherDesignation(cu.designation)
+                                        ? 'bg-amber-100 border-amber-400 text-amber-900 dark:bg-amber-950/60 dark:text-amber-300'
+                                        : 'bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-300'
+                                    }`}
+                                  >
+                                    {isHeadTeacherDesignation(cu.designation)
+                                      ? lang === 'bn'
+                                        ? 'প্রধান শিক্ষক ✓'
+                                        : 'Head Teacher ✓'
+                                      : lang === 'bn'
+                                      ? 'প্রধান শিক্ষক বানান'
+                                      : 'Set Head Teacher'}
+                                  </button>
+                                </>
+                              )}
+                              <select
+                                value={cu.role}
+                                onChange={(e) =>
+                                  updateCloudUserRole(
+                                    cu.uid,
+                                    e.target.value as 'student' | 'teacher' | 'parent' | 'admin',
+                                    cu.assignedClass
+                                  )
+                                }
+                                className="px-2.5 py-1 rounded-lg bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 font-bold"
+                              >
+                                <option value="student">student</option>
+                                <option value="parent">parent</option>
+                                <option value="teacher">teacher</option>
+                                <option value="admin">admin</option>
+                              </select>
+                            </div>
                           </div>
                         ))}
                       </div>
@@ -2320,7 +2792,7 @@ const Login: React.FC = () => {
                     <select name="category" defaultValue={editingItem?.category || 'General'} className="px-3 py-2.5 rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-xs font-bold">
                       <option value="General">General</option><option value="Admission">Admission</option><option value="Exam">Exam</option><option value="Holiday">Holiday</option>
                     </select>
-                    <input required type="date" name="date" defaultValue={editingItem?.date || new Date().toISOString().split('T')[0]} className="px-3 py-2.5 rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-xs font-bold" />
+                    <input required type="date" name="date" defaultValue={extractIsoDate(editingItem?.date) || getDhakaTodayISO()} className="px-3 py-2.5 rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-xs font-bold" />
                   </div>
                   <textarea required rows={3} name="descBn" defaultValue={editingItem?.description?.bn || ''} placeholder="Description (BN)" className="w-full px-3.5 py-2.5 rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-sm" />
                   <textarea required rows={3} name="descEn" defaultValue={editingItem?.description?.en || ''} placeholder="Description (EN)" className="w-full px-3.5 py-2.5 rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-sm" />
@@ -2337,6 +2809,12 @@ const Login: React.FC = () => {
                   <input required name="subEn" defaultValue={editingItem?.subject?.en || ''} placeholder="Subject (EN)" className="w-full px-3.5 py-2.5 rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-sm" />
                   <input required name="qualBn" defaultValue={editingItem?.qualification?.bn || ''} placeholder="Qualification (BN)" className="w-full px-3.5 py-2.5 rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-sm" />
                   <input required name="qualEn" defaultValue={editingItem?.qualification?.en || ''} placeholder="Qualification (EN)" className="w-full px-3.5 py-2.5 rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-sm" />
+                  <select name="assignedClass" defaultValue={editingItem?.assignedClass || ''} className="w-full px-3.5 py-2.5 rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-xs font-bold">
+                    <option value="">{lang === 'bn' ? 'দায়িত্বপ্রাপ্ত শ্রেণী: নির্ধারিত নয়' : 'Assigned Class: None'}</option>
+                    {['6', '7', '8', '9', '10'].map((c) => (
+                      <option key={c} value={c}>{lang === 'bn' ? `শ্রেণী শিক্ষক: ${c}ম শ্রেণী` : `Class Teacher: Class ${c}`}</option>
+                    ))}
+                  </select>
                   <input type="file" accept="image/*" onChange={async (e) => { const f = e.target.files?.[0]; if (f) setTempImage(await compressImageFile(f, 500, 0.75)); }} className="text-xs" />
                 </>
               )}
@@ -2381,6 +2859,12 @@ const Login: React.FC = () => {
                     <option value="student">Student</option>
                     <option value="parent">Parent</option>
                     <option value="teacher">Teacher</option>
+                  </select>
+                  <select name="userAssignedClass" defaultValue={editingItem?.assignedClass || ''} className="w-full px-3.5 py-2.5 rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-xs font-bold">
+                    <option value="">{lang === 'bn' ? 'শ্রেণী শিক্ষক (শুধুমাত্র শিক্ষকের জন্য)' : 'Assigned Class (Teachers only)'}</option>
+                    {['6', '7', '8', '9', '10'].map((c) => (
+                      <option key={c} value={c}>Class {c}</option>
+                    ))}
                   </select>
                 </>
               )}

@@ -124,7 +124,7 @@ export const StudentCertificateModal: React.FC<StudentCertificateModalProps> = (
         {/* Printable Formal A4 Certificate */}
         <div
           id="printable-certificate"
-          className="p-6 sm:p-10 bg-white dark:bg-slate-950 text-slate-900 dark:text-slate-100"
+          className="p-6 sm:p-10 print:p-2 bg-white dark:bg-slate-950 print:bg-white text-slate-900 dark:text-slate-100 print:text-slate-900"
         >
           <div className="border-4 border-double border-emerald-800 dark:border-emerald-700 p-6 sm:p-8 space-y-6">
             {/* School Header */}
