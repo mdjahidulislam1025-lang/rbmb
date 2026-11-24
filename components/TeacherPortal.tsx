@@ -58,7 +58,15 @@ import { StudentIdAdmitCard, CardMode } from './StudentIdAdmitCard';
 import { StudentCertificateModal } from './StudentCertificateModal';
 import { TeacherIdCardModal } from './TeacherIdCardModal';
 import { ClassTeacherAssignmentPanel } from './ClassTeacherAssignmentPanel';
-import { isHeadTeacherUser } from '../utils/teacherRole';
+import {
+  isHeadTeacherUser,
+  resolveTeacherAssignedClass,
+  resolveTeacherTeachingClasses,
+  resolveTeacherAllowedSubjects,
+  isSubjectMatched,
+  SCHOOL_CLASS_IDS,
+} from '../utils/teacherRole';
+import { computeClassMeritRanking, isYearFinalExamTerm } from '../utils/meritRoll';
 
 const { useState, useEffect, useMemo, useRef } = React;
 
@@ -81,6 +89,7 @@ export const TeacherPortal: React.FC = () => {
     lang,
     t,
     user,
+    isCloudAdmin,
     isCloudTeacher,
     signInWithGoogle,
     notices,
@@ -104,6 +113,7 @@ export const TeacherPortal: React.FC = () => {
     gradeAssignmentSubmission,
     examMarks,
     saveExamMarksBulk,
+    applyYearFinalMeritRolls,
     deleteExamMark,
     onlineExams,
     addOnlineExam,
@@ -192,80 +202,138 @@ export const TeacherPortal: React.FC = () => {
   }, [matchedTeacherIdx, teachers, user]);
 
   const matchedTeacherProfile = matchedTeacherIdx !== -1 ? teachers[matchedTeacherIdx] : undefined;
+  const isAdminUser = user?.role === 'admin' || isCloudAdmin;
   const isHeadTeacher = useMemo(
-    () => user?.role === 'admin' || isHeadTeacherUser(user, teachers, settings),
-    [user, teachers, settings]
+    () => isAdminUser || isHeadTeacherUser(user, teachers, settings),
+    [isAdminUser, user, teachers, settings]
   );
-  const isRestrictedTeacher = user?.role === 'teacher' && !isHeadTeacher;
-  const resolvedAssignedClass = (
-    matchedTeacherProfile && matchedTeacherProfile.assignedClass !== undefined
-      ? matchedTeacherProfile.assignedClass
-      : user?.assignedClass || ''
-  ).trim();
-  const lockedClassId = isRestrictedTeacher
-    ? (['6', '7', '8', '9', '10'].includes(resolvedAssignedClass) ? resolvedAssignedClass : '__UNASSIGNED__')
-    : '';
-  const isClassLocked = isRestrictedTeacher && lockedClassId !== '__UNASSIGNED__';
-  const availableClassIds: ('6' | '7' | '8' | '9' | '10')[] = isClassLocked
-    ? [lockedClassId as '6' | '7' | '8' | '9' | '10']
-    : ['6', '7', '8', '9', '10'];
+
+  const resolvedAssignedClass = useMemo(
+    () => resolveTeacherAssignedClass(matchedTeacherProfile, user),
+    [matchedTeacherProfile, user]
+  );
+
+  const accessibleClassIds = useMemo(
+    () =>
+      isHeadTeacher
+        ? [...SCHOOL_CLASS_IDS]
+        : resolveTeacherTeachingClasses(matchedTeacherProfile, user),
+    [isHeadTeacher, matchedTeacherProfile, user]
+  );
+
+  const allowedSubjects = useMemo(
+    () => resolveTeacherAllowedSubjects(matchedTeacherProfile, user),
+    [matchedTeacherProfile, user]
+  );
+
+  const availableClassIds = accessibleClassIds as ('6' | '7' | '8' | '9' | '10')[];
+  const hasAnyAssignedClass = availableClassIds.length > 0;
+  const isSingleClassOnly = availableClassIds.length === 1;
+  const hasAllClasses = isHeadTeacher || availableClassIds.length === SCHOOL_CLASS_IDS.length;
+  const hasClassTeacherPrivilege = isAdminUser || isHeadTeacher || Boolean(resolvedAssignedClass);
+
+  const canEnterAllSubjectsInClass = (cid: string) =>
+    isAdminUser || (resolvedAssignedClass !== '' && resolvedAssignedClass === cid);
+
+  const canEnterMarksForSubject = (cid: string, sub: string) => {
+    if (!accessibleClassIds.includes(cid)) return false;
+    if (canEnterAllSubjectsInClass(cid)) return true;
+    return isSubjectMatched(sub, allowedSubjects);
+  };
+
+  const canManageStudentsInClass = (cid: string) =>
+    isHeadTeacher || (resolvedAssignedClass !== '' && resolvedAssignedClass === cid);
+
+  const sensitiveClassFilter = isHeadTeacher ? null : resolvedAssignedClass || '__NONE__';
 
   const visibleStudents = useMemo(
-    () => (isClassLocked ? students.filter((s) => s.classId === lockedClassId) : students),
-    [students, isClassLocked, lockedClassId]
+    () =>
+      isHeadTeacher
+        ? students
+        : students.filter((s) => accessibleClassIds.includes(s.classId)),
+    [students, isHeadTeacher, accessibleClassIds]
   );
 
   const visibleHomeworks = useMemo(
-    () => (isClassLocked ? homeworkList.filter((h) => h.classId === lockedClassId) : homeworkList),
-    [homeworkList, isClassLocked, lockedClassId]
+    () =>
+      isHeadTeacher
+        ? homeworkList
+        : homeworkList.filter((h) => accessibleClassIds.includes(h.classId)),
+    [homeworkList, isHeadTeacher, accessibleClassIds]
   );
 
   const visibleSubmissions = useMemo(
-    () => (isClassLocked ? assignmentSubmissions.filter((s) => s.classId === lockedClassId) : assignmentSubmissions),
-    [assignmentSubmissions, isClassLocked, lockedClassId]
+    () =>
+      isHeadTeacher
+        ? assignmentSubmissions
+        : assignmentSubmissions.filter((s) => accessibleClassIds.includes(s.classId)),
+    [assignmentSubmissions, isHeadTeacher, accessibleClassIds]
   );
 
   const visibleExamMarks = useMemo(
-    () => (isClassLocked ? examMarks.filter((m) => m.classId === lockedClassId) : examMarks),
-    [examMarks, isClassLocked, lockedClassId]
+    () =>
+      isHeadTeacher
+        ? examMarks
+        : examMarks.filter((m) => accessibleClassIds.includes(m.classId)),
+    [examMarks, isHeadTeacher, accessibleClassIds]
   );
 
   const visibleExamRoutines = useMemo(
-    () => (isClassLocked ? examRoutines.filter((r) => r.classId === lockedClassId) : examRoutines),
-    [examRoutines, isClassLocked, lockedClassId]
+    () =>
+      isHeadTeacher
+        ? examRoutines
+        : examRoutines.filter((r) => accessibleClassIds.includes(r.classId)),
+    [examRoutines, isHeadTeacher, accessibleClassIds]
   );
 
   const visibleOnlineExams = useMemo(
-    () => (isClassLocked ? onlineExams.filter((ex) => ex.classId === lockedClassId) : onlineExams),
-    [onlineExams, isClassLocked, lockedClassId]
+    () =>
+      isHeadTeacher
+        ? onlineExams
+        : onlineExams.filter((ex) => accessibleClassIds.includes(ex.classId)),
+    [onlineExams, isHeadTeacher, accessibleClassIds]
   );
 
   const visibleFees = useMemo(
-    () => (isClassLocked ? feeRecords.filter((f) => f.classId === lockedClassId) : feeRecords),
-    [feeRecords, isClassLocked, lockedClassId]
+    () =>
+      sensitiveClassFilter === null
+        ? feeRecords
+        : feeRecords.filter((f) => f.classId === sensitiveClassFilter),
+    [feeRecords, sensitiveClassFilter]
   );
 
   const visibleParentLinks = useMemo(
-    () => (isClassLocked ? parentLinks.filter((pl) => pl.classId === lockedClassId) : parentLinks),
-    [parentLinks, isClassLocked, lockedClassId]
+    () =>
+      sensitiveClassFilter === null
+        ? parentLinks
+        : parentLinks.filter((pl) => pl.classId === sensitiveClassFilter),
+    [parentLinks, sensitiveClassFilter]
   );
 
   const visibleStudentLeaves = useMemo(
-    () => (isClassLocked ? studentLeaves.filter((sl) => sl.classId === lockedClassId) : studentLeaves),
-    [studentLeaves, isClassLocked, lockedClassId]
+    () =>
+      sensitiveClassFilter === null
+        ? studentLeaves
+        : studentLeaves.filter((sl) => sl.classId === sensitiveClassFilter),
+    [studentLeaves, sensitiveClassFilter]
   );
 
   const visibleEbooks = useMemo(
-    () => (isClassLocked ? ebooks.filter((eb) => eb.classId === lockedClassId) : ebooks),
-    [ebooks, isClassLocked, lockedClassId]
+    () =>
+      isHeadTeacher
+        ? ebooks
+        : ebooks.filter((eb) => accessibleClassIds.includes(eb.classId)),
+    [ebooks, isHeadTeacher, accessibleClassIds]
   );
 
   const visiblePortalNotifications = useMemo(
     () =>
-      isClassLocked
-        ? portalNotifications.filter((pn) => !pn.classId || pn.classId === 'all' || pn.classId === lockedClassId)
-        : portalNotifications,
-    [portalNotifications, isClassLocked, lockedClassId]
+      isHeadTeacher
+        ? portalNotifications
+        : portalNotifications.filter(
+            (pn) => !pn.classId || pn.classId === 'all' || accessibleClassIds.includes(pn.classId)
+          ),
+    [portalNotifications, isHeadTeacher, accessibleClassIds]
   );
 
   const myParentMessages = useMemo(() => {
@@ -277,9 +345,6 @@ export const TeacherPortal: React.FC = () => {
     const uName = (user?.name || '').trim().toLowerCase();
 
     return parentMessages.filter((pm) => {
-      if (isClassLocked && pm.classId && pm.classId !== lockedClassId) {
-        return false;
-      }
       if (pm.recipientUid && uid && pm.recipientUid.trim().toLowerCase() === uid) {
         return true;
       }
@@ -293,7 +358,7 @@ export const TeacherPortal: React.FC = () => {
       const pmTeacher = (pm.teacherName || '').trim().toLowerCase();
       return Boolean(pmTeacher && (pmTeacher === tNameEn || pmTeacher === tNameBn || pmTeacher === uName));
     });
-  }, [parentMessages, user?.userId, user?.name, resolvedTeacherCardProfile, isClassLocked, lockedClassId]);
+  }, [parentMessages, user?.userId, user?.name, resolvedTeacherCardProfile]);
 
   const openStudentCard = (st: SchoolStudent, mode: CardMode) => {
     setIdCardMode(mode);
@@ -306,7 +371,7 @@ export const TeacherPortal: React.FC = () => {
   };
 
   // --- 1. Attendance ---
-  const [attClassId, setAttClassId] = useState<string>(isClassLocked ? lockedClassId : '9');
+  const [attClassId, setAttClassId] = useState<string>(availableClassIds[0] || '9');
   const [attDate, setAttDate] = useState<string>(todayStr);
   const [attDraft, setAttDraft] = useState<Record<string, AttendanceStatus>>({});
 
@@ -382,11 +447,12 @@ export const TeacherPortal: React.FC = () => {
   };
 
   // --- 3. Exam Marks ---
-  const [markClassId, setMarkClassId] = useState<string>(isClassLocked ? lockedClassId : '9');
+  const [markClassId, setMarkClassId] = useState<string>(availableClassIds[0] || '9');
   const [markTerm, setMarkTerm] = useState<string>(EXAM_TERMS[1].id);
   const [markSubject, setMarkSubject] = useState<string>(CLASS_SUBJECTS['9'][0]);
   const [markTotal, setMarkTotal] = useState<number>(100);
   const [markSearch, setMarkSearch] = useState<string>('');
+  const [autoUpdateMeritRoll, setAutoUpdateMeritRoll] = useState<boolean>(true);
   const [quickAddStudent, setQuickAddStudent] = useState({ roll: '', name: '', section: 'A', guardianMobile: '' });
   const [marksDraft, setMarksDraft] = useState<Record<string, string>>({});
   const lastMarksKeyRef = useRef<string>('');
@@ -407,10 +473,29 @@ export const TeacherPortal: React.FC = () => {
     );
   }, [markClassStudents, markSearch]);
 
+  const isCurrentYearFinal = isYearFinalExamTerm(markTerm);
+  const canEditCurrentSubject = canEnterMarksForSubject(markClassId, markSubject);
+
+  const meritPreview = useMemo(() => {
+    if (!isCurrentYearFinal || markClassStudents.length === 0) return [];
+    const termMarks = visibleExamMarks.filter(
+      (m) => m.classId === markClassId && m.examTerm === markTerm
+    );
+    return computeClassMeritRanking(markClassStudents, termMarks);
+  }, [isCurrentYearFinal, markClassStudents, visibleExamMarks, markClassId, markTerm]);
+
   useEffect(() => {
     const subs = CLASS_SUBJECTS[markClassId] || ['Bangla'];
-    if (!subs.includes(markSubject)) setMarkSubject(subs[0]);
-  }, [markClassId, markSubject]);
+    if (!subs.includes(markSubject)) {
+      const firstPermitted = subs.find((s) => canEnterMarksForSubject(markClassId, s)) || subs[0];
+      setMarkSubject(firstPermitted);
+    } else if (!canEnterMarksForSubject(markClassId, markSubject)) {
+      const firstPermitted = subs.find((s) => canEnterMarksForSubject(markClassId, s));
+      if (firstPermitted && firstPermitted !== markSubject) {
+        setMarkSubject(firstPermitted);
+      }
+    }
+  }, [markClassId, resolvedAssignedClass, isAdminUser, allowedSubjects]);
 
   useEffect(() => {
     const activeKey = `${markClassId}__${markTerm}__${markSubject}`;
@@ -425,7 +510,7 @@ export const TeacherPortal: React.FC = () => {
             m.classId === markClassId &&
             m.examTerm === markTerm &&
             m.subject === markSubject &&
-            (m.studentId === st.id || m.roll.trim() === st.roll.trim())
+            (m.studentId ? m.studentId === st.id : m.roll.trim() === st.roll.trim())
         );
         if (!keyChanged && prev[st.id] !== undefined && prev[st.id] !== '') {
           next[st.id] = prev[st.id];
@@ -438,6 +523,14 @@ export const TeacherPortal: React.FC = () => {
   }, [markClassId, markTerm, markSubject, visibleExamMarks, markClassStudents]);
 
   const handleSaveMarksBulk = () => {
+    if (!canEditCurrentSubject) {
+      notify(
+        lang === 'bn'
+          ? 'অনুমতি নেই: আপনি শুধুমাত্র আপনার নির্ধারিত বিষয়ের নম্বর এন্ট্রি দিতে পারবেন।'
+          : 'Access denied: You can only enter marks for your assigned subject(s).'
+      );
+      return;
+    }
     const toSave: ExamMark[] = [];
     markClassStudents.forEach((st) => {
       const raw = marksDraft[st.id];
@@ -467,8 +560,16 @@ export const TeacherPortal: React.FC = () => {
       notify(lang === 'bn' ? 'অন্তত একজন শিক্ষার্থীর নম্বর লিখুন!' : 'Enter marks for at least one student.');
       return;
     }
-    saveExamMarksBulk(toSave);
-    notify(lang === 'bn' ? `${toSave.length} জন শিক্ষার্থীর নম্বর সেভ হয়েছে!` : `Saved marks for ${toSave.length} students!`);
+    const saveRes = saveExamMarksBulk(toSave, { autoUpdateYearFinalRoll: autoUpdateMeritRoll });
+    if (isCurrentYearFinal && autoUpdateMeritRoll && saveRes?.updatedRolls?.length > 0) {
+      notify(
+        lang === 'bn'
+          ? `${toSave.length} জনের নম্বর সেভ হয়েছে এবং মেধাক্রম অনুযায়ী ${saveRes.updatedRolls.length} জন শিক্ষার্থীর রোল স্বয়ংক্রিয়ভাবে আপডেট হয়েছে!`
+          : `Saved ${toSave.length} marks and auto-updated ${saveRes.updatedRolls.length} merit roll(s)!`
+      );
+    } else {
+      notify(lang === 'bn' ? `${toSave.length} জন শিক্ষার্থীর নম্বর সেভ হয়েছে!` : `Saved marks for ${toSave.length} students!`);
+    }
   };
 
   // --- 4. Notices (View + Publish) ---
@@ -530,7 +631,8 @@ export const TeacherPortal: React.FC = () => {
   };
 
   // --- 6. Class & Exam Routine Management ---
-  const [manageClassId, setManageClassId] = useState<'6' | '7' | '8' | '9' | '10'>('9');
+  const [manageClassId, setManageClassId] = useState<'6' | '7' | '8' | '9' | '10'>(availableClassIds[0] || '9');
+  const [classRosterFilter, setClassRosterFilter] = useState<'all' | '6' | '7' | '8' | '9' | '10'>('all');
   const [editingStudent, setEditingStudent] = useState<SchoolStudent | null>(null);
   const [studentForm, setStudentForm] = useState({
     roll: '',
@@ -732,28 +834,48 @@ export const TeacherPortal: React.FC = () => {
     title: '',
     message: '',
     targetRole: 'all' as 'all' | 'student' | 'parent',
-    classId: isClassLocked ? lockedClassId : 'all',
+    classId: isSingleClassOnly ? availableClassIds[0] : 'all',
     priority: 'normal' as 'normal' | 'urgent',
   });
 
   useEffect(() => {
-    if (!isClassLocked) return;
-    setAttClassId(lockedClassId);
-    setHwFilterClass(lockedClassId);
-    setHwForm((p) => ({
-      ...p,
-      classId: lockedClassId,
-      subject: (CLASS_SUBJECTS[lockedClassId] || ['Bangla'])[0],
-    }));
-    setMarkClassId(lockedClassId);
-    setMatForm((p) => ({ ...p, classId: lockedClassId }));
-    setManageClassId(lockedClassId as '6' | '7' | '8' | '9' | '10');
-    setRoutineForm((p) => ({ ...p, classId: lockedClassId }));
-    setMcqForm((p) => ({ ...p, classId: lockedClassId }));
-    setFeeClassFilter(lockedClassId);
-    setBulkFeeForm((p) => ({ ...p, classId: lockedClassId }));
-    setBroadcastForm((p) => ({ ...p, classId: lockedClassId }));
-  }, [isClassLocked, lockedClassId]);
+    if (!hasAnyAssignedClass) return;
+    const fallbackClass = resolvedAssignedClass && availableClassIds.includes(resolvedAssignedClass as '6' | '7' | '8' | '9' | '10')
+      ? resolvedAssignedClass
+      : availableClassIds[0];
+
+    if (!availableClassIds.includes(attClassId as '6' | '7' | '8' | '9' | '10')) {
+      setAttClassId(fallbackClass);
+    }
+    if (!availableClassIds.includes(markClassId as '6' | '7' | '8' | '9' | '10')) {
+      setMarkClassId(fallbackClass);
+    }
+    if (!availableClassIds.includes(manageClassId)) {
+      setManageClassId(fallbackClass as '6' | '7' | '8' | '9' | '10');
+    }
+    if (hwFilterClass !== 'all' && !availableClassIds.includes(hwFilterClass as '6' | '7' | '8' | '9' | '10')) {
+      setHwFilterClass('all');
+    }
+    if (!availableClassIds.includes(hwForm.classId as '6' | '7' | '8' | '9' | '10')) {
+      setHwForm((p) => ({ ...p, classId: fallbackClass, subject: (CLASS_SUBJECTS[fallbackClass] || ['Bangla'])[0] }));
+    }
+    if (!availableClassIds.includes(matForm.classId as '6' | '7' | '8' | '9' | '10')) {
+      setMatForm((p) => ({ ...p, classId: fallbackClass }));
+    }
+    if (!availableClassIds.includes(routineForm.classId as '6' | '7' | '8' | '9' | '10')) {
+      setRoutineForm((p) => ({ ...p, classId: fallbackClass }));
+    }
+    if (!availableClassIds.includes(mcqForm.classId as '6' | '7' | '8' | '9' | '10')) {
+      setMcqForm((p) => ({ ...p, classId: fallbackClass }));
+    }
+    if (!isHeadTeacher && resolvedAssignedClass) {
+      setFeeClassFilter(resolvedAssignedClass);
+      setBulkFeeForm((p) => ({ ...p, classId: resolvedAssignedClass }));
+    }
+    if (isSingleClassOnly) {
+      setBroadcastForm((p) => ({ ...p, classId: availableClassIds[0] }));
+    }
+  }, [hasAnyAssignedClass, availableClassIds, resolvedAssignedClass, isHeadTeacher, isSingleClassOnly]);
 
   // --- 13. Class Routine Editor (Phase 4) ---
   const [routineDayIdx, setRoutineDayIdx] = useState<number>(0);
@@ -787,7 +909,7 @@ export const TeacherPortal: React.FC = () => {
     { id: 'student-leaves', label: lang === 'bn' ? 'শিক্ষার্থীর ছুটি' : 'Student Leaves', icon: UserCheck },
   ];
 
-  if (isRestrictedTeacher && lockedClassId === '__UNASSIGNED__') {
+  if (!isHeadTeacher && !hasAnyAssignedClass) {
     return (
       <div className="space-y-6">
         <div className="p-8 rounded-3xl bg-amber-50 dark:bg-amber-950/40 border border-amber-200 dark:border-amber-800 text-center space-y-4">
@@ -795,12 +917,12 @@ export const TeacherPortal: React.FC = () => {
             <ShieldAlert className="w-7 h-7" />
           </div>
           <h3 className="text-xl font-black text-slate-900 dark:text-white">
-            {lang === 'bn' ? 'আপনার জন্য এখনো কোনো শ্রেণী নির্ধারিত হয়নি' : 'No Class Assigned Yet'}
+            {lang === 'bn' ? 'আপনার জন্য এখনো কোনো পাঠদানের শ্রেণী নির্ধারিত হয়নি' : 'No Teaching Classes Assigned Yet'}
           </h3>
           <p className="text-sm text-slate-600 dark:text-slate-300 max-w-lg mx-auto leading-relaxed">
             {lang === 'bn'
-              ? 'বিদ্যালয়ের নিরাপত্তা নীতি অনুযায়ী প্রতিটি শ্রেণীর শিক্ষক শুধুমাত্র নিজের নির্ধারিত শ্রেণীর সকল তথ্য দেখতে ও পরিচালনা করতে পারবেন। অনুগ্রহ করে স্কুল অ্যাডমিনের মাধ্যমে আপনার অ্যাকাউন্টে আপনার শ্রেণী (৬ষ্ঠ–১০ম) যুক্ত করে নিন।'
-              : 'Per school privacy rules, each Class Teacher can access and manage records exclusively for their assigned class. Please contact Admin to assign your Class (6–10) to your teacher profile.'}
+              ? 'অ্যাডমিন বা প্রধান শিক্ষক আপনার জন্য পাঠদানের শ্রেণী (সব শ্রেণী বা ১/২/৩টি নির্দিষ্ট শ্রেণী) নির্ধারণ করলে সকল শ্রেণীভিত্তিক শিক্ষার্থী ও কার্যক্রম এখানে দেখা যাবে।'
+              : 'Once Admin or Head Teacher assigns your teaching classes (All or selected classes), your class-wise students and tools will appear here.'}
           </p>
           <button
             type="button"
@@ -832,7 +954,7 @@ export const TeacherPortal: React.FC = () => {
         </div>
       )}
 
-      {/* Cloud Sync & Class Isolation Banner */}
+      {/* Cloud Sync & Teaching Role Banner */}
       <div
         className={`flex flex-wrap items-center justify-between gap-4 p-4 rounded-2xl border ${
           isCloudTeacher
@@ -840,7 +962,7 @@ export const TeacherPortal: React.FC = () => {
             : 'bg-amber-50 dark:bg-amber-950/50 border-amber-200 dark:border-amber-800 text-amber-900 dark:text-amber-200'
         }`}
       >
-        <div className="flex flex-wrap items-center gap-3 text-xs font-bold">
+        <div className="flex flex-wrap items-center gap-2.5 text-xs font-bold">
           {isCloudTeacher ? <Cloud className="w-5 h-5 text-emerald-600" /> : <CloudOff className="w-5 h-5 text-amber-600" />}
           <span>
             {isCloudTeacher
@@ -851,17 +973,34 @@ export const TeacherPortal: React.FC = () => {
               ? 'লোকাল মোড সক্রিয় — ক্লাউডে সেভ করতে Google দিয়ে যুক্ত হতে পারেন।'
               : 'Local storage mode — connect Google to sync to cloud.'}
           </span>
-          {isHeadTeacher ? (
+          {isAdminUser ? (
+            <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-xl bg-emerald-100 dark:bg-emerald-950/70 border border-emerald-300 dark:border-emerald-800 text-emerald-900 dark:text-emerald-200 font-extrabold">
+              <ShieldCheck className="w-3.5 h-3.5" />
+              {lang === 'bn' ? 'অ্যাডমিন — সকল শ্রেণী ও সকল বিষয়' : 'Admin — All Classes & All Subjects'}
+            </span>
+          ) : isHeadTeacher ? (
             <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-xl bg-amber-100 dark:bg-amber-950/70 border border-amber-300 dark:border-amber-800 text-amber-900 dark:text-amber-200 font-extrabold">
               <ShieldCheck className="w-3.5 h-3.5" />
               {lang === 'bn' ? 'প্রধান শিক্ষক — সকল শ্রেণী ও শ্রেণী শিক্ষক নির্ধারণ' : 'Head Teacher — All Classes & Class Teacher Control'}
             </span>
-          ) : isClassLocked ? (
-            <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-xl bg-purple-100 dark:bg-purple-950/70 border border-purple-300 dark:border-purple-800 text-purple-800 dark:text-purple-200 font-extrabold">
-              <Lock className="w-3.5 h-3.5" />
-              {lang === 'bn' ? `শ্রেণী শিক্ষক: শুধুমাত্র ${lockedClassId}ম শ্রেণী` : `Class Teacher: Class ${lockedClassId} Only`}
-            </span>
           ) : null}
+          {resolvedAssignedClass && (
+            <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-xl bg-purple-100 dark:bg-purple-950/70 border border-purple-300 dark:border-purple-800 text-purple-800 dark:text-purple-200 font-extrabold">
+              <ShieldCheck className="w-3.5 h-3.5" />
+              {lang === 'bn'
+                ? `শ্রেণী শিক্ষক: ${resolvedAssignedClass}ম শ্রেণী (সব বিষয়)`
+                : `Class Teacher: Class ${resolvedAssignedClass} (All Subjects)`}
+            </span>
+          )}
+          {!isAdminUser && (
+            <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-xl bg-blue-100 dark:bg-blue-950/70 border border-blue-200 dark:border-blue-800 text-blue-900 dark:text-blue-200 font-extrabold">
+              <School className="w-3.5 h-3.5" />
+              {lang === 'bn'
+                ? `পাঠদান: ${hasAllClasses ? 'সব শ্রেণী (৬ষ্ঠ–১০ম)' : `শ্রেণী ${availableClassIds.join(', ')}`}`
+                : `Classes: ${hasAllClasses ? 'All (6–10)' : availableClassIds.join(', ')}`}
+              {allowedSubjects.length > 0 ? ` · ${allowedSubjects.join(', ')}` : ''}
+            </span>
+          )}
           <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-xl bg-white/80 dark:bg-slate-900/70 border border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-300 tabular-nums">
             <Clock className="w-3 h-3 text-emerald-600" />
             {formatDhakaClock(lang)}
@@ -918,7 +1057,7 @@ export const TeacherPortal: React.FC = () => {
                 <label className="text-[10px] font-bold uppercase text-slate-400 block mb-1">{lang === 'bn' ? 'শ্রেণী' : 'Class'}</label>
                 <select
                   value={attClassId}
-                  disabled={isClassLocked}
+                  disabled={isSingleClassOnly}
                   onChange={(e) => setAttClassId(e.target.value)}
                   className="px-4 py-2.5 rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-sm font-bold disabled:opacity-75"
                 >
@@ -1005,7 +1144,7 @@ export const TeacherPortal: React.FC = () => {
             <div className="grid grid-cols-2 gap-3">
               <select
                 value={hwForm.classId}
-                disabled={isClassLocked}
+                disabled={isSingleClassOnly}
                 onChange={(e) => {
                   const cid = e.target.value;
                   setHwForm((p) => ({ ...p, classId: cid, subject: (CLASS_SUBJECTS[cid] || ['Bangla'])[0] }));
@@ -1052,14 +1191,14 @@ export const TeacherPortal: React.FC = () => {
           <div className="lg:col-span-7 space-y-4">
             <div className="flex items-center justify-between">
               <h4 className="font-extrabold text-sm">{lang === 'bn' ? 'চলমান হোমওয়ার্ক' : 'Active Assignments'}</h4>
-              {!isClassLocked && (
+              {!isSingleClassOnly && (
                 <select
                   value={hwFilterClass}
                   onChange={(e) => setHwFilterClass(e.target.value)}
                   className="px-3 py-1.5 rounded-xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 text-xs font-bold"
                 >
                   <option value="all">{lang === 'bn' ? 'সব শ্রেণী' : 'All Classes'}</option>
-                  {['6', '7', '8', '9', '10'].map((c) => <option key={c} value={c}>Class {c}</option>)}
+                  {availableClassIds.map((c) => <option key={c} value={c}>Class {c}</option>)}
                 </select>
               )}
             </div>
@@ -1154,7 +1293,7 @@ export const TeacherPortal: React.FC = () => {
               </label>
               <select
                 value={markClassId}
-                disabled={isClassLocked}
+                disabled={isSingleClassOnly}
                 onChange={(e) => setMarkClassId(e.target.value)}
                 className="w-full px-3 py-2.5 rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-xs font-bold disabled:opacity-75"
               >
@@ -1170,7 +1309,14 @@ export const TeacherPortal: React.FC = () => {
                 onChange={(e) => setMarkSubject(e.target.value)}
                 className="w-full px-3 py-2.5 rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-xs font-bold"
               >
-                {(CLASS_SUBJECTS[markClassId] || ['Bangla']).map((s) => <option key={s} value={s}>{s}</option>)}
+                {(CLASS_SUBJECTS[markClassId] || ['Bangla']).map((s) => {
+                  const unlocked = canEnterMarksForSubject(markClassId, s);
+                  return (
+                    <option key={s} value={s}>
+                      {s}{unlocked ? '' : ' 🔒'}
+                    </option>
+                  );
+                })}
               </select>
             </div>
             <div className="lg:col-span-1">
@@ -1181,16 +1327,18 @@ export const TeacherPortal: React.FC = () => {
                 type="number"
                 min={10}
                 max={200}
+                disabled={!canEditCurrentSubject}
                 value={markTotal}
                 onChange={(e) => setMarkTotal(Math.max(1, Number(e.target.value) || 100))}
-                className="w-full px-3 py-2.5 rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-xs font-bold tabular-nums"
+                className="w-full px-3 py-2.5 rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-xs font-bold tabular-nums disabled:opacity-60"
               />
             </div>
             <div className="sm:col-span-2 lg:col-span-3 flex gap-2">
               <button
                 type="button"
+                disabled={!canEditCurrentSubject}
                 onClick={handleSaveMarksBulk}
-                className="flex-1 py-2.5 px-4 rounded-xl bg-emerald-700 hover:bg-emerald-800 text-white text-xs font-bold flex items-center justify-center gap-1.5 whitespace-nowrap"
+                className="flex-1 py-2.5 px-4 rounded-xl bg-emerald-700 hover:bg-emerald-800 disabled:bg-slate-300 dark:disabled:bg-slate-700 disabled:text-slate-500 text-white text-xs font-bold flex items-center justify-center gap-1.5 whitespace-nowrap transition-colors"
               >
                 <Save className="w-4 h-4 shrink-0" />
                 <span>{lang === 'bn' ? 'নম্বর প্রকাশ' : 'Publish Marks'}</span>
@@ -1212,6 +1360,80 @@ export const TeacherPortal: React.FC = () => {
               </button>
             </div>
           </div>
+
+          {/* Subject Permission Notice */}
+          {canEnterAllSubjectsInClass(markClassId) ? (
+            <div className="p-3.5 rounded-2xl bg-emerald-50 dark:bg-emerald-950/40 border border-emerald-200 dark:border-emerald-800 flex items-center gap-2.5 text-xs font-bold text-emerald-900 dark:text-emerald-200">
+              <ShieldCheck className="w-4 h-4 text-emerald-600 shrink-0" />
+              <span>
+                {isAdminUser
+                  ? lang === 'bn'
+                    ? 'অ্যাডমিন অনুমোদন: আপনি এই শ্রেণীর সকল বিষয়ের নম্বর এন্ট্রি দিতে পারবেন।'
+                    : 'Admin Access: You can enter marks for all subjects in this class.'
+                  : lang === 'bn'
+                  ? `শ্রেণী শিক্ষক অনুমোদন (Class ${markClassId}): আপনি আপনার নির্ধারিত শ্রেণীর সকল বিষয়ের নম্বর এন্ট্রি দিতে পারবেন।`
+                  : `Class Teacher Access (Class ${markClassId}): You can enter marks for all subjects in your assigned class.`}
+              </span>
+            </div>
+          ) : canEditCurrentSubject ? (
+            <div className="p-3.5 rounded-2xl bg-blue-50 dark:bg-blue-950/40 border border-blue-200 dark:border-blue-800 flex items-center gap-2.5 text-xs font-bold text-blue-900 dark:text-blue-200">
+              <BookOpen className="w-4 h-4 text-blue-600 shrink-0" />
+              <span>
+                {lang === 'bn'
+                  ? `বিষয় শিক্ষক: আপনি আপনার নির্ধারিত "${markSubject}" বিষয়ের নম্বর এন্ট্রি দিতে পারবেন।`
+                  : `Subject Teacher: Authorized to enter marks for your assigned subject "${markSubject}".`}
+              </span>
+            </div>
+          ) : (
+            <div className="p-4 rounded-2xl bg-amber-50 dark:bg-amber-950/40 border border-amber-300 dark:border-amber-800 flex items-start gap-2.5 text-xs font-bold text-amber-900 dark:text-amber-200">
+              <Lock className="w-4 h-4 text-amber-600 shrink-0 mt-0.5" />
+              <span>
+                {lang === 'bn'
+                  ? `"${markSubject}" বিষয়ের নম্বর এন্ট্রি লক করা আছে। আপনি শুধুমাত্র আপনার নির্ধারিত বিষয় (${allowedSubjects.join(', ') || 'নির্ধারিত নয়'}) এর নম্বর এন্ট্রি দিতে পারবেন — সকল বিষয়ের নম্বর শুধুমাত্র অ্যাডমিন ও Class ${markClassId}-এর শ্রেণী শিক্ষক এন্ট্রি দিতে পারবেন।`
+                  : `"${markSubject}" is locked. You can only enter marks for your assigned subject(s) (${allowedSubjects.join(', ') || 'None'}). All-subject entry is reserved for Admin and Class ${markClassId}'s Class Teacher.`}
+              </span>
+            </div>
+          )}
+
+          {/* Year Final Exam Auto Merit Roll Control */}
+          {isCurrentYearFinal && (
+            <div className="p-4 rounded-2xl bg-purple-50 dark:bg-purple-950/30 border border-purple-200 dark:border-purple-800 flex flex-wrap items-center justify-between gap-3">
+              <label className="flex items-center gap-2.5 text-xs font-bold text-purple-950 dark:text-purple-200 cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={autoUpdateMeritRoll}
+                  onChange={(e) => setAutoUpdateMeritRoll(e.target.checked)}
+                  className="w-4 h-4 accent-purple-700 rounded"
+                />
+                <span>
+                  {lang === 'bn'
+                    ? 'বার্ষিক পরীক্ষা (Year Final Exam): নম্বর সেভ করার সাথে সাথে মেধাক্রম অনুযায়ী শিক্ষার্থীর রোল স্বয়ংক্রিয়ভাবে আপডেট হবে'
+                    : 'Year Final Exam: Automatically update student Roll Numbers by merit rank whenever marks are saved'}
+                </span>
+              </label>
+              {canEnterAllSubjectsInClass(markClassId) && markClassStudents.length > 0 && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    const updated = applyYearFinalMeritRolls(markClassId, markTerm);
+                    notify(
+                      updated.length > 0
+                        ? lang === 'bn'
+                          ? `মেধাক্রম অনুযায়ী ${updated.length} জন শিক্ষার্থীর রোল আপডেট হয়েছে!`
+                          : `Updated ${updated.length} student roll numbers by merit!`
+                        : lang === 'bn'
+                        ? 'সকল শিক্ষার্থীর রোল ইতিমধ্যেই সঠিক মেধাক্রমে আছে।'
+                        : 'All student rolls already match current merit ranking.'
+                    );
+                  }}
+                  className="px-3.5 py-2 rounded-xl bg-purple-700 hover:bg-purple-800 text-white text-xs font-bold inline-flex items-center gap-1.5 whitespace-nowrap"
+                >
+                  <Trophy className="w-3.5 h-3.5" />
+                  {lang === 'bn' ? 'এখনই মেধাক্রম রোল আপডেট' : 'Recalculate Merit Rolls'}
+                </button>
+              )}
+            </div>
+          )}
 
           <div className="flex flex-wrap items-center justify-between gap-3 pt-1">
             <div className="relative flex-1 min-w-[220px]">
@@ -1299,16 +1521,69 @@ export const TeacherPortal: React.FC = () => {
                         min={0}
                         max={markTotal}
                         step="any"
+                        disabled={!canEditCurrentSubject}
                         value={val}
                         onChange={(e) => setMarksDraft((p) => ({ ...p, [st.id]: e.target.value }))}
-                        placeholder={`/ ${markTotal}`}
-                        className="w-24 px-3 py-1.5 rounded-lg bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-sm font-bold tabular-nums"
+                        placeholder={canEditCurrentSubject ? `/ ${markTotal}` : 'Locked'}
+                        className="w-24 px-3 py-1.5 rounded-lg bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-sm font-bold tabular-nums disabled:opacity-50"
                       />
                       <span className="w-10 text-center text-xs font-black text-emerald-700 dark:text-emerald-400">{g}</span>
                     </div>
                   </div>
                 );
               })}
+            </div>
+          )}
+
+          {/* Live Year Final Merit Ranking Table */}
+          {isCurrentYearFinal && meritPreview.some((m) => m.subjectsCount > 0) && (
+            <div className="pt-4 border-t border-slate-100 dark:border-slate-800 space-y-3">
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <h5 className="text-xs font-extrabold uppercase text-purple-700 dark:text-purple-400 flex items-center gap-1.5">
+                  <Trophy className="w-4 h-4" />
+                  {lang === 'bn'
+                    ? `বার্ষিক পরীক্ষার মেধাক্রম ও রোল তালিকা — Class ${markClassId}`
+                    : `Year Final Merit Ranking & Roll Order — Class ${markClassId}`}
+                </h5>
+                <span className="text-[11px] font-bold text-slate-500">
+                  {lang === 'bn' ? 'মোট নম্বর ও GPA অনুযায়ী সাজানো' : 'Sorted by Pass/Fail, GPA & Total Marks'}
+                </span>
+              </div>
+              <div className="overflow-x-auto rounded-2xl border border-slate-200 dark:border-slate-800">
+                <table className="w-full text-left text-xs">
+                  <thead className="bg-slate-50 dark:bg-slate-800 text-[10px] font-bold uppercase text-slate-500">
+                    <tr>
+                      <th className="py-2.5 px-3">{lang === 'bn' ? 'মেধা রোল' : 'Merit Roll'}</th>
+                      <th className="py-2.5 px-3">{lang === 'bn' ? 'শিক্ষার্থী' : 'Student'}</th>
+                      <th className="py-2.5 px-3 text-center">{lang === 'bn' ? 'পূর্বের রোল' : 'Prev Roll'}</th>
+                      <th className="py-2.5 px-3 text-right">{lang === 'bn' ? 'মোট নম্বর' : 'Total Marks'}</th>
+                      <th className="py-2.5 px-3 text-right">GPA</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
+                    {meritPreview.map((entry) => (
+                      <tr key={entry.studentId} className="bg-white dark:bg-slate-900">
+                        <td className="py-2 px-3 font-black text-emerald-700 dark:text-emerald-400 tabular-nums">
+                          #{entry.newRoll}
+                        </td>
+                        <td className="py-2 px-3 font-bold">
+                          {entry.studentName}
+                          {entry.failCount > 0 && (
+                            <span className="ml-2 px-1.5 py-0.5 rounded bg-red-100 dark:bg-red-950 text-red-700 dark:text-red-300 text-[10px] font-black">
+                              F ({entry.failCount})
+                            </span>
+                          )}
+                        </td>
+                        <td className="py-2 px-3 text-center tabular-nums text-slate-500">#{entry.previousRoll}</td>
+                        <td className="py-2 px-3 text-right font-bold tabular-nums">
+                          {entry.totalObtained} / {entry.totalPossible}
+                        </td>
+                        <td className="py-2 px-3 text-right font-black tabular-nums">{entry.gpa}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
             </div>
           )}
 
@@ -1319,7 +1594,9 @@ export const TeacherPortal: React.FC = () => {
                 {visibleExamMarks.filter((m) => m.classId === markClassId && m.examTerm === markTerm && m.subject === markSubject).map((m) => (
                   <span key={m.id} className="inline-flex items-center gap-2 px-3 py-1 rounded-xl bg-slate-100 dark:bg-slate-800 text-xs font-bold">
                     #{m.roll}: {m.obtainedMarks} ({m.grade})
-                    <button onClick={() => deleteExamMark(m.id)} className="text-red-500"><X className="w-3.5 h-3.5" /></button>
+                    {canEditCurrentSubject && (
+                      <button onClick={() => deleteExamMark(m.id)} className="text-red-500"><X className="w-3.5 h-3.5" /></button>
+                    )}
                   </span>
                 ))}
               </div>
@@ -1329,7 +1606,19 @@ export const TeacherPortal: React.FC = () => {
       )}
 
       {/* 3B. Fee & Payment Ledger */}
-      {activeTab === 'fees' && (
+      {activeTab === 'fees' && !hasClassTeacherPrivilege ? (
+        <div className="p-8 rounded-3xl bg-amber-50 dark:bg-amber-950/40 border border-amber-200 dark:border-amber-800 text-center space-y-2">
+          <Lock className="w-8 h-8 text-amber-600 mx-auto" />
+          <h4 className="font-black text-base text-slate-900 dark:text-white">
+            {lang === 'bn' ? 'ফি ও বেতন ব্যবস্থাপনা শুধুমাত্র শ্রেণী শিক্ষক ও অ্যাডমিনের জন্য' : 'Fee Ledger Reserved for Class Teachers & Admin'}
+          </h4>
+          <p className="text-xs text-slate-600 dark:text-slate-300 max-w-md mx-auto">
+            {lang === 'bn'
+              ? 'কোনো শ্রেণীর শ্রেণী শিক্ষক (Class Teacher) নির্ধারিত হলে আপনি ঐ শ্রেণীর ফি ও বকেয়া পরিচালনা করতে পারবেন।'
+              : 'Assign a Class Teacher role in Admin or Head Teacher settings to manage student fee ledgers for that class.'}
+          </p>
+        </div>
+      ) : activeTab === 'fees' && (
         <div className="space-y-6">
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
             <div className="bg-white dark:bg-slate-900 p-5 rounded-2xl border border-slate-200 dark:border-slate-800">
@@ -1383,8 +1672,8 @@ export const TeacherPortal: React.FC = () => {
                   className="space-y-3"
                 >
                   <div className="grid grid-cols-2 gap-2">
-                    <select value={bulkFeeForm.classId} disabled={isClassLocked} onChange={(e) => setBulkFeeForm((p) => ({ ...p, classId: e.target.value }))} className="px-3 py-2.5 rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-xs font-bold disabled:opacity-75">
-                      {availableClassIds.map((c) => <option key={c} value={c}>Class {c}</option>)}
+                    <select value={bulkFeeForm.classId} disabled={!isHeadTeacher && Boolean(resolvedAssignedClass)} onChange={(e) => setBulkFeeForm((p) => ({ ...p, classId: e.target.value }))} className="px-3 py-2.5 rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-xs font-bold disabled:opacity-75">
+                      {(isHeadTeacher ? availableClassIds : [resolvedAssignedClass]).map((c) => <option key={c} value={c}>Class {c}</option>)}
                     </select>
                     <select value={bulkFeeForm.category} onChange={(e) => setBulkFeeForm((p) => ({ ...p, category: e.target.value as FeeCategory }))} className="px-3 py-2.5 rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-xs font-bold">
                       {['Tuition', 'Exam', 'Admission', 'Library', 'Lab', 'Sports', 'Other'].map((cat) => <option key={cat} value={cat}>{cat}</option>)}
@@ -1449,7 +1738,7 @@ export const TeacherPortal: React.FC = () => {
             <div className="lg:col-span-8 space-y-4">
               <div className="flex flex-wrap items-center justify-between gap-3">
                 <div className="flex flex-wrap gap-2">
-                  {!isClassLocked && (
+                  {isHeadTeacher && (
                     <select value={feeClassFilter} onChange={(e) => setFeeClassFilter(e.target.value)} className="px-3 py-2 rounded-xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 text-xs font-bold">
                       <option value="all">{lang === 'bn' ? 'সব শ্রেণী' : 'All Classes'}</option>
                       {['6', '7', '8', '9', '10'].map((c) => <option key={c} value={c}>Class {c}</option>)}
@@ -1630,8 +1919,8 @@ export const TeacherPortal: React.FC = () => {
                   <option value="student">{lang === 'bn' ? 'শুধু শিক্ষার্থী' : 'Students Only'}</option>
                   <option value="parent">{lang === 'bn' ? 'শুধু অভিভাবক' : 'Parents Only'}</option>
                 </select>
-                <select value={broadcastForm.classId} disabled={isClassLocked} onChange={(e) => setBroadcastForm((p) => ({ ...p, classId: e.target.value }))} className="px-3 py-2.5 rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-xs font-bold disabled:opacity-75">
-                  {!isClassLocked && <option value="all">{lang === 'bn' ? 'সব শ্রেণী' : 'All Classes'}</option>}
+                <select value={broadcastForm.classId} disabled={isSingleClassOnly} onChange={(e) => setBroadcastForm((p) => ({ ...p, classId: e.target.value }))} className="px-3 py-2.5 rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-xs font-bold disabled:opacity-75">
+                  {!isSingleClassOnly && <option value="all">{lang === 'bn' ? 'সব শ্রেণী' : 'All Classes'}</option>}
                   {availableClassIds.map((c) => <option key={c} value={c}>Class {c}</option>)}
                 </select>
                 <select value={broadcastForm.priority} onChange={(e) => setBroadcastForm((p) => ({ ...p, priority: e.target.value as 'normal' | 'urgent' }))} className="px-3 py-2.5 rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-xs font-bold">
@@ -1694,7 +1983,7 @@ export const TeacherPortal: React.FC = () => {
             <input required value={matForm.titleBn} onChange={(e) => setMatForm((p) => ({ ...p, titleBn: e.target.value }))} placeholder="বই বা নোটের নাম (বাংলা)" className="w-full px-4 py-2.5 rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-sm" />
             <input value={matForm.titleEn} onChange={(e) => setMatForm((p) => ({ ...p, titleEn: e.target.value }))} placeholder="Resource Title (English)" className="w-full px-4 py-2.5 rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-sm" />
             <div className="grid grid-cols-2 gap-3">
-              <select value={matForm.classId} disabled={isClassLocked} onChange={(e) => setMatForm((p) => ({ ...p, classId: e.target.value }))} className="px-3 py-2.5 rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-xs font-bold disabled:opacity-75">
+              <select value={matForm.classId} disabled={isSingleClassOnly} onChange={(e) => setMatForm((p) => ({ ...p, classId: e.target.value }))} className="px-3 py-2.5 rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-xs font-bold disabled:opacity-75">
                 {availableClassIds.map((c) => <option key={c} value={c}>Class {c}</option>)}
               </select>
               <select value={matForm.category} onChange={(e) => setMatForm((p) => ({ ...p, category: e.target.value as LibraryCategory }))} className="px-3 py-2.5 rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-xs font-bold">
@@ -1732,9 +2021,18 @@ export const TeacherPortal: React.FC = () => {
         <div className="grid lg:grid-cols-12 gap-6">
           <div className="lg:col-span-7 bg-white dark:bg-slate-900 p-6 rounded-3xl border border-slate-200 dark:border-slate-800 space-y-4">
             <div className="flex flex-wrap items-center justify-between gap-2">
-              <h4 className="font-extrabold text-base">{lang === 'bn' ? 'শিক্ষার্থী তালিকা ও কার্ড' : 'Student Roster & Cards'}</h4>
+              <div>
+                <h4 className="font-extrabold text-base">
+                  {lang === 'bn' ? 'শ্রেণীভিত্তিক শিক্ষার্থী তালিকা ও কার্ড' : 'Class-wise Student Roster & Cards'}
+                </h4>
+                <p className="text-[11px] text-slate-500 dark:text-slate-400">
+                  {lang === 'bn'
+                    ? `আপনার পাঠদানের ${availableClassIds.length}টি শ্রেণীতে মোট ${visibleStudents.length} জন শিক্ষার্থী`
+                    : `${visibleStudents.length} students across ${availableClassIds.length} assigned class(es)`}
+                </p>
+              </div>
               <div className="flex items-center gap-2">
-                <select value={manageClassId} disabled={isClassLocked} onChange={(e) => setManageClassId(e.target.value as '6' | '7' | '8' | '9' | '10')} className="px-3 py-2 rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-xs font-bold disabled:opacity-75">
+                <select value={manageClassId} disabled={isSingleClassOnly} onChange={(e) => setManageClassId(e.target.value as '6' | '7' | '8' | '9' | '10')} className="px-3 py-2 rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-xs font-bold disabled:opacity-75">
                   {availableClassIds.map((c) => <option key={c} value={c}>Class {c}</option>)}
                 </select>
                 {visibleStudents.some((s) => s.classId === manageClassId) && (
@@ -1752,48 +2050,121 @@ export const TeacherPortal: React.FC = () => {
                 )}
               </div>
             </div>
-            <form onSubmit={handleSaveStudent} className="grid grid-cols-2 sm:grid-cols-3 gap-2">
-              <input required placeholder="Roll" value={studentForm.roll} onChange={(e) => setStudentForm((p) => ({ ...p, roll: e.target.value }))} className="px-3 py-2 rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-xs font-bold" />
-              <input required placeholder="Student Name" value={studentForm.name} onChange={(e) => setStudentForm((p) => ({ ...p, name: e.target.value }))} className="px-3 py-2 rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-xs font-bold" />
-              <input required placeholder="Section" value={studentForm.section} onChange={(e) => setStudentForm((p) => ({ ...p, section: e.target.value }))} className="px-3 py-2 rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-xs font-bold" />
-              <input placeholder={lang === 'bn' ? 'অভিভাবকের নাম' : 'Guardian Name'} value={studentForm.guardianName} onChange={(e) => setStudentForm((p) => ({ ...p, guardianName: e.target.value }))} className="px-3 py-2 rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-xs font-bold" />
-              <input placeholder={lang === 'bn' ? 'অভিভাবকের মোবাইল' : 'Guardian Mobile'} value={studentForm.guardianMobile} onChange={(e) => setStudentForm((p) => ({ ...p, guardianMobile: e.target.value }))} className="px-3 py-2 rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-xs font-bold" />
-              <div className="flex gap-1.5">
-                <label className="px-3 py-2 rounded-xl bg-slate-100 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-xs font-bold flex items-center gap-1 cursor-pointer shrink-0">
-                  <Camera className="w-3.5 h-3.5 text-emerald-700" />
-                  <span>{studentForm.photo ? 'OK' : 'Photo'}</span>
-                  <input
-                    type="file"
-                    accept="image/*"
-                    className="hidden"
-                    onChange={async (e) => {
-                      const f = e.target.files?.[0];
-                      if (f) {
-                        const compressed = await compressImageFile(f, 360, 0.8);
-                        setStudentForm((p) => ({ ...p, photo: compressed }));
-                      }
-                    }}
-                  />
-                </label>
-                <button type="submit" className="flex-1 px-3 py-2 rounded-xl bg-emerald-700 text-white text-xs font-bold flex items-center justify-center gap-1">
-                  <Plus className="w-3.5 h-3.5" /> {editingStudent ? 'Save' : 'Add'}
+
+            {/* Class-wise quick pills */}
+            <div className="flex flex-wrap gap-1.5">
+              {availableClassIds.length > 1 && (
+                <button
+                  type="button"
+                  onClick={() => setClassRosterFilter('all')}
+                  className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-colors ${
+                    classRosterFilter === 'all'
+                      ? 'bg-emerald-700 text-white'
+                      : 'bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300'
+                  }`}
+                >
+                  {lang === 'bn' ? `সব শ্রেণী (${visibleStudents.length})` : `All Classes (${visibleStudents.length})`}
                 </button>
-              </div>
-            </form>
-            <div className="divide-y divide-slate-100 dark:divide-slate-800">
-              {visibleStudents.filter((s) => s.classId === manageClassId).map((st) => (
-                <div key={st.id} className="py-2.5 flex flex-wrap items-center justify-between gap-2 text-xs">
-                  <span><b>#{st.roll}</b> {st.name} ({st.section})</span>
-                  <div className="flex flex-wrap items-center gap-1">
-                    <button type="button" onClick={() => openStudentCard(st, 'admit')} title={lang === 'bn' ? 'অ্যাডমিট কার্ড' : 'Admit Card'} className="px-2 py-1 rounded-lg bg-emerald-50 dark:bg-emerald-950/50 text-emerald-800 dark:text-emerald-300 font-bold inline-flex items-center gap-1"><ClipboardList className="w-3 h-3" /> Admit</button>
-                    <button type="button" onClick={() => openStudentCard(st, 'reg')} title={lang === 'bn' ? 'রেজিস্ট্রেশন কার্ড' : 'Registration Card'} className="px-2 py-1 rounded-lg bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-200 font-bold inline-flex items-center gap-1"><FileBadge2 className="w-3 h-3" /> Reg</button>
-                    <button type="button" onClick={() => openStudentCard(st, 'id')} title={lang === 'bn' ? 'আইডি কার্ড' : 'ID Card'} className="px-2 py-1 rounded-lg bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-200 font-bold inline-flex items-center gap-1"><IdCard className="w-3 h-3" /> ID</button>
-                    <button type="button" onClick={() => setCertStudent(st)} title={lang === 'bn' ? 'প্রত্যয়নপত্র ও সনদ' : 'Certificate'} className="p-1.5 text-purple-700 dark:text-purple-400"><Award className="w-3.5 h-3.5" /></button>
-                    <button type="button" onClick={() => { setEditingStudent(st); setStudentForm({ roll: st.roll, name: st.name, section: st.section, guardianMobile: st.guardianMobile, guardianName: st.guardianName || '', photo: st.photo || '', registrationDate: st.registrationDate || '2026-01-15' }); }} className="p-1.5 text-blue-600"><Pencil className="w-3.5 h-3.5" /></button>
-                    <button type="button" onClick={() => deleteStudent(st.id)} className="p-1.5 text-red-600"><Trash2 className="w-3.5 h-3.5" /></button>
-                  </div>
+              )}
+              {availableClassIds.map((cid) => {
+                const count = visibleStudents.filter((s) => s.classId === cid).length;
+                const active = (availableClassIds.length === 1 ? cid : classRosterFilter) === cid;
+                return (
+                  <button
+                    key={cid}
+                    type="button"
+                    onClick={() => {
+                      setClassRosterFilter(cid);
+                      setManageClassId(cid);
+                    }}
+                    className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-colors ${
+                      active
+                        ? 'bg-emerald-700 text-white'
+                        : 'bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300'
+                    }`}
+                  >
+                    Class {cid} ({count})
+                  </button>
+                );
+              })}
+            </div>
+
+            {canManageStudentsInClass(manageClassId) && (
+              <form onSubmit={handleSaveStudent} className="grid grid-cols-2 sm:grid-cols-3 gap-2">
+                <input required placeholder="Roll" value={studentForm.roll} onChange={(e) => setStudentForm((p) => ({ ...p, roll: e.target.value }))} className="px-3 py-2 rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-xs font-bold" />
+                <input required placeholder="Student Name" value={studentForm.name} onChange={(e) => setStudentForm((p) => ({ ...p, name: e.target.value }))} className="px-3 py-2 rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-xs font-bold" />
+                <input required placeholder="Section" value={studentForm.section} onChange={(e) => setStudentForm((p) => ({ ...p, section: e.target.value }))} className="px-3 py-2 rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-xs font-bold" />
+                <input placeholder={lang === 'bn' ? 'অভিভাবকের নাম' : 'Guardian Name'} value={studentForm.guardianName} onChange={(e) => setStudentForm((p) => ({ ...p, guardianName: e.target.value }))} className="px-3 py-2 rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-xs font-bold" />
+                <input placeholder={lang === 'bn' ? 'অভিভাবকের মোবাইল' : 'Guardian Mobile'} value={studentForm.guardianMobile} onChange={(e) => setStudentForm((p) => ({ ...p, guardianMobile: e.target.value }))} className="px-3 py-2 rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-xs font-bold" />
+                <div className="flex gap-1.5">
+                  <label className="px-3 py-2 rounded-xl bg-slate-100 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-xs font-bold flex items-center gap-1 cursor-pointer shrink-0">
+                    <Camera className="w-3.5 h-3.5 text-emerald-700" />
+                    <span>{studentForm.photo ? 'OK' : 'Photo'}</span>
+                    <input
+                      type="file"
+                      accept="image/*"
+                      className="hidden"
+                      onChange={async (e) => {
+                        const f = e.target.files?.[0];
+                        if (f) {
+                          const compressed = await compressImageFile(f, 360, 0.8);
+                          setStudentForm((p) => ({ ...p, photo: compressed }));
+                        }
+                      }}
+                    />
+                  </label>
+                  <button type="submit" className="flex-1 px-3 py-2 rounded-xl bg-emerald-700 text-white text-xs font-bold flex items-center justify-center gap-1">
+                    <Plus className="w-3.5 h-3.5" /> {editingStudent ? 'Save' : 'Add'}
+                  </button>
                 </div>
-              ))}
+              </form>
+            )}
+
+            <div className="space-y-4">
+              {(classRosterFilter === 'all' && availableClassIds.length > 1
+                ? availableClassIds
+                : [classRosterFilter === 'all' ? manageClassId : classRosterFilter]
+              ).map((cid) => {
+                const classStudents = visibleStudents
+                  .filter((s) => s.classId === cid)
+                  .sort((a, b) => a.roll.localeCompare(b.roll, undefined, { numeric: true }));
+                const canEditThisClass = canManageStudentsInClass(cid);
+                return (
+                  <div key={cid} className="rounded-2xl border border-slate-200 dark:border-slate-800 overflow-hidden">
+                    <div className="px-4 py-2.5 bg-slate-50 dark:bg-slate-800/80 flex items-center justify-between text-xs font-extrabold">
+                      <span className="text-emerald-800 dark:text-emerald-300">
+                        Class {cid} {resolvedAssignedClass === cid ? (lang === 'bn' ? '· শ্রেণী শিক্ষক' : '· Class Teacher') : ''}
+                      </span>
+                      <span className="text-slate-500 tabular-nums">{classStudents.length} {lang === 'bn' ? 'জন' : 'Students'}</span>
+                    </div>
+                    {classStudents.length === 0 ? (
+                      <p className="p-4 text-xs text-slate-400 text-center">
+                        {lang === 'bn' ? `Class ${cid}-এ কোনো শিক্ষার্থী নেই।` : `No students in Class ${cid}.`}
+                      </p>
+                    ) : (
+                      <div className="divide-y divide-slate-100 dark:divide-slate-800 px-4">
+                        {classStudents.map((st) => (
+                          <div key={st.id} className="py-2.5 flex flex-wrap items-center justify-between gap-2 text-xs">
+                            <span><b>#{st.roll}</b> {st.name} ({st.section})</span>
+                            <div className="flex flex-wrap items-center gap-1">
+                              <button type="button" onClick={() => openStudentCard(st, 'admit')} title={lang === 'bn' ? 'অ্যাডমিট কার্ড' : 'Admit Card'} className="px-2 py-1 rounded-lg bg-emerald-50 dark:bg-emerald-950/50 text-emerald-800 dark:text-emerald-300 font-bold inline-flex items-center gap-1"><ClipboardList className="w-3 h-3" /> Admit</button>
+                              <button type="button" onClick={() => openStudentCard(st, 'reg')} title={lang === 'bn' ? 'রেজিস্ট্রেশন কার্ড' : 'Registration Card'} className="px-2 py-1 rounded-lg bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-200 font-bold inline-flex items-center gap-1"><FileBadge2 className="w-3 h-3" /> Reg</button>
+                              <button type="button" onClick={() => openStudentCard(st, 'id')} title={lang === 'bn' ? 'আইডি কার্ড' : 'ID Card'} className="px-2 py-1 rounded-lg bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-200 font-bold inline-flex items-center gap-1"><IdCard className="w-3 h-3" /> ID</button>
+                              <button type="button" onClick={() => setCertStudent(st)} title={lang === 'bn' ? 'প্রত্যয়নপত্র ও সনদ' : 'Certificate'} className="p-1.5 text-purple-700 dark:text-purple-400"><Award className="w-3.5 h-3.5" /></button>
+                              {canEditThisClass && (
+                                <>
+                                  <button type="button" onClick={() => { setManageClassId(cid); setEditingStudent(st); setStudentForm({ roll: st.roll, name: st.name, section: st.section, guardianMobile: st.guardianMobile, guardianName: st.guardianName || '', photo: st.photo || '', registrationDate: st.registrationDate || '2026-01-15' }); }} className="p-1.5 text-blue-600"><Pencil className="w-3.5 h-3.5" /></button>
+                                  <button type="button" onClick={() => deleteStudent(st.id)} className="p-1.5 text-red-600"><Trash2 className="w-3.5 h-3.5" /></button>
+                                </>
+                              )}
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
             </div>
           </div>
 
@@ -1801,7 +2172,7 @@ export const TeacherPortal: React.FC = () => {
             <h4 className="font-extrabold text-base">{lang === 'bn' ? 'পরীক্ষার রুটিন যুক্ত করুন' : 'Exam Routine Schedule'}</h4>
             <div className="space-y-2.5">
               <div className="grid grid-cols-2 gap-2">
-                <select value={routineForm.classId} disabled={isClassLocked} onChange={(e) => setRoutineForm((p) => ({ ...p, classId: e.target.value }))} className="px-3 py-2 rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-xs font-bold disabled:opacity-75">
+                <select value={routineForm.classId} disabled={isSingleClassOnly} onChange={(e) => setRoutineForm((p) => ({ ...p, classId: e.target.value }))} className="px-3 py-2 rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-xs font-bold disabled:opacity-75">
                   {availableClassIds.map((c) => <option key={c} value={c}>Class {c}</option>)}
                 </select>
                 <input value={routineForm.subject} onChange={(e) => setRoutineForm((p) => ({ ...p, subject: e.target.value }))} placeholder="Subject" className="px-3 py-2 rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-xs font-bold" />
@@ -2004,7 +2375,7 @@ export const TeacherPortal: React.FC = () => {
               <input required value={mcqForm.titleEn} onChange={(e) => setMcqForm((p) => ({ ...p, titleEn: e.target.value }))} placeholder="Title (English)" className="px-3.5 py-2.5 rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-sm" />
             </div>
             <div className="grid grid-cols-3 gap-2">
-              <select value={mcqForm.classId} disabled={isClassLocked} onChange={(e) => setMcqForm((p) => ({ ...p, classId: e.target.value }))} className="px-3 py-2.5 rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-xs font-bold disabled:opacity-75">
+              <select value={mcqForm.classId} disabled={isSingleClassOnly} onChange={(e) => setMcqForm((p) => ({ ...p, classId: e.target.value }))} className="px-3 py-2.5 rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-xs font-bold disabled:opacity-75">
                 {availableClassIds.map((c) => <option key={c} value={c}>Class {c}</option>)}
               </select>
               <input value={mcqForm.subject} onChange={(e) => setMcqForm((p) => ({ ...p, subject: e.target.value }))} placeholder="Subject" className="px-3 py-2.5 rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-xs font-bold" />
@@ -2200,7 +2571,19 @@ export const TeacherPortal: React.FC = () => {
       )}
 
       {/* 10. Student Leave Approval */}
-      {activeTab === 'student-leaves' && (
+      {activeTab === 'student-leaves' && !hasClassTeacherPrivilege ? (
+        <div className="p-8 rounded-3xl bg-amber-50 dark:bg-amber-950/40 border border-amber-200 dark:border-amber-800 text-center space-y-2">
+          <Lock className="w-8 h-8 text-amber-600 mx-auto" />
+          <h4 className="font-black text-base text-slate-900 dark:text-white">
+            {lang === 'bn' ? 'শিক্ষার্থীর ছুটি অনুমোদন শুধুমাত্র শ্রেণী শিক্ষক ও প্রধান শিক্ষকের জন্য' : 'Student Leave Approval Reserved for Class Teachers'}
+          </h4>
+          <p className="text-xs text-slate-600 dark:text-slate-300 max-w-md mx-auto">
+            {lang === 'bn'
+              ? 'কোনো শ্রেণীর শ্রেণী শিক্ষক হিসেবে দায়িত্ব পেলে ঐ শ্রেণীর শিক্ষার্থীদের ছুটির আবেদন এখান থেকে অনুমোদন করতে পারবেন।'
+              : 'Class Teachers and Head Teacher review student leave requests here.'}
+          </p>
+        </div>
+      ) : activeTab === 'student-leaves' && (
         <div className="space-y-3">
           {visibleStudentLeaves.length === 0 ? (
             <div className="p-10 text-center bg-white dark:bg-slate-900 rounded-3xl border border-slate-200 dark:border-slate-800 text-slate-400 font-bold text-sm">

@@ -68,6 +68,8 @@ export interface Teacher {
   phone?: string;
   bloodGroup?: string;
   assignedClass?: string;
+  teachingClasses?: string[];
+  teachingSubjects?: string[];
   cardIssueDate?: string;
   cardValidUpto?: string;
   isPublic?: boolean;
@@ -212,6 +214,8 @@ export interface UserAccount {
   qualification?: string;
   bloodGroup?: string;
   assignedClass?: string;
+  teachingClasses?: string[];
+  teachingSubjects?: string[];
   registrationNo?: string;
   guardianName?: string;
   section?: string;
@@ -236,6 +240,8 @@ export interface CloudUserProfile {
   qualification?: string;
   bloodGroup?: string;
   assignedClass?: string;
+  teachingClasses?: string[];
+  teachingSubjects?: string[];
   registrationNo?: string;
   guardianName?: string;
   section?: string;

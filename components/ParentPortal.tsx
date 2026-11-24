@@ -213,8 +213,17 @@ export const ParentPortal: React.FC = () => {
   };
 
   const childMarks = useMemo(
-    () => (hasBoundStudent ? examMarks.filter((m) => m.classId === childClass && m.roll.trim() === childRoll.trim()) : []),
-    [hasBoundStudent, examMarks, childClass, childRoll]
+    () =>
+      hasBoundStudent
+        ? examMarks.filter((m) => {
+            if (m.classId !== childClass) return false;
+            if (matchedChild && m.studentId) {
+              return m.studentId === matchedChild.id;
+            }
+            return m.roll.trim() === childRoll.trim();
+          })
+        : [],
+    [hasBoundStudent, examMarks, childClass, childRoll, matchedChild]
   );
 
   const gpaStats = useMemo(() => calculateOverallGpa(childMarks), [childMarks]);

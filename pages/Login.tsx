@@ -618,11 +618,20 @@ const Login: React.FC = () => {
         const assignedClassVal = String(f.assignedClass?.value || '').trim();
         const data: Teacher = {
           id,
+          ...(editingItem?.teacherCode ? { teacherCode: editingItem.teacherCode } : {}),
+          ...(editingItem?.phone ? { phone: editingItem.phone } : {}),
+          ...(editingItem?.bloodGroup ? { bloodGroup: editingItem.bloodGroup } : {}),
           name: { bn: f.nameBn.value, en: f.nameEn.value },
           designation: { bn: f.desigBn.value, en: f.desigEn.value },
           subject: { bn: f.subBn.value, en: f.subEn.value },
           qualification: { bn: f.qualBn.value, en: f.qualEn.value },
           assignedClass: assignedClassVal,
+          teachingClasses: Array.isArray(editingItem?.teachingClasses)
+            ? editingItem.teachingClasses
+            : ['6', '7', '8', '9', '10'],
+          ...(Array.isArray(editingItem?.teachingSubjects)
+            ? { teachingSubjects: editingItem.teachingSubjects }
+            : {}),
           photo: tempImage || editingItem?.photo || '',
           isPublic: true,
         };
@@ -1987,6 +1996,28 @@ const Login: React.FC = () => {
                               <button onClick={() => openEditModal(tc)} className="p-1.5 text-blue-600"><Pencil className="w-4 h-4" /></button>
                               <button onClick={() => deleteTeacher(tc.id)} className="p-1.5 text-red-600"><Trash2 className="w-4 h-4" /></button>
                             </div>
+                          </div>
+                          <div className="flex flex-wrap items-center gap-1.5 text-[10px] font-bold">
+                            <span className="px-2 py-0.5 rounded-md bg-blue-100 dark:bg-blue-950/60 text-blue-800 dark:text-blue-300">
+                              {Array.isArray(tc.teachingClasses)
+                                ? tc.teachingClasses.length === 5
+                                  ? lang === 'bn'
+                                    ? 'সব শ্রেণী (৬–১০)'
+                                    : 'All Classes (6–10)'
+                                  : tc.teachingClasses.length > 0
+                                  ? `Class ${tc.teachingClasses.join(', ')}`
+                                  : lang === 'bn'
+                                  ? 'পাঠদানের শ্রেণী নেই'
+                                  : 'No Classes'
+                                : lang === 'bn'
+                                ? 'সব শ্রেণী (৬–১০)'
+                                : 'All Classes (6–10)'}
+                            </span>
+                            <span className="px-2 py-0.5 rounded-md bg-purple-100 dark:bg-purple-950/60 text-purple-800 dark:text-purple-300 truncate max-w-[180px]">
+                              {Array.isArray(tc.teachingSubjects) && tc.teachingSubjects.length > 0
+                                ? tc.teachingSubjects.join(', ')
+                                : t(tc.subject)}
+                            </span>
                           </div>
                           <div className="flex items-center justify-between gap-2 pt-2 border-t border-slate-200/70 dark:border-slate-700 text-[11px]">
                             <span className="font-bold text-slate-500 dark:text-slate-400">

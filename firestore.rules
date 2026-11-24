@@ -59,6 +59,11 @@ service cloud.firestore {
         && uids.size() <= 5
         && (uids.size() == 0 || (uids[0] is string && uids[0].size() >= 1 && uids[0].size() <= 128));
     }
+    function isBoundedStringArray(arr, maxCount, maxItemLen) {
+      return arr is list
+        && arr.size() <= maxCount
+        && (arr.size() == 0 || (arr[0] is string && arr[0].size() >= 1 && arr[0].size() <= maxItemLen));
+    }
 
     // Validation Blueprints
     function isValidSettings(data) {
@@ -127,7 +132,7 @@ service cloud.firestore {
 
     function isValidTeacher(data) {
       return data.keys().hasAll(['id', 'name', 'designation', 'subject', 'qualification', 'photo', 'isPublic', 'createdAt', 'updatedAt'])
-        && data.keys().hasOnly(['id', 'name', 'designation', 'subject', 'qualification', 'photo', 'teacherCode', 'phone', 'bloodGroup', 'assignedClass', 'cardIssueDate', 'cardValidUpto', 'isPublic', 'createdAt', 'updatedAt'])
+        && data.keys().hasOnly(['id', 'name', 'designation', 'subject', 'qualification', 'photo', 'teacherCode', 'phone', 'bloodGroup', 'assignedClass', 'teachingClasses', 'teachingSubjects', 'cardIssueDate', 'cardValidUpto', 'isPublic', 'createdAt', 'updatedAt'])
         && isValidId(data.id)
         && isLocalizedString(data.name, 200)
         && isLocalizedString(data.designation, 200)
@@ -138,6 +143,8 @@ service cloud.firestore {
         && (!('phone' in data) || (data.phone is string && data.phone.size() <= 40))
         && (!('bloodGroup' in data) || (data.bloodGroup is string && data.bloodGroup.size() <= 16))
         && (!('assignedClass' in data) || (data.assignedClass is string && data.assignedClass.size() <= 16))
+        && (!('teachingClasses' in data) || isBoundedStringArray(data.teachingClasses, 5, 16))
+        && (!('teachingSubjects' in data) || isBoundedStringArray(data.teachingSubjects, 20, 64))
         && (!('cardIssueDate' in data) || (data.cardIssueDate is string && data.cardIssueDate.size() <= 32))
         && (!('cardValidUpto' in data) || (data.cardValidUpto is string && data.cardValidUpto.size() <= 32))
         && data.isPublic is bool
@@ -224,7 +231,7 @@ service cloud.firestore {
 
     function isValidUserProfile(data) {
       return data.keys().hasAll(['uid', 'name', 'email', 'role', 'createdAt', 'updatedAt'])
-        && data.keys().hasOnly(['uid', 'name', 'email', 'role', 'photo', 'phone', 'designation', 'subject', 'qualification', 'bloodGroup', 'assignedClass', 'registrationNo', 'guardianName', 'section', 'session', 'relationship', 'linkedStudentId', 'linkedStudentIds', 'linkedChildClass', 'linkedChildRoll', 'linkedChildName', 'createdAt', 'updatedAt'])
+        && data.keys().hasOnly(['uid', 'name', 'email', 'role', 'photo', 'phone', 'designation', 'subject', 'qualification', 'bloodGroup', 'assignedClass', 'teachingClasses', 'teachingSubjects', 'registrationNo', 'guardianName', 'section', 'session', 'relationship', 'linkedStudentId', 'linkedStudentIds', 'linkedChildClass', 'linkedChildRoll', 'linkedChildName', 'createdAt', 'updatedAt'])
         && isValidId(data.uid)
         && data.name is string && data.name.size() >= 1 && data.name.size() <= 150
         && data.email is string && data.email.size() >= 3 && data.email.size() <= 150
@@ -236,6 +243,8 @@ service cloud.firestore {
         && (!('qualification' in data) || (data.qualification is string && data.qualification.size() <= 200))
         && (!('bloodGroup' in data) || (data.bloodGroup is string && data.bloodGroup.size() <= 16))
         && (!('assignedClass' in data) || (data.assignedClass is string && data.assignedClass.size() <= 16))
+        && (!('teachingClasses' in data) || isBoundedStringArray(data.teachingClasses, 5, 16))
+        && (!('teachingSubjects' in data) || isBoundedStringArray(data.teachingSubjects, 20, 64))
         && (!('registrationNo' in data) || (data.registrationNo is string && data.registrationNo.size() <= 64))
         && (!('guardianName' in data) || (data.guardianName is string && data.guardianName.size() <= 150))
         && (!('section' in data) || (data.section is string && data.section.size() <= 40))
@@ -670,7 +679,7 @@ service cloud.firestore {
           isAdmin()
           || (
             isHeadTeacher()
-            && incoming().diff(existing()).affectedKeys().hasOnly(['assignedClass', 'updatedAt'])
+            && incoming().diff(existing()).affectedKeys().hasOnly(['assignedClass', 'teachingClasses', 'teachingSubjects', 'updatedAt'])
           )
           || (
             isTeacher()

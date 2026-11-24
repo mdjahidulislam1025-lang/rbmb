@@ -22,6 +22,7 @@ import {
 import { useApp, SelfRegistrationResult } from '../App';
 import { compressImageFile } from '../utils/imageUtils';
 import { buildStudentRegistrationNo, phonesMatch } from '../utils/security';
+import { CANONICAL_SUBJECTS, SCHOOL_CLASS_IDS } from '../utils/teacherRole';
 
 const { useState, useRef, useMemo } = React;
 const { Link, useNavigate } = RouterDom;
@@ -59,9 +60,35 @@ const Register: React.FC = () => {
     subject: 'Mathematics',
     qualification: 'M.Sc, B.Ed',
     assignedClass: '',
+    teachingClasses: [...SCHOOL_CLASS_IDS] as string[],
+    teachingSubjects: ['Mathematics'] as string[],
     // Parent fields
     relationship: 'Father' as 'Father' | 'Mother' | 'Guardian',
   });
+
+  const toggleTeachingClass = (cid: string) => {
+    setFormData((prev) => {
+      const exists = prev.teachingClasses.includes(cid);
+      const next = exists
+        ? prev.teachingClasses.filter((c) => c !== cid)
+        : SCHOOL_CLASS_IDS.filter((c) => c === cid || prev.teachingClasses.includes(c));
+      return { ...prev, teachingClasses: next };
+    });
+  };
+
+  const toggleTeachingSubject = (subId: string) => {
+    setFormData((prev) => {
+      const exists = prev.teachingSubjects.includes(subId);
+      const next = exists
+        ? prev.teachingSubjects.filter((s) => s !== subId)
+        : [...prev.teachingSubjects, subId];
+      return {
+        ...prev,
+        teachingSubjects: next,
+        subject: next.length > 0 ? next.join(', ') : prev.subject,
+      };
+    });
+  };
 
   const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
     setFormData((prev) => ({ ...prev, [e.target.name]: e.target.value }));
@@ -154,6 +181,8 @@ const Register: React.FC = () => {
       subject: formData.subject.trim(),
       qualification: formData.qualification.trim(),
       assignedClass: activeTab === 'teacher' && formData.assignedClass ? formData.assignedClass : undefined,
+      teachingClasses: activeTab === 'teacher' ? formData.teachingClasses : undefined,
+      teachingSubjects: activeTab === 'teacher' && formData.teachingSubjects.length > 0 ? formData.teachingSubjects : undefined,
       relationship: formData.relationship,
     });
     setIsSubmitting(false);
@@ -577,7 +606,7 @@ const Register: React.FC = () => {
                       </div>
                       <div>
                         <label className="text-[11px] font-bold text-slate-600 dark:text-slate-300">
-                          {lang === 'bn' ? 'দায়িত্বপ্রাপ্ত শ্রেণী (ঐচ্ছিক)' : 'Assigned Class (Optional)'}
+                          {lang === 'bn' ? 'শ্রেণী শিক্ষক (যদি থাকেন / ঐচ্ছিক)' : 'Class Teacher Of (Optional)'}
                         </label>
                         <select
                           name="assignedClass"
@@ -598,10 +627,86 @@ const Register: React.FC = () => {
                         </select>
                       </div>
                     </div>
+
+                    {/* Teaching Classes Multi-Select */}
+                    <div className="space-y-1.5">
+                      <div className="flex items-center justify-between gap-2">
+                        <span className="text-[11px] font-bold text-slate-600 dark:text-slate-300">
+                          {lang === 'bn' ? 'পাঠদানের শ্রেণীসমূহ (সব বা নির্দিষ্ট শ্রেণী)' : 'Teaching Classes (All or Subset)'}
+                        </span>
+                        <button
+                          type="button"
+                          onClick={() =>
+                            setFormData((prev) => ({
+                              ...prev,
+                              teachingClasses:
+                                prev.teachingClasses.length === SCHOOL_CLASS_IDS.length ? [] : [...SCHOOL_CLASS_IDS],
+                            }))
+                          }
+                          className="text-[10px] font-extrabold text-purple-700 dark:text-purple-300 hover:underline"
+                        >
+                          {formData.teachingClasses.length === SCHOOL_CLASS_IDS.length
+                            ? lang === 'bn'
+                              ? 'সব বাদ দিন'
+                              : 'Clear All'
+                            : lang === 'bn'
+                            ? 'সব শ্রেণী (৬ষ্ঠ–১০ম)'
+                            : 'Select All (6–10)'}
+                        </button>
+                      </div>
+                      <div className="flex flex-wrap gap-1.5">
+                        {SCHOOL_CLASS_IDS.map((cid) => {
+                          const selected = formData.teachingClasses.includes(cid);
+                          return (
+                            <button
+                              key={cid}
+                              type="button"
+                              onClick={() => toggleTeachingClass(cid)}
+                              className={`px-3 py-1 rounded-lg text-[11px] font-bold border transition-colors ${
+                                selected
+                                  ? 'bg-purple-700 border-purple-700 text-white'
+                                  : 'bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-300'
+                              }`}
+                            >
+                              Class {cid}
+                            </button>
+                          );
+                        })}
+                      </div>
+                    </div>
+
+                    {/* Teaching Subjects Multi-Select (Locks Marks Entry to Selected Subject) */}
+                    <div className="space-y-1.5">
+                      <span className="text-[11px] font-bold text-slate-600 dark:text-slate-300 block">
+                        {lang === 'bn'
+                          ? 'নির্ধারিত বিষয় (শুধুমাত্র এই বিষয়গুলোর নম্বর এন্ট্রি দিতে পারবেন)'
+                          : 'Assigned Teaching Subjects (Marks entry scoped to these)'}
+                      </span>
+                      <div className="flex flex-wrap gap-1.5">
+                        {CANONICAL_SUBJECTS.map((sub) => {
+                          const selected = formData.teachingSubjects.includes(sub.id);
+                          return (
+                            <button
+                              key={sub.id}
+                              type="button"
+                              onClick={() => toggleTeachingSubject(sub.id)}
+                              className={`px-2.5 py-1 rounded-lg text-[11px] font-bold border transition-colors ${
+                                selected
+                                  ? 'bg-emerald-700 border-emerald-700 text-white'
+                                  : 'bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-300'
+                              }`}
+                            >
+                              {lang === 'bn' ? sub.bn : sub.en}
+                            </button>
+                          );
+                        })}
+                      </div>
+                    </div>
+
                     <p className="text-[11px] text-purple-800/80 dark:text-purple-300/90 font-medium">
                       {lang === 'bn'
-                        ? 'কোন শিক্ষক কোন শ্রেণীর শ্রেণী শিক্ষক হবেন তা অ্যাডমিন এবং প্রধান শিক্ষক নির্ধারণ করবেন।'
-                        : 'Admin and Head Teacher assign which teacher serves as Class Teacher for each class.'}
+                        ? 'শ্রেণী শিক্ষক, পাঠদানের শ্রেণী এবং পদবী অ্যাডমিন ও প্রধান শিক্ষক যেকোনো সময় পরিবর্তন করতে পারবেন।'
+                        : 'Admin and Head Teacher can assign or update Class Teacher, teaching classes, and teacher roles anytime.'}
                     </p>
                   </div>
                 )}

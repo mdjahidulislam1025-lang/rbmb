@@ -173,9 +173,19 @@ export const StudentPortal: React.FC = () => {
   };
 
   const matchedStudent = useMemo(
-    () => students.find((s) => s.classId === selectedClassId && s.roll === selectedRoll.trim()),
-    [students, selectedClassId, selectedRoll]
+    () =>
+      (user?.linkedStudentId
+        ? students.find((s) => s.id === user.linkedStudentId)
+        : undefined) ||
+      students.find((s) => s.classId === selectedClassId && s.roll.trim() === selectedRoll.trim()),
+    [students, user?.linkedStudentId, selectedClassId, selectedRoll]
   );
+
+  useEffect(() => {
+    if (matchedStudent?.roll && matchedStudent.roll !== selectedRoll) {
+      setSelectedRoll(matchedStudent.roll);
+    }
+  }, [matchedStudent?.roll]);
 
   const studentRegNo =
     user?.registrationNo ||
@@ -219,8 +229,15 @@ export const StudentPortal: React.FC = () => {
   );
 
   const myMarks = useMemo(
-    () => examMarks.filter((m) => m.classId === selectedClassId && (m.roll === selectedRoll.trim() || !selectedRoll.trim())),
-    [examMarks, selectedClassId, selectedRoll]
+    () =>
+      examMarks.filter((m) => {
+        if (m.classId !== selectedClassId) return false;
+        if (matchedStudent && m.studentId) {
+          return m.studentId === matchedStudent.id;
+        }
+        return m.roll.trim() === selectedRoll.trim() || !selectedRoll.trim();
+      }),
+    [examMarks, selectedClassId, selectedRoll, matchedStudent]
   );
 
   const gpaSummary = useMemo(() => calculateOverallGpa(myMarks), [myMarks]);

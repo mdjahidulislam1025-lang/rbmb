@@ -153,7 +153,18 @@ import {
   attachDhakaTimeToDate,
 } from './utils/dhakaTime';
 import { mergeNctbHolidaysForActiveYear } from './utils/nctbHolidays';
-import { isHeadTeacherUser, findMatchingTeacher } from './utils/teacherRole';
+import {
+  isHeadTeacherUser,
+  findMatchingTeacher,
+  normalizeTeachingClasses,
+  normalizeTeachingSubjects,
+  inferCanonicalSubjectsFromText,
+} from './utils/teacherRole';
+import {
+  computeClassMeritRanking,
+  isYearFinalExamTerm,
+  MeritRankEntry,
+} from './utils/meritRoll';
 
 const { useState, createContext, useContext, useEffect, useRef, useMemo } = React;
 const { HashRouter: Router, Routes, Route, Link, useNavigate } = RouterDom;
@@ -174,6 +185,8 @@ export interface AuthUser {
   qualification?: string;
   bloodGroup?: string;
   assignedClass?: string;
+  teachingClasses?: string[];
+  teachingSubjects?: string[];
   registrationNo?: string;
   guardianName?: string;
   section?: string;
@@ -204,6 +217,8 @@ export interface SelfRegistrationPayload {
   subject?: string;
   qualification?: string;
   assignedClass?: string;
+  teachingClasses?: string[];
+  teachingSubjects?: string[];
   relationship?: 'Father' | 'Mother' | 'Guardian';
 }
 
@@ -246,6 +261,8 @@ const SEEDED_USER_TEMPLATES: Omit<AuthUser, 'passwordHash'>[] = [
     designation: 'সিনিয়র সহকারী শিক্ষক',
     subject: 'Science & Mathematics',
     assignedClass: '9',
+    teachingClasses: ['6', '7', '8', '9', '10'],
+    teachingSubjects: ['Science', 'Mathematics', 'General Math'],
   },
   {
     userId: 'student01',
@@ -358,6 +375,8 @@ interface AppContextType {
     email?: string;
     bloodGroup?: string;
     assignedClass?: string;
+    teachingClasses?: string[];
+    teachingSubjects?: string[];
     teacherCode?: string;
     password?: string;
     photo?: string;
@@ -368,6 +387,17 @@ interface AppContextType {
     cloudUid?: string;
     classId: string;
     exclusiveForClass?: boolean;
+  }) => Promise<{ ok: boolean; error?: string }>;
+  assignTeacherDuties: (params: {
+    teacherId?: string;
+    userId?: string;
+    cloudUid?: string;
+    assignedClass?: string;
+    teachingClasses?: string[];
+    teachingSubjects?: string[];
+    exclusiveForClass?: boolean;
+    designationBn?: string;
+    designationEn?: string;
   }) => Promise<{ ok: boolean; error?: string }>;
   ebooks: EBook[];
   addEbook: (ebook: EBook) => void;
@@ -406,7 +436,11 @@ interface AppContextType {
   gradeAssignmentSubmission: (id: string, marks: number, feedback: string) => void;
   examMarks: ExamMark[];
   saveExamMark: (mark: ExamMark) => void;
-  saveExamMarksBulk: (marks: ExamMark[]) => void;
+  saveExamMarksBulk: (
+    marks: ExamMark[],
+    options?: { autoUpdateYearFinalRoll?: boolean }
+  ) => { savedCount: number; updatedRolls: MeritRankEntry[] };
+  applyYearFinalMeritRolls: (classId: string, examTerm: string) => MeritRankEntry[];
   deleteExamMark: (id: string) => void;
   onlineExams: OnlineExamType[];
   addOnlineExam: (exam: OnlineExamType) => void;
@@ -1176,7 +1210,10 @@ const App: React.FC = () => {
         extraChild = {
           ...(d.phone ? { phone: d.phone } : {}),
           ...(d.designation ? { designation: d.designation } : {}),
+          ...(d.subject ? { subject: d.subject } : {}),
           ...(d.assignedClass ? { assignedClass: d.assignedClass } : {}),
+          ...(Array.isArray(d.teachingClasses) ? { teachingClasses: normalizeTeachingClasses(d.teachingClasses) } : {}),
+          ...(Array.isArray(d.teachingSubjects) ? { teachingSubjects: normalizeTeachingSubjects(d.teachingSubjects) } : {}),
           ...(d.registrationNo ? { registrationNo: d.registrationNo } : {}),
           ...(d.linkedStudentId ? { linkedStudentId: d.linkedStudentId } : {}),
           ...(d.linkedChildClass ? { linkedChildClass: d.linkedChildClass } : {}),
@@ -2707,6 +2744,18 @@ const App: React.FC = () => {
       const cleanAssignedClass = ['6', '7', '8', '9', '10'].includes(payload.assignedClass || '')
         ? payload.assignedClass
         : undefined;
+      const cleanTeachingClasses =
+        Array.isArray(payload.teachingClasses) && payload.teachingClasses.length > 0
+          ? normalizeTeachingClasses(
+              cleanAssignedClass
+                ? [...payload.teachingClasses, cleanAssignedClass]
+                : payload.teachingClasses
+            )
+          : ['6', '7', '8', '9', '10'];
+      const cleanTeachingSubjects =
+        Array.isArray(payload.teachingSubjects) && payload.teachingSubjects.length > 0
+          ? normalizeTeachingSubjects(payload.teachingSubjects)
+          : inferCanonicalSubjectsFromText(cleanSubject);
 
       const existingTeacher = teachers.find(
         (tc) =>
@@ -2728,6 +2777,11 @@ const App: React.FC = () => {
         phone: cleanPhone,
         bloodGroup: payload.bloodGroup || existingTeacher?.bloodGroup,
         assignedClass: cleanAssignedClass || existingTeacher?.assignedClass,
+        teachingClasses: cleanTeachingClasses,
+        teachingSubjects:
+          cleanTeachingSubjects.length > 0
+            ? cleanTeachingSubjects
+            : existingTeacher?.teachingSubjects,
         photo: safePhoto || existingTeacher?.photo || '',
         cardIssueDate: existingTeacher?.cardIssueDate || todayStr,
         cardValidUpto: existingTeacher?.cardValidUpto || `${year + 3}-12-31`,
@@ -2752,6 +2806,8 @@ const App: React.FC = () => {
         qualification: cleanQual,
         bloodGroup: payload.bloodGroup || undefined,
         assignedClass: nextTeacher.assignedClass,
+        teachingClasses: nextTeacher.teachingClasses,
+        teachingSubjects: nextTeacher.teachingSubjects,
         photo: safePhoto || undefined,
         passwordHash,
       };
@@ -3298,6 +3354,8 @@ const App: React.FC = () => {
         ...(item.phone ? { phone: item.phone.trim().slice(0, 40) } : {}),
         ...(item.bloodGroup ? { bloodGroup: item.bloodGroup.trim().slice(0, 16) } : {}),
         ...(item.assignedClass ? { assignedClass: item.assignedClass.trim().slice(0, 16) } : {}),
+        ...(Array.isArray(item.teachingClasses) ? { teachingClasses: normalizeTeachingClasses(item.teachingClasses) } : {}),
+        ...(Array.isArray(item.teachingSubjects) ? { teachingSubjects: normalizeTeachingSubjects(item.teachingSubjects).slice(0, 20) } : {}),
         ...(item.cardIssueDate ? { cardIssueDate: item.cardIssueDate.trim().slice(0, 32) } : {}),
         ...(item.cardValidUpto ? { cardValidUpto: item.cardValidUpto.trim().slice(0, 32) } : {}),
         isPublic: true,
@@ -3341,6 +3399,8 @@ const App: React.FC = () => {
             : merged.assignedClass !== undefined
             ? { assignedClass: merged.assignedClass.trim().slice(0, 16) }
             : {}),
+          ...(Array.isArray(merged.teachingClasses) ? { teachingClasses: normalizeTeachingClasses(merged.teachingClasses) } : {}),
+          ...(Array.isArray(merged.teachingSubjects) ? { teachingSubjects: normalizeTeachingSubjects(merged.teachingSubjects).slice(0, 20) } : {}),
           ...(merged.cardIssueDate ? { cardIssueDate: merged.cardIssueDate.trim().slice(0, 32) } : {}),
           ...(merged.cardValidUpto ? { cardValidUpto: merged.cardValidUpto.trim().slice(0, 32) } : {}),
           isPublic: true,
@@ -3407,11 +3467,21 @@ const App: React.FC = () => {
     const cleanClass = ['6', '7', '8', '9', '10'].includes((payload.assignedClass || '').trim())
       ? (payload.assignedClass || '').trim()
       : '';
+    const cleanTeachingClasses =
+      Array.isArray(payload.teachingClasses)
+        ? normalizeTeachingClasses(
+            cleanClass ? [...payload.teachingClasses, cleanClass] : payload.teachingClasses
+          )
+        : ['6', '7', '8', '9', '10'];
     const safePhoto = clampImageString(payload.photo || '');
     const cleanDesigBn = payload.designationBn.trim() || 'সহকারী শিক্ষক';
     const cleanDesigEn = payload.designationEn?.trim() || cleanDesigBn;
     const cleanSubBn = payload.subjectBn.trim() || 'সাধারণ';
     const cleanSubEn = payload.subjectEn?.trim() || cleanSubBn;
+    const cleanTeachingSubjects =
+      Array.isArray(payload.teachingSubjects) && payload.teachingSubjects.length > 0
+        ? normalizeTeachingSubjects(payload.teachingSubjects)
+        : inferCanonicalSubjectsFromText(`${cleanSubEn} ${cleanSubBn}`);
     const cleanQualBn = payload.qualificationBn?.trim() || 'স্নাতকোত্তর';
     const cleanQualEn = payload.qualificationEn?.trim() || cleanQualBn;
     const cleanPhone = (payload.phone || '').trim();
@@ -3428,6 +3498,8 @@ const App: React.FC = () => {
       phone: cleanPhone || undefined,
       bloodGroup: cleanBlood || undefined,
       assignedClass: cleanClass || undefined,
+      teachingClasses: cleanTeachingClasses,
+      teachingSubjects: cleanTeachingSubjects,
       photo: safePhoto,
       cardIssueDate: todayIso,
       cardValidUpto: `${year + 3}-12-31`,
@@ -3452,6 +3524,8 @@ const App: React.FC = () => {
         ...(cleanPhone ? { phone: cleanPhone.slice(0, 40) } : {}),
         ...(cleanBlood ? { bloodGroup: cleanBlood.slice(0, 16) } : {}),
         assignedClass: cleanClass,
+        teachingClasses: cleanTeachingClasses,
+        teachingSubjects: cleanTeachingSubjects.slice(0, 20),
         cardIssueDate: todayIso,
         cardValidUpto: `${year + 3}-12-31`,
         isPublic: true,
@@ -3479,6 +3553,8 @@ const App: React.FC = () => {
       qualification: cleanQualBn,
       bloodGroup: cleanBlood || undefined,
       assignedClass: cleanClass || undefined,
+      teachingClasses: cleanTeachingClasses,
+      teachingSubjects: cleanTeachingSubjects,
       photo: safePhoto || undefined,
       passwordHash,
     };
@@ -3500,28 +3576,49 @@ const App: React.FC = () => {
     return { ok: true, teacher: newTeacher, teacherCode: cleanCode };
   };
 
-  const assignClassTeacher: AppContextType['assignClassTeacher'] = async ({
+  const assignTeacherDuties: AppContextType['assignTeacherDuties'] = async ({
     teacherId,
     userId,
     cloudUid,
-    classId,
+    assignedClass,
+    teachingClasses,
+    teachingSubjects,
     exclusiveForClass = false,
+    designationBn,
+    designationEn,
   }) => {
-    const canAssign =
-      user?.role === 'admin' || isCloudAdmin || isHeadTeacherUser(user, teachers, settings);
+    const isAdminActor = user?.role === 'admin' || isCloudAdmin;
+    const canAssign = isAdminActor || isHeadTeacherUser(user, teachers, settings);
     if (!canAssign) {
       return {
         ok: false,
         error:
           lang === 'bn'
-            ? 'শুধুমাত্র অ্যাডমিন এবং প্রধান শিক্ষক শ্রেণী শিক্ষক নির্ধারণ করতে পারবেন।'
-            : 'Only Admin and Head Teacher can assign Class Teachers.',
+            ? 'শুধুমাত্র অ্যাডমিন এবং প্রধান শিক্ষক শিক্ষকদের শ্রেণী ও বিষয় নির্ধারণ করতে পারবেন।'
+            : 'Only Admin and Head Teacher can assign classes and subjects.',
       };
     }
 
-    const cleanClass = ['6', '7', '8', '9', '10'].includes(classId.trim()) ? classId.trim() : '';
+    const hasAssignedUpdate = assignedClass !== undefined;
+    const cleanClass = hasAssignedUpdate
+      ? ['6', '7', '8', '9', '10'].includes(assignedClass.trim())
+        ? assignedClass.trim()
+        : ''
+      : undefined;
+    const hasClassesUpdate = teachingClasses !== undefined;
+    const nextTeachingClasses = hasClassesUpdate
+      ? normalizeTeachingClasses(
+          cleanClass ? [...(teachingClasses || []), cleanClass] : teachingClasses
+        )
+      : undefined;
+    const hasSubjectsUpdate = teachingSubjects !== undefined;
+    const nextTeachingSubjects = hasSubjectsUpdate
+      ? normalizeTeachingSubjects(teachingSubjects).slice(0, 20)
+      : undefined;
+    const hasDesigUpdate = isAdminActor && Boolean(designationBn?.trim() || designationEn?.trim());
+    const nextDesigBn = designationBn?.trim() || designationEn?.trim() || '';
+    const nextDesigEn = designationEn?.trim() || designationBn?.trim() || '';
 
-    // 1. Identify target teacher profile & account records
     const localAuthMatch = registeredUsers.find(
       (u) =>
         u.role === 'teacher' &&
@@ -3542,7 +3639,6 @@ const App: React.FC = () => {
 
     let workingTeachers = [...teachers];
 
-    // Auto-create Teacher directory profile when assigning a self-registered / cloud teacher user
     if (!matchedTeacher && (localAuthMatch || cloudMatch)) {
       const srcName = localAuthMatch?.name || cloudMatch?.name || 'Teacher';
       const newTid = sanitizeFirestoreId(
@@ -3557,8 +3653,8 @@ const App: React.FC = () => {
             : `RBMB-TCH-${year}-${String(workingTeachers.length + 1).padStart(3, '0')}`,
         name: { bn: srcName, en: srcName },
         designation: {
-          bn: localAuthMatch?.designation || cloudMatch?.designation || 'সহকারী শিক্ষক',
-          en: localAuthMatch?.designation || cloudMatch?.designation || 'Assistant Teacher',
+          bn: hasDesigUpdate ? nextDesigBn : localAuthMatch?.designation || cloudMatch?.designation || 'সহকারী শিক্ষক',
+          en: hasDesigUpdate ? nextDesigEn : localAuthMatch?.designation || cloudMatch?.designation || 'Assistant Teacher',
         },
         subject: {
           bn: localAuthMatch?.subject || cloudMatch?.subject || 'সাধারণ',
@@ -3570,7 +3666,9 @@ const App: React.FC = () => {
         },
         phone: localAuthMatch?.phone || cloudMatch?.phone,
         bloodGroup: localAuthMatch?.bloodGroup || cloudMatch?.bloodGroup,
-        assignedClass: cleanClass,
+        assignedClass: cleanClass ?? (localAuthMatch?.assignedClass || cloudMatch?.assignedClass || ''),
+        ...(nextTeachingClasses !== undefined ? { teachingClasses: nextTeachingClasses } : {}),
+        ...(nextTeachingSubjects !== undefined ? { teachingSubjects: nextTeachingSubjects } : {}),
         photo: localAuthMatch?.photo || cloudMatch?.photo || '',
         cardIssueDate: getDhakaTodayISO(),
         cardValidUpto: `${year + 3}-12-31`,
@@ -3592,7 +3690,9 @@ const App: React.FC = () => {
             photo: createdTeacher.photo,
             ...(createdTeacher.phone ? { phone: createdTeacher.phone.slice(0, 40) } : {}),
             ...(createdTeacher.bloodGroup ? { bloodGroup: createdTeacher.bloodGroup.slice(0, 16) } : {}),
-            assignedClass: cleanClass,
+            assignedClass: createdTeacher.assignedClass || '',
+            ...(createdTeacher.teachingClasses ? { teachingClasses: createdTeacher.teachingClasses } : {}),
+            ...(createdTeacher.teachingSubjects ? { teachingSubjects: createdTeacher.teachingSubjects } : {}),
             cardIssueDate: createdTeacher.cardIssueDate,
             cardValidUpto: createdTeacher.cardValidUpto,
             isPublic: true,
@@ -3605,12 +3705,21 @@ const App: React.FC = () => {
     const clearedTeacherIds = new Set<string>();
     const clearedTeacherNames = new Set<string>();
 
-    // Update target & optionally clear previous Class Teacher(s) of cleanClass when picking exclusively
     workingTeachers = workingTeachers.map((tc) => {
       if (matchedTeacher && tc.id === matchedTeacher.id) {
-        return { ...tc, assignedClass: cleanClass };
+        const nextTc: Teacher = {
+          ...tc,
+          ...(hasAssignedUpdate ? { assignedClass: cleanClass } : {}),
+          ...(hasClassesUpdate ? { teachingClasses: nextTeachingClasses } : {}),
+          ...(hasSubjectsUpdate ? { teachingSubjects: nextTeachingSubjects } : {}),
+          ...(hasDesigUpdate ? { designation: { bn: nextDesigBn, en: nextDesigEn } } : {}),
+        };
+        if (hasAssignedUpdate && cleanClass && Array.isArray(nextTc.teachingClasses) && !nextTc.teachingClasses.includes(cleanClass)) {
+          nextTc.teachingClasses = normalizeTeachingClasses([...nextTc.teachingClasses, cleanClass]);
+        }
+        return nextTc;
       }
-      if (exclusiveForClass && cleanClass && tc.assignedClass === cleanClass) {
+      if (hasAssignedUpdate && exclusiveForClass && cleanClass && tc.assignedClass === cleanClass) {
         clearedTeacherIds.add(tc.id);
         clearedTeacherNames.add(tc.name.bn.trim().toLowerCase());
         clearedTeacherNames.add(tc.name.en.trim().toLowerCase());
@@ -3622,7 +3731,6 @@ const App: React.FC = () => {
     setTeachers(workingTeachers);
     persistLocal('db_teachers', workingTeachers);
 
-    // Sync teacher updates to Firestore
     const teachersToSync: Teacher[] = [];
     if (matchedTeacher) {
       const updatedTarget = workingTeachers.find((tc) => tc.id === matchedTeacher!.id);
@@ -3651,6 +3759,8 @@ const App: React.FC = () => {
             ...(tc.phone ? { phone: tc.phone.trim().slice(0, 40) } : {}),
             ...(tc.bloodGroup ? { bloodGroup: tc.bloodGroup.trim().slice(0, 16) } : {}),
             assignedClass: nextAssigned,
+            ...(Array.isArray(tc.teachingClasses) ? { teachingClasses: tc.teachingClasses } : {}),
+            ...(Array.isArray(tc.teachingSubjects) ? { teachingSubjects: tc.teachingSubjects } : {}),
             ...(tc.cardIssueDate ? { cardIssueDate: tc.cardIssueDate.trim().slice(0, 32) } : {}),
             ...(tc.cardValidUpto ? { cardValidUpto: tc.cardValidUpto.trim().slice(0, 32) } : {}),
             isPublic: true,
@@ -3658,15 +3768,15 @@ const App: React.FC = () => {
           true
         );
       } else if (isCloudTeacher && firebaseUser?.emailVerified) {
-        // Head Teacher cloud update of assignedClass on teachers/{id}
         try {
           const tRef = doc(db, 'teachers', safeTid);
           const snap = await getDoc(tRef);
           if (snap.exists()) {
-            await updateDoc(tRef, {
-              assignedClass: nextAssigned,
-              updatedAt: serverTimestamp(),
-            });
+            const htPatch: Record<string, unknown> = { updatedAt: serverTimestamp() };
+            if (hasAssignedUpdate || clearedTeacherIds.has(tc.id)) htPatch.assignedClass = nextAssigned;
+            if (hasClassesUpdate && tc.id === matchedTeacher?.id) htPatch.teachingClasses = tc.teachingClasses || [];
+            if (hasSubjectsUpdate && tc.id === matchedTeacher?.id) htPatch.teachingSubjects = tc.teachingSubjects || [];
+            await updateDoc(tRef, htPatch);
             clearDirtyKey('db_teachers');
           }
         } catch (err) {
@@ -3675,7 +3785,6 @@ const App: React.FC = () => {
       }
     }
 
-    // Helper to check if an AuthUser matches the target or cleared teachers
     const matchesTargetUser = (u: {
       userId?: string;
       name?: string;
@@ -3686,8 +3795,7 @@ const App: React.FC = () => {
       if (userId && u.userId?.toLowerCase() === userId.toLowerCase()) return true;
       if (cloudUid && u.userId === cloudUid) return true;
       if (!matchedTeacher) return false;
-      const found = findMatchingTeacher([matchedTeacher], u);
-      return Boolean(found);
+      return Boolean(findMatchingTeacher([matchedTeacher], u));
     };
 
     const matchesClearedUser = (u: {
@@ -3697,18 +3805,26 @@ const App: React.FC = () => {
       role?: string | null;
       assignedClass?: string;
     }) => {
-      if (u.role !== 'teacher' || !exclusiveForClass || !cleanClass) return false;
+      if (u.role !== 'teacher' || !hasAssignedUpdate || !exclusiveForClass || !cleanClass) return false;
       if (u.assignedClass !== cleanClass) return false;
       if (matchesTargetUser(u)) return false;
       const uName = (u.name || '').trim().toLowerCase();
-      if (clearedTeacherNames.has(uName)) return true;
-      return clearedTeacherIds.size > 0 || true;
+      return clearedTeacherNames.has(uName) || clearedTeacherIds.size > 0;
     };
 
-    // Sync local registered_users
+    const updatedTargetTc = matchedTeacher
+      ? workingTeachers.find((tc) => tc.id === matchedTeacher!.id)
+      : undefined;
+
     const nextRegUsers = registeredUsers.map((u) => {
       if (matchesTargetUser(u)) {
-        return { ...u, assignedClass: cleanClass || undefined };
+        return {
+          ...u,
+          ...(hasAssignedUpdate ? { assignedClass: cleanClass || undefined } : {}),
+          ...(hasClassesUpdate ? { teachingClasses: updatedTargetTc?.teachingClasses ?? nextTeachingClasses } : {}),
+          ...(hasSubjectsUpdate ? { teachingSubjects: updatedTargetTc?.teachingSubjects ?? nextTeachingSubjects } : {}),
+          ...(hasDesigUpdate ? { designation: nextDesigBn } : {}),
+        };
       }
       if (matchesClearedUser(u)) {
         return { ...u, assignedClass: undefined };
@@ -3718,10 +3834,15 @@ const App: React.FC = () => {
     setRegisteredUsers(nextRegUsers);
     persistLocal('registered_users', nextRegUsers);
 
-    // Sync active session if affected
     if (user && user.role === 'teacher') {
       if (matchesTargetUser(user)) {
-        const nextSession: AuthUser = { ...user, assignedClass: cleanClass || undefined };
+        const nextSession: AuthUser = {
+          ...user,
+          ...(hasAssignedUpdate ? { assignedClass: cleanClass || undefined } : {}),
+          ...(hasClassesUpdate ? { teachingClasses: updatedTargetTc?.teachingClasses ?? nextTeachingClasses } : {}),
+          ...(hasSubjectsUpdate ? { teachingSubjects: updatedTargetTc?.teachingSubjects ?? nextTeachingSubjects } : {}),
+          ...(hasDesigUpdate ? { designation: nextDesigBn } : {}),
+        };
         setUser(nextSession);
         safeLocalSet('school_user', nextSession);
       } else if (matchesClearedUser(user)) {
@@ -3731,19 +3852,26 @@ const App: React.FC = () => {
       }
     }
 
-    // Sync cloud users if Admin
     if (isCloudAdmin) {
       for (const cu of cloudUsers) {
         if (cu.role !== 'teacher') continue;
         if (
           (cloudUid && cu.uid === cloudUid) ||
-          (matchedTeacher && findMatchingTeacher([matchedTeacher], { userId: cu.uid, name: cu.name, phone: cu.phone, role: cu.role }))
+          (matchedTeacher &&
+            findMatchingTeacher([matchedTeacher], {
+              userId: cu.uid,
+              name: cu.name,
+              phone: cu.phone,
+              role: cu.role,
+            }))
         ) {
-          await updateDoc(doc(db, 'users', sanitizeFirestoreId(cu.uid)), {
-            assignedClass: cleanClass,
-            updatedAt: serverTimestamp(),
-          }).catch(() => {});
-        } else if (exclusiveForClass && cleanClass && cu.assignedClass === cleanClass) {
+          const cloudPatch: Record<string, unknown> = { updatedAt: serverTimestamp() };
+          if (hasAssignedUpdate) cloudPatch.assignedClass = cleanClass;
+          if (hasClassesUpdate) cloudPatch.teachingClasses = updatedTargetTc?.teachingClasses ?? nextTeachingClasses ?? [];
+          if (hasSubjectsUpdate) cloudPatch.teachingSubjects = updatedTargetTc?.teachingSubjects ?? nextTeachingSubjects ?? [];
+          if (hasDesigUpdate) cloudPatch.designation = nextDesigBn.slice(0, 150);
+          await updateDoc(doc(db, 'users', sanitizeFirestoreId(cu.uid)), cloudPatch).catch(() => {});
+        } else if (hasAssignedUpdate && exclusiveForClass && cleanClass && cu.assignedClass === cleanClass) {
           await updateDoc(doc(db, 'users', sanitizeFirestoreId(cu.uid)), {
             assignedClass: '',
             updatedAt: serverTimestamp(),
@@ -3762,12 +3890,26 @@ const App: React.FC = () => {
       'ROLE_CHANGED',
       'teachers',
       matchedTeacher?.id || userId || cloudUid || 'teacher',
-      cleanClass
-        ? `Assigned ${displayName} as Class ${cleanClass} Class Teacher`
-        : `Unassigned Class Teacher role from ${displayName}`
+      `Updated duties for ${displayName}${hasAssignedUpdate ? ` • Class Teacher: ${cleanClass || 'None'}` : ''}${hasClassesUpdate ? ` • Classes: ${(nextTeachingClasses || []).join(',') || 'None'}` : ''}${hasSubjectsUpdate ? ` • Subjects: ${(nextTeachingSubjects || []).join(',') || 'None'}` : ''}${hasDesigUpdate ? ` • Role: ${nextDesigBn}` : ''}`
     );
 
     return { ok: true };
+  };
+
+  const assignClassTeacher: AppContextType['assignClassTeacher'] = async ({
+    teacherId,
+    userId,
+    cloudUid,
+    classId,
+    exclusiveForClass = false,
+  }) => {
+    return assignTeacherDuties({
+      teacherId,
+      userId,
+      cloudUid,
+      assignedClass: classId,
+      exclusiveForClass,
+    });
   };
 
   // E-Books / Digital Library (Teacher + Admin can add/update)
@@ -4743,7 +4885,157 @@ const App: React.FC = () => {
     );
   };
 
-  const saveExamMarksBulk = (marks: ExamMark[]) => {
+  const applyYearFinalMeritRolls = (
+    classId: string,
+    examTerm: string,
+    marksSource: ExamMark[] = examMarks
+  ): MeritRankEntry[] => {
+    if (!isYearFinalExamTerm(examTerm)) return [];
+    const classStudents = students.filter((s) => s.classId === classId);
+    if (classStudents.length === 0) return [];
+
+    const termMarks = marksSource.filter(
+      (m) => m.classId === classId && m.examTerm === examTerm
+    );
+    const hasAnyMarks = termMarks.length > 0;
+    if (!hasAnyMarks) return [];
+
+    const ranking = computeClassMeritRanking(classStudents, termMarks);
+    const newRollByStudentId = new Map<string, string>();
+    ranking.forEach((entry) => {
+      newRollByStudentId.set(entry.studentId, entry.newRoll);
+    });
+
+    const changedStudents: SchoolStudent[] = [];
+    const nextStudents = students.map((st) => {
+      if (st.classId !== classId) return st;
+      const nextRoll = newRollByStudentId.get(st.id);
+      if (!nextRoll || nextRoll === st.roll.trim()) return st;
+      const updatedSt: SchoolStudent = {
+        ...st,
+        roll: nextRoll,
+        registrationNo:
+          st.registrationNo ||
+          buildStudentRegistrationNo(st.classId, st.roll, st.session || '2026'),
+      };
+      changedStudents.push(updatedSt);
+      return updatedSt;
+    });
+
+    if (changedStudents.length > 0) {
+      setStudents(nextStudents);
+      persistLocal('db_students', nextStudents);
+
+      changedStudents.forEach((st) => {
+        const sid = sanitizeFirestoreId(st.id);
+        void syncDocUpsert(
+          'students',
+          sid,
+          {
+            id: sid,
+            roll: st.roll.slice(0, 20),
+            name: st.name.slice(0, 150),
+            classId: st.classId,
+            section: st.section.slice(0, 40),
+            guardianMobile: st.guardianMobile.slice(0, 30),
+            ...(st.guardianName ? { guardianName: st.guardianName.trim().slice(0, 150) } : {}),
+            ...(st.photo ? { photo: clampImageString(st.photo) } : {}),
+            ...(st.registrationNo ? { registrationNo: st.registrationNo.trim().slice(0, 64) } : {}),
+            ...(st.registrationDate ? { registrationDate: st.registrationDate.trim().slice(0, 32) } : {}),
+            ...(st.session ? { session: st.session.trim().slice(0, 16) } : {}),
+            ...(st.cardIssueDate ? { cardIssueDate: st.cardIssueDate.trim().slice(0, 32) } : {}),
+            ...(st.cardValidUpto ? { cardValidUpto: st.cardValidUpto.trim().slice(0, 32) } : {}),
+            ...(st.bloodGroup ? { bloodGroup: st.bloodGroup.trim().slice(0, 16) } : {}),
+            ...(st.admitCardApproved !== undefined ? { admitCardApproved: Boolean(st.admitCardApproved) } : {}),
+            ...(st.admitCardTerm ? { admitCardTerm: st.admitCardTerm.trim().slice(0, 100) } : {}),
+            ...(st.admitCardApprovedAt ? { admitCardApprovedAt: st.admitCardApprovedAt.trim().slice(0, 40) } : {}),
+            ...(st.studentUid ? { studentUid: sanitizeFirestoreId(st.studentUid) } : {}),
+            ...(st.allowedUids && st.allowedUids.length > 0 ? { allowedUids: st.allowedUids } : {}),
+          },
+          true,
+          true
+        );
+      });
+
+      // Keep student & parent local linkedChildRoll synchronized by linkedStudentId
+      const nextUsers = registeredUsers.map((u) => {
+        if (u.linkedStudentId && newRollByStudentId.has(u.linkedStudentId)) {
+          const updatedRoll = newRollByStudentId.get(u.linkedStudentId)!;
+          return {
+            ...u,
+            registrationNo:
+              u.role === 'student' && !u.registrationNo
+                ? buildStudentRegistrationNo(
+                    u.linkedChildClass || classId,
+                    u.linkedChildRoll || updatedRoll,
+                    u.session || '2026'
+                  )
+                : u.registrationNo,
+            linkedChildRoll: updatedRoll,
+          };
+        }
+        return u;
+      });
+      setRegisteredUsers(nextUsers);
+      persistLocal('registered_users', nextUsers);
+
+      if (user?.linkedStudentId && newRollByStudentId.has(user.linkedStudentId)) {
+        const updatedSession: AuthUser = {
+          ...user,
+          linkedChildRoll: newRollByStudentId.get(user.linkedStudentId)!,
+        };
+        setUser(updatedSession);
+        safeLocalSet('school_user', updatedSession);
+      }
+    }
+
+    // Keep Year Final examMark roll labels synchronized with the updated merit rolls
+    let marksRollChanged = false;
+    const syncedMarks = marksSource.map((m) => {
+      if (m.classId === classId && m.examTerm === examTerm && m.studentId && newRollByStudentId.has(m.studentId)) {
+        const nextRoll = newRollByStudentId.get(m.studentId)!;
+        if (m.roll !== nextRoll) {
+          marksRollChanged = true;
+          const updatedMark = { ...m, roll: nextRoll };
+          void syncDocUpsert(
+            'examMarks',
+            sanitizeFirestoreId(m.id),
+            {
+              id: sanitizeFirestoreId(m.id),
+              examTerm: updatedMark.examTerm.slice(0, 100),
+              classId: updatedMark.classId,
+              subject: updatedMark.subject.slice(0, 120),
+              studentId: sanitizeFirestoreId(updatedMark.studentId),
+              studentName: updatedMark.studentName.slice(0, 150),
+              roll: nextRoll.slice(0, 20),
+              totalMarks: updatedMark.totalMarks,
+              obtainedMarks: updatedMark.obtainedMarks,
+              grade: updatedMark.grade.slice(0, 8),
+              enteredBy: updatedMark.enteredBy.slice(0, 150),
+              ...(updatedMark.allowedUids && updatedMark.allowedUids.length > 0 ? { allowedUids: updatedMark.allowedUids } : {}),
+              isPublished: updatedMark.isPublished ?? true,
+            },
+            true,
+            true
+          );
+          return updatedMark;
+        }
+      }
+      return m;
+    });
+
+    if (marksRollChanged) {
+      setExamMarks(syncedMarks);
+      persistLocal('db_exam_marks', syncedMarks);
+    }
+
+    return ranking;
+  };
+
+  const saveExamMarksBulk = (
+    marks: ExamMark[],
+    options?: { autoUpdateYearFinalRoll?: boolean }
+  ): { savedCount: number; updatedRolls: MeritRankEntry[] } => {
     let next = [...examMarks];
     marks.forEach((mark) => {
       const id = sanitizeFirestoreId(mark.id);
@@ -4781,14 +5073,27 @@ const App: React.FC = () => {
     });
     setExamMarks(next);
     persistLocal('db_exam_marks', next);
+
+    let updatedRolls: MeritRankEntry[] = [];
+    if (
+      marks.length > 0 &&
+      options?.autoUpdateYearFinalRoll !== false &&
+      isYearFinalExamTerm(marks[0].examTerm)
+    ) {
+      updatedRolls = applyYearFinalMeritRolls(marks[0].classId, marks[0].examTerm, next);
+    }
+
     if (marks.length > 0) {
       logAuditEvent(
         'MARKS_SAVED',
         'examMarks',
         marks[0].id,
-        `Bulk saved ${marks.length} exam marks for Class ${marks[0].classId} (${marks[0].subject})`
+        `Bulk saved ${marks.length} exam marks for Class ${marks[0].classId} (${marks[0].subject})${
+          updatedRolls.some((r) => r.changed) ? ' • Auto-updated Year Final merit rolls' : ''
+        }`
       );
     }
+    return { savedCount: marks.length, updatedRolls };
   };
 
   const deleteExamMark = (id: string) => {
@@ -6113,6 +6418,7 @@ Available Features: Online Admission (/admission), Online MCQ Exams (/exams), Di
         deleteTeacher,
         addClassTeacherByAdmin,
         assignClassTeacher,
+        assignTeacherDuties,
         ebooks,
         addEbook,
         updateEbook,
@@ -6151,6 +6457,7 @@ Available Features: Online Admission (/admission), Online MCQ Exams (/exams), Di
         examMarks,
         saveExamMark,
         saveExamMarksBulk,
+        applyYearFinalMeritRolls,
         deleteExamMark,
         onlineExams,
         addOnlineExam,
