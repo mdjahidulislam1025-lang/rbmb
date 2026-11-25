@@ -87,7 +87,7 @@ define(['./workbox-afac4cd2'], (function (workbox) { 'use strict';
     "revision": "8a954c8ff0db5bc904702eaac9aab1d6"
   }, {
     "url": "index.html",
-    "revision": "d648098c03f049f3bd7d2b8e284d71dc"
+    "revision": "c3ea5b2d3bb1c8b8b98f271dc5020472"
   }, {
     "url": "icon.svg",
     "revision": "be800af3fadedac6906f21ebda15b6b5"
@@ -101,7 +101,7 @@ define(['./workbox-afac4cd2'], (function (workbox) { 'use strict';
     "url": "apple-touch-icon.png",
     "revision": "7ec8e7b5b89a89bd1fdbb31c2fafee42"
   }, {
-    "url": "assets/web-CDbM7J3K.js",
+    "url": "assets/web-B3kijInj.js",
     "revision": null
   }, {
     "url": "assets/school_sports_event_1795249139851-HA8hA32k.jpg",
@@ -116,10 +116,10 @@ define(['./workbox-afac4cd2'], (function (workbox) { 'use strict';
     "url": "assets/react-RJ5L4koL.js",
     "revision": null
   }, {
-    "url": "assets/index-CvuPyrNr.css",
+    "url": "assets/index-Cz9B0u_r.js",
     "revision": null
   }, {
-    "url": "assets/index-CNFd2t5E.js",
+    "url": "assets/index-CKc0DVEU.css",
     "revision": null
   }, {
     "url": "assets/hero_school_campus_1795249139717-ZseLXjk7.jpg",
@@ -129,6 +129,9 @@ define(['./workbox-afac4cd2'], (function (workbox) { 'use strict';
     "revision": null
   }, {
     "url": "assets/firebase-OaCt-tdW.js",
+    "revision": null
+  }, {
+    "url": "assets/aistudio/Screenshot_2026-11-26_003945_7d2bf270.png",
     "revision": null
   }, {
     "url": "assets/aistudio/Screenshot_2026-11-25_143214_de23817f.png",

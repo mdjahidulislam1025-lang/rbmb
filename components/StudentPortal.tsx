@@ -37,6 +37,7 @@ import {
   Wallet,
   CalendarDays,
   ChevronRight,
+  ExternalLink,
   User as UserIcon,
 } from 'lucide-react';
 import { useApp } from '../App';
@@ -46,7 +47,8 @@ import {
   getNctbSubjectsForClass,
   normalizeClassGroup,
 } from '../utils/teacherRole';
-import { FeeRecord, ExamQuestion, Holiday } from '../types';
+import { buildNctbClassSyllabus } from '../utils/nctbSyllabus';
+import { FeeRecord, ExamQuestion, Holiday, StudyGroup } from '../types';
 import { calculateOverallGpa, isSafeHttpUrl, buildStudentRegistrationNo } from '../utils/security';
 import { exportCsv } from '../utils/exportUtils';
 import { compressImageFile } from '../utils/imageUtils';
@@ -68,6 +70,7 @@ const { Link } = RouterDom;
 
 type StudentTab =
   | 'dashboard'
+  | 'syllabus'
   | 'homework'
   | 'marks'
   | 'progress'
@@ -103,6 +106,7 @@ export const StudentPortal: React.FC = () => {
     deleteStudentLeave,
     feeRecords,
     portalNotifications,
+    subjects,
     updateStudent,
     updateUser,
   } = useApp();
@@ -112,6 +116,8 @@ export const StudentPortal: React.FC = () => {
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedClassId, setSelectedClassId] = useState<string>(user?.linkedChildClass || '9');
   const [selectedRoll, setSelectedRoll] = useState<string>(user?.linkedChildRoll || '01');
+  const [syllabusGroupFilter, setSyllabusGroupFilter] = useState<'All' | StudyGroup>('All');
+  const [syllabusSearch, setSyllabusSearch] = useState('');
   const [toast, setToast] = useState<string | null>(null);
   const [reportCardOpen, setReportCardOpen] = useState(false);
   const [activeReceipt, setActiveReceipt] = useState<FeeRecord | null>(null);
@@ -535,6 +541,7 @@ export const StudentPortal: React.FC = () => {
     badgeTone?: 'amber' | 'emerald';
   }> = [
     { id: 'dashboard', label: lang === 'bn' ? 'ড্যাশবোর্ড' : 'Dashboard', icon: LayoutDashboard },
+    { id: 'syllabus', label: lang === 'bn' ? 'NCTB সিলেবাস' : 'NCTB Syllabus', icon: BookOpen },
     {
       id: 'homework',
       label: lang === 'bn' ? 'অ্যাসাইনমেন্ট' : 'Assignments',
@@ -907,8 +914,8 @@ export const StudentPortal: React.FC = () => {
 
         {/* Main Scrollable Canvas */}
         <main className="flex-1 p-4 sm:p-6 max-w-7xl w-full mx-auto space-y-6">
-          {/* Admin/Teacher Preview Selector if viewing StudentPortal without locked student account */}
-          {(!user || user.role !== 'student' || !user.linkedChildClass || !user.linkedChildRoll) && (
+          {/* Admin/Teacher Preview Selector (never editable by logged-in students) */}
+          {(!user || user.role !== 'student') && (
             <div className="bg-white dark:bg-slate-900 p-4 rounded-2xl border border-slate-200 dark:border-slate-800 flex flex-wrap items-center justify-between gap-3">
               <div className="flex flex-wrap items-center gap-3">
                 <div>
@@ -1294,15 +1301,16 @@ export const StudentPortal: React.FC = () => {
                       {lang === 'bn' ? 'ক্লাস ও পরীক্ষার রুটিন' : 'Class & Exam Routine'}
                     </span>
                   </Link>
-                  <Link
-                    to="/ebooks"
+                  <button
+                    type="button"
+                    onClick={() => setActiveTab('syllabus')}
                     className="p-3.5 rounded-2xl bg-teal-50 dark:bg-teal-950/40 border border-teal-200 dark:border-teal-800 hover:border-teal-400 text-left flex items-center gap-2.5 transition-all"
                   >
                     <BookOpen className="w-5 h-5 text-teal-600 shrink-0" />
                     <span className="text-xs font-extrabold text-slate-800 dark:text-slate-100">
-                      {lang === 'bn' ? 'ডিজিটাল লাইব্রেরি' : 'Digital Library'}
+                      {lang === 'bn' ? `${selectedClassId}ম শ্রেণী NCTB সিলেবাস` : `Class ${selectedClassId} Syllabus`}
                     </span>
-                  </Link>
+                  </button>
                 </div>
               </div>
 
@@ -1763,6 +1771,178 @@ export const StudentPortal: React.FC = () => {
               </div>
             </div>
           )}
+
+          {/* Class-Locked NCTB Syllabus */}
+          {activeTab === 'syllabus' && (() => {
+            const classSyllabus = buildNctbClassSyllabus(selectedClassId, subjects);
+            if (!classSyllabus) return null;
+            const isSecondary = selectedClassId === '9' || selectedClassId === '10';
+            const q = syllabusSearch.trim().toLowerCase();
+            const visibleSubjects = classSyllabus.subjects.filter((sub) => {
+              if (isSecondary && syllabusGroupFilter !== 'All') {
+                if (syllabusGroupFilter === 'Common' && sub.group !== 'Common') return false;
+                if (syllabusGroupFilter !== 'Common' && sub.group !== 'Common' && sub.group !== syllabusGroupFilter) {
+                  return false;
+                }
+              }
+              if (!q) return true;
+              return (
+                t(sub.name).toLowerCase().includes(q) ||
+                t(sub.chaptersOutline).toLowerCase().includes(q) ||
+                sub.code.includes(q)
+              );
+            });
+
+            const handleDownloadMySyllabus = () => {
+              const lines = [
+                `${t(settings.name)} - NCTB ACADEMIC SYLLABUS (${activeYear})`,
+                `===========================================================`,
+                `Student: ${matchedStudent?.name || user?.name || 'Student'} | Class: ${t(classSyllabus.className)} | Roll: ${selectedRoll}`,
+                `Official NCTB Portal: ${classSyllabus.nctbPortalUrl}`,
+                ``,
+                `All NCTB Subjects for Class ${selectedClassId}:`,
+                ...visibleSubjects.map(
+                  (sub, idx) =>
+                    `${idx + 1}. ${t(sub.name)} (#${sub.code}) · ${sub.totalMarks} Marks [${t(sub.marksBreakdown)}]${
+                      isSecondary ? ` [${sub.group}]` : ''
+                    }\n   ${t(sub.chaptersOutline)}`
+                ),
+              ];
+              const blob = new Blob([lines.join('\n')], { type: 'text/plain;charset=utf-8' });
+              const url = URL.createObjectURL(blob);
+              const a = document.createElement('a');
+              a.href = url;
+              a.download = `NCTB_Syllabus_Class_${selectedClassId}_${activeYear}.txt`;
+              document.body.appendChild(a);
+              a.click();
+              document.body.removeChild(a);
+              URL.revokeObjectURL(url);
+            };
+
+            return (
+              <div className="space-y-5">
+                <div className="bg-emerald-900 text-white rounded-3xl p-6 flex flex-wrap items-center justify-between gap-4 shadow-md">
+                  <div className="space-y-1">
+                    <div className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full bg-emerald-700/80 text-[11px] font-extrabold">
+                      <Lock className="w-3 h-3 text-yellow-300" />
+                      <span>
+                        {lang === 'bn'
+                          ? `শুধুমাত্র আপনার শ্রেণীর (${selectedClassId}ম শ্রেণী) সকল বিষয়ের সিলেবাস`
+                          : `Locked to Your Class: Class ${selectedClassId} Only`}
+                      </span>
+                    </div>
+                    <h3 className="text-xl sm:text-2xl font-black">
+                      {t(classSyllabus.className)} — {lang === 'bn' ? 'NCTB পূর্ণাঙ্গ সিলেবাস' : 'Official NCTB Syllabus'}
+                    </h3>
+                    <p className="text-xs text-emerald-100/90 font-medium">
+                      {lang === 'bn'
+                        ? `মোট ${classSyllabus.subjects.length}টি অনুমোদিত বিষয় (অন্যান্য শ্রেণীর সিলেবাস লুকানো রয়েছে)।`
+                        : `Showing all ${classSyllabus.subjects.length} NCTB subjects for your class (other classes are hidden).`}
+                    </p>
+                  </div>
+                  <div className="flex flex-wrap gap-2">
+                    <button
+                      type="button"
+                      onClick={handleDownloadMySyllabus}
+                      className="px-4 py-2.5 rounded-xl bg-white text-emerald-900 hover:bg-emerald-50 text-xs font-black flex items-center gap-1.5"
+                    >
+                      <Download className="w-4 h-4" />
+                      {lang === 'bn' ? 'সিলেবাস ডাউনলোড' : 'Download Syllabus'}
+                    </button>
+                    <a
+                      href={classSyllabus.nctbPortalUrl}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="px-4 py-2.5 rounded-xl bg-emerald-700 hover:bg-emerald-800 text-white text-xs font-bold flex items-center gap-1.5 border border-emerald-500/40"
+                    >
+                      <ExternalLink className="w-4 h-4" />
+                      {lang === 'bn' ? 'NCTB বই দেখুন' : 'NCTB Textbooks'}
+                    </a>
+                  </div>
+                </div>
+
+                <div className="bg-white dark:bg-slate-900 p-4 rounded-2xl border border-slate-200 dark:border-slate-800 flex flex-wrap items-center justify-between gap-3">
+                  <div className="relative flex-1 min-w-[220px]">
+                    <Search className="w-4 h-4 text-slate-400 absolute left-3.5 top-1/2 -translate-y-1/2" />
+                    <input
+                      type="text"
+                      value={syllabusSearch}
+                      onChange={(e) => setSyllabusSearch(e.target.value)}
+                      placeholder={lang === 'bn' ? 'আপনার শ্রেণীর বিষয় বা কোড খুঁজুন...' : 'Search subject or code...'}
+                      className="w-full pl-9 pr-4 py-2 rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-xs font-bold outline-none focus:ring-2 focus:ring-emerald-600"
+                    />
+                  </div>
+                  {isSecondary && (
+                    <div className="flex flex-wrap gap-1 p-1 bg-slate-100 dark:bg-slate-800 rounded-xl">
+                      {(
+                        [
+                          { id: 'All', bn: 'সকল বিষয়', en: 'All' },
+                          { id: 'Common', bn: 'আবশ্যিক', en: 'Common' },
+                          { id: 'Science', bn: 'বিজ্ঞান', en: 'Science' },
+                          { id: 'Humanities', bn: 'মানবিক', en: 'Humanities' },
+                          { id: 'Business Studies', bn: 'ব্যবসায় শিক্ষা', en: 'Business' },
+                        ] as const
+                      ).map((tab) => (
+                        <button
+                          key={tab.id}
+                          type="button"
+                          onClick={() => setSyllabusGroupFilter(tab.id)}
+                          className={`px-2.5 py-1 rounded-lg text-[11px] font-bold transition-colors ${
+                            syllabusGroupFilter === tab.id
+                              ? 'bg-white dark:bg-slate-900 text-emerald-700 dark:text-emerald-300 shadow-sm'
+                              : 'text-slate-600 dark:text-slate-300'
+                          }`}
+                        >
+                          {lang === 'bn' ? tab.bn : tab.en}
+                        </button>
+                      ))}
+                    </div>
+                  )}
+                </div>
+
+                <div className="grid sm:grid-cols-2 gap-4">
+                  {visibleSubjects.map((sub, idx) => (
+                    <div
+                      key={`${sub.code}-${sub.group}-${idx}`}
+                      className="bg-white dark:bg-slate-900 p-5 rounded-3xl border border-slate-200 dark:border-slate-800 shadow-sm space-y-2.5"
+                    >
+                      <div className="flex items-start justify-between gap-2">
+                        <div className="min-w-0">
+                          <div className="flex items-center gap-2">
+                            <FileText className="w-4 h-4 text-emerald-700 dark:text-emerald-400 shrink-0" />
+                            <h4 className="font-extrabold text-sm text-slate-900 dark:text-white truncate">
+                              {t(sub.name)}
+                            </h4>
+                          </div>
+                          <p className="text-[11px] font-bold text-slate-400 pl-6 mt-0.5">
+                            {t(sub.marksBreakdown)}
+                          </p>
+                        </div>
+                        <div className="flex items-center gap-1.5 shrink-0">
+                          <span className="px-2 py-0.5 rounded-md bg-emerald-100 dark:bg-emerald-950 text-emerald-800 dark:text-emerald-300 text-[10px] font-black tabular-nums">
+                            {sub.totalMarks} {lang === 'bn' ? 'নম্বর' : 'Marks'}
+                          </span>
+                          <span className="px-2 py-0.5 rounded-md bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 text-[10px] font-mono tabular-nums">
+                            #{sub.code}
+                          </span>
+                        </div>
+                      </div>
+                      <p className="text-xs text-slate-600 dark:text-slate-300 pl-6 leading-relaxed">
+                        {t(sub.chaptersOutline)}
+                      </p>
+                      {isSecondary && (
+                        <div className="pl-6">
+                          <span className="inline-block px-2 py-0.5 rounded-md bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 text-[10px] font-bold">
+                            {sub.group}
+                          </span>
+                        </div>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              </div>
+            );
+          })()}
 
           {/* Study Materials */}
           {activeTab === 'materials' && (

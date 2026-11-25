@@ -263,6 +263,20 @@ export const TeacherPortal: React.FC<TeacherPortalProps> = ({ embedded = false }
   const hasAllClasses = isHeadTeacher || availableClassIds.length === SCHOOL_CLASS_IDS.length;
   const hasClassTeacherPrivilege = isAdminUser || isHeadTeacher || Boolean(resolvedAssignedClass);
 
+  // Strict attendance policy: ONLY Admin (all classes) or the designated Class Teacher of that class can record student attendance
+  const attendanceClassIds = useMemo(
+    () =>
+      isAdminUser
+        ? ([...SCHOOL_CLASS_IDS] as ('6' | '7' | '8' | '9' | '10')[])
+        : resolvedAssignedClass
+        ? ([resolvedAssignedClass] as ('6' | '7' | '8' | '9' | '10')[])
+        : [],
+    [isAdminUser, resolvedAssignedClass]
+  );
+
+  const canTakeAttendanceInClass = (cid: string) =>
+    isAdminUser || (resolvedAssignedClass !== '' && resolvedAssignedClass === cid);
+
   const canEnterAllSubjectsInClass = (cid: string) =>
     isAdminUser || (resolvedAssignedClass !== '' && resolvedAssignedClass === cid);
 
@@ -402,7 +416,9 @@ export const TeacherPortal: React.FC<TeacherPortalProps> = ({ embedded = false }
   };
 
   // --- 1. Attendance ---
-  const [attClassId, setAttClassId] = useState<string>(availableClassIds[0] || '9');
+  const [attClassId, setAttClassId] = useState<string>(
+    resolvedAssignedClass || (isAdminUser ? '9' : availableClassIds[0] || '9')
+  );
   const [attDate, setAttDate] = useState<string>(todayStr);
   const [attDraft, setAttDraft] = useState<Record<string, AttendanceStatus>>({});
 
@@ -426,6 +442,14 @@ export const TeacherPortal: React.FC<TeacherPortalProps> = ({ embedded = false }
   }, [attDate, attClassId, attendanceRecords, attClassStudents]);
 
   const handleSaveAttendance = () => {
+    if (!canTakeAttendanceInClass(attClassId)) {
+      notify(
+        lang === 'bn'
+          ? 'শিক্ষার্থীর হাজিরা শুধুমাত্র নির্ধারিত শ্রেণী শিক্ষক বা অ্যাডমিন দিতে পারবেন।'
+          : 'Only the assigned Class Teacher or Admin can submit student attendance.'
+      );
+      return;
+    }
     saveAttendance({
       id: `${attDate}_${attClassId}`,
       date: attDate,
@@ -894,7 +918,11 @@ export const TeacherPortal: React.FC<TeacherPortalProps> = ({ embedded = false }
       ? resolvedAssignedClass
       : availableClassIds[0];
 
-    if (!availableClassIds.includes(attClassId as '6' | '7' | '8' | '9' | '10')) {
+    if (!isAdminUser && resolvedAssignedClass) {
+      if (attClassId !== resolvedAssignedClass) {
+        setAttClassId(resolvedAssignedClass);
+      }
+    } else if (!availableClassIds.includes(attClassId as '6' | '7' | '8' | '9' | '10')) {
       setAttClassId(fallbackClass);
     }
     if (!availableClassIds.includes(markClassId as '6' | '7' | '8' | '9' | '10')) {
@@ -1266,9 +1294,19 @@ export const TeacherPortal: React.FC<TeacherPortalProps> = ({ embedded = false }
                 [
                   {
                     title: lang === 'bn' ? 'হাজিরা গ্রহণ' : 'Attendance',
-                    sub: lang === 'bn' ? 'দৈনিক উপস্থিতি' : 'Daily Roll Call',
+                    sub: isAdminUser
+                      ? lang === 'bn'
+                        ? 'সকল শ্রেণী (অ্যাডমিন)'
+                        : 'All Classes (Admin)'
+                      : resolvedAssignedClass
+                      ? lang === 'bn'
+                        ? `${resolvedAssignedClass}ম শ্রেণী (শ্রেণী শিক্ষক)`
+                        : `Class ${resolvedAssignedClass} (CT)`
+                      : lang === 'bn'
+                      ? 'শুধু শ্রেণী শিক্ষক'
+                      : 'Class Teacher Only',
                     icon: ClipboardCheck,
-                    tone: 'bg-emerald-600 text-white',
+                    tone: canTakeAttendanceInClass(attClassId) ? 'bg-emerald-600 text-white' : 'bg-slate-400 text-white',
                     onClick: () => setActiveTab('attendance'),
                   },
                   {
@@ -1375,12 +1413,26 @@ export const TeacherPortal: React.FC<TeacherPortalProps> = ({ embedded = false }
                     <div className="flex gap-1.5">
                       <button
                         type="button"
+                        disabled={!canTakeAttendanceInClass(cid)}
+                        title={
+                          !canTakeAttendanceInClass(cid)
+                            ? lang === 'bn'
+                              ? 'শুধুমাত্র এই শ্রেণীর শ্রেণী শিক্ষক বা অ্যাডমিন হাজিরা দিতে পারবেন'
+                              : 'Only the assigned Class Teacher or Admin can take attendance'
+                            : undefined
+                        }
                         onClick={() => {
+                          if (!canTakeAttendanceInClass(cid)) return;
                           setAttClassId(cid);
                           setActiveTab('attendance');
                         }}
-                        className="flex-1 py-1.5 px-2 rounded-lg bg-emerald-700 hover:bg-emerald-800 text-white text-[11px] font-bold"
+                        className={`flex-1 py-1.5 px-2 rounded-lg text-[11px] font-bold inline-flex items-center justify-center gap-1 ${
+                          canTakeAttendanceInClass(cid)
+                            ? 'bg-emerald-700 hover:bg-emerald-800 text-white'
+                            : 'bg-slate-200 dark:bg-slate-700 text-slate-500 dark:text-slate-400 cursor-not-allowed'
+                        }`}
                       >
+                        {!canTakeAttendanceInClass(cid) && <Lock className="w-3 h-3" />}
                         {lang === 'bn' ? 'হাজিরা' : 'Att.'}
                       </button>
                       <button
@@ -1402,93 +1454,145 @@ export const TeacherPortal: React.FC<TeacherPortalProps> = ({ embedded = false }
         </div>
       )}
 
-      {/* 1. Attendance */}
-      {activeTab === 'attendance' && (
-        <div className="bg-white dark:bg-slate-900 p-6 rounded-3xl border border-slate-200 dark:border-slate-800 space-y-5">
-          <div className="flex flex-wrap items-end justify-between gap-4">
-            <div className="flex flex-wrap gap-3">
-              <div>
-                <label className="text-[10px] font-bold uppercase text-slate-400 block mb-1">{lang === 'bn' ? 'শ্রেণী' : 'Class'}</label>
-                <select
-                  value={attClassId}
-                  disabled={isSingleClassOnly}
-                  onChange={(e) => setAttClassId(e.target.value)}
-                  className="px-4 py-2.5 rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-sm font-bold disabled:opacity-75"
-                >
-                  {availableClassIds.map((c) => (
-                    <option key={c} value={c}>Class {c}</option>
-                  ))}
-                </select>
-              </div>
-              <div>
-                <label className="text-[10px] font-bold uppercase text-slate-400 block mb-1">{lang === 'bn' ? 'তারিখ' : 'Date'}</label>
-                <input
-                  type="date"
-                  value={attDate}
-                  onChange={(e) => setAttDate(e.target.value)}
-                  className="px-4 py-2.5 rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-sm font-bold"
-                />
-              </div>
-            </div>
-            <div className="flex flex-wrap gap-2">
-              <button
-                type="button"
-                onClick={() => {
-                  exportCsv(
-                    `attendance_class_${attClassId}_${attDate}`,
-                    ['Date', 'Class', 'Roll', 'Student Name', 'Status'],
-                    attClassStudents.map((st) => [attDate, attClassId, st.roll, st.name, attDraft[st.id] || 'present'])
-                  );
-                }}
-                className="px-4 py-2.5 rounded-xl bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-xs font-bold flex items-center gap-1.5"
-              >
-                <Download className="w-4 h-4" />
-                {lang === 'bn' ? 'CSV এক্সপোর্ট' : 'Export CSV'}
-              </button>
-              <button
-                onClick={handleSaveAttendance}
-                className="px-5 py-2.5 rounded-xl bg-emerald-700 hover:bg-emerald-800 text-white text-xs font-bold flex items-center gap-2"
-              >
-                <Save className="w-4 h-4" />
-                {lang === 'bn' ? 'হাজিরা সেভ করুন' : 'Save Attendance'}
-              </button>
-            </div>
-          </div>
+      {/* 1. Attendance (Strictly Class Teacher of own class + Admin) */}
+      {activeTab === 'attendance' && (() => {
+        const hasAttPermission = canTakeAttendanceInClass(attClassId);
+        const selectorClasses = isAdminUser
+          ? SCHOOL_CLASS_IDS
+          : attendanceClassIds.length > 0
+          ? attendanceClassIds
+          : availableClassIds;
 
-          <div className="divide-y divide-slate-100 dark:divide-slate-800">
-            {attClassStudents.map((st) => {
-              const cur = attDraft[st.id] || 'present';
-              return (
-                <div key={st.id} className="py-3 flex flex-wrap items-center justify-between gap-3">
-                  <div>
-                    <span className="font-bold text-sm">#{st.roll} — {st.name}</span>
-                    <span className="ml-2 text-xs text-slate-400">({st.section})</span>
-                  </div>
-                  <div className="flex gap-1.5">
-                    {(['present', 'absent', 'late'] as AttendanceStatus[]).map((status) => (
-                      <button
-                        key={status}
-                        onClick={() => setAttDraft((p) => ({ ...p, [st.id]: status }))}
-                        className={`px-3 py-1.5 rounded-lg text-xs font-bold capitalize transition-colors ${
-                          cur === status
-                            ? status === 'present'
-                              ? 'bg-emerald-600 text-white'
-                              : status === 'absent'
-                              ? 'bg-red-600 text-white'
-                              : 'bg-amber-500 text-white'
-                            : 'bg-slate-100 dark:bg-slate-800 text-slate-500'
-                        }`}
-                      >
-                        {status}
-                      </button>
-                    ))}
-                  </div>
+        return (
+          <div className="bg-white dark:bg-slate-900 p-6 rounded-3xl border border-slate-200 dark:border-slate-800 space-y-5">
+            <div className="flex flex-wrap items-center justify-between gap-3">
+              <div className="inline-flex items-center gap-2 px-3 py-1.5 rounded-xl bg-emerald-50 dark:bg-emerald-950/60 border border-emerald-200 dark:border-emerald-800 text-emerald-800 dark:text-emerald-300 text-xs font-extrabold">
+                {hasAttPermission ? <ShieldCheck className="w-4 h-4" /> : <Lock className="w-4 h-4 text-amber-600" />}
+                <span>
+                  {isAdminUser
+                    ? lang === 'bn'
+                      ? 'অ্যাডমিন অ্যাক্সেস — সকল শ্রেণীর হাজিরা প্রদান অনুমোদিত'
+                      : 'Admin Access — Attendance enabled for all classes'
+                    : resolvedAssignedClass
+                    ? lang === 'bn'
+                      ? `শ্রেণী শিক্ষক (${resolvedAssignedClass}ম শ্রেণী) — শুধুমাত্র নির্ধারিত শ্রেণীর হাজিরা`
+                      : `Class Teacher (Class ${resolvedAssignedClass}) — Attendance enabled for your assigned class`
+                    : lang === 'bn'
+                    ? 'শুধুমাত্র শ্রেণী শিক্ষক ও অ্যাডমিন হাজিরা দিতে পারবেন'
+                    : 'Only Class Teacher & Admin can submit attendance'}
+                </span>
+              </div>
+            </div>
+
+            {!hasAttPermission && (
+              <div className="p-4 rounded-2xl bg-amber-50 dark:bg-amber-950/50 border border-amber-200 dark:border-amber-800 flex items-start gap-3 text-amber-900 dark:text-amber-200">
+                <ShieldAlert className="w-5 h-5 text-amber-600 shrink-0 mt-0.5" />
+                <div className="text-xs space-y-1">
+                  <p className="font-black">
+                    {lang === 'bn' ? 'হাজিরা প্রদানের অনুমতি নেই' : 'Attendance Submission Restricted'}
+                  </p>
+                  <p className="font-medium leading-relaxed">
+                    {lang === 'bn'
+                      ? 'একজন শিক্ষার্থীর হাজিরা শুধুমাত্র সেই শ্রেণীর নির্ধারিত শ্রেণী শিক্ষক (Class Teacher) অথবা অ্যাডমিন দিতে পারবেন। অন্য কোনো শিক্ষক হাজিরা প্রদান বা পরিবর্তন করতে পারবেন না।'
+                      : 'Student attendance can only be recorded or updated by the assigned Class Teacher for that class or an Admin.'}
+                  </p>
                 </div>
-              );
-            })}
+              </div>
+            )}
+
+            <div className="flex flex-wrap items-end justify-between gap-4">
+              <div className="flex flex-wrap gap-3">
+                <div>
+                  <label className="text-[10px] font-bold uppercase text-slate-400 block mb-1">{lang === 'bn' ? 'শ্রেণী' : 'Class'}</label>
+                  <select
+                    value={attClassId}
+                    disabled={!isAdminUser}
+                    onChange={(e) => setAttClassId(e.target.value)}
+                    className="px-4 py-2.5 rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-sm font-bold disabled:opacity-75"
+                  >
+                    {selectorClasses.map((c) => (
+                      <option key={c} value={c}>Class {c}</option>
+                    ))}
+                  </select>
+                </div>
+                <div>
+                  <label className="text-[10px] font-bold uppercase text-slate-400 block mb-1">{lang === 'bn' ? 'তারিখ' : 'Date'}</label>
+                  <input
+                    type="date"
+                    value={attDate}
+                    onChange={(e) => setAttDate(e.target.value)}
+                    className="px-4 py-2.5 rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-sm font-bold"
+                  />
+                </div>
+              </div>
+              <div className="flex flex-wrap gap-2">
+                <button
+                  type="button"
+                  onClick={() => {
+                    exportCsv(
+                      `attendance_class_${attClassId}_${attDate}`,
+                      ['Date', 'Class', 'Roll', 'Student Name', 'Status'],
+                      attClassStudents.map((st) => [attDate, attClassId, st.roll, st.name, attDraft[st.id] || 'present'])
+                    );
+                  }}
+                  className="px-4 py-2.5 rounded-xl bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-xs font-bold flex items-center gap-1.5"
+                >
+                  <Download className="w-4 h-4" />
+                  {lang === 'bn' ? 'CSV এক্সপোর্ট' : 'Export CSV'}
+                </button>
+                <button
+                  type="button"
+                  disabled={!hasAttPermission}
+                  onClick={handleSaveAttendance}
+                  className={`px-5 py-2.5 rounded-xl text-white text-xs font-bold flex items-center gap-2 ${
+                    hasAttPermission
+                      ? 'bg-emerald-700 hover:bg-emerald-800'
+                      : 'bg-slate-400 dark:bg-slate-700 cursor-not-allowed opacity-75'
+                  }`}
+                >
+                  {hasAttPermission ? <Save className="w-4 h-4" /> : <Lock className="w-4 h-4" />}
+                  {lang === 'bn' ? 'হাজিরা সেভ করুন' : 'Save Attendance'}
+                </button>
+              </div>
+            </div>
+
+            <div className="divide-y divide-slate-100 dark:divide-slate-800">
+              {attClassStudents.map((st) => {
+                const cur = attDraft[st.id] || 'present';
+                return (
+                  <div key={st.id} className="py-3 flex flex-wrap items-center justify-between gap-3">
+                    <div>
+                      <span className="font-bold text-sm">#{st.roll} — {st.name}</span>
+                      <span className="ml-2 text-xs text-slate-400">({st.section})</span>
+                    </div>
+                    <div className="flex gap-1.5">
+                      {(['present', 'absent', 'late'] as AttendanceStatus[]).map((status) => (
+                        <button
+                          key={status}
+                          type="button"
+                          disabled={!hasAttPermission}
+                          onClick={() => hasAttPermission && setAttDraft((p) => ({ ...p, [st.id]: status }))}
+                          className={`px-3 py-1.5 rounded-lg text-xs font-bold capitalize transition-colors disabled:opacity-60 disabled:cursor-not-allowed ${
+                            cur === status
+                              ? status === 'present'
+                                ? 'bg-emerald-600 text-white'
+                                : status === 'absent'
+                                ? 'bg-red-600 text-white'
+                                : 'bg-amber-500 text-white'
+                              : 'bg-slate-100 dark:bg-slate-800 text-slate-500'
+                          }`}
+                        >
+                          {status}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
           </div>
-        </div>
-      )}
+        );
+      })()}
 
       {/* 2. Homework + Submission Grading */}
       {activeTab === 'homework' && (

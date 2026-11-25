@@ -44,6 +44,15 @@ service cloud.firestore {
         && !get(/databases/$(database)/documents/users/$(request.auth.uid)).data.designation.matches('.*(সহকারী প্রধান|Assistant Head|Vice Principal).*')
       );
     }
+    function isClassTeacherFor(classId) {
+      return isAdmin() || (
+        isSignedIn()
+        && exists(/databases/$(database)/documents/users/$(request.auth.uid))
+        && get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'teacher'
+        && 'assignedClass' in get(/databases/$(database)/documents/users/$(request.auth.uid)).data
+        && get(/databases/$(database)/documents/users/$(request.auth.uid)).data.assignedClass == classId
+      );
+    }
     function isOwner(uid) {
       return isSignedIn() && request.auth.uid == uid;
     }
@@ -822,17 +831,17 @@ service cloud.firestore {
     match /attendance/{attendanceId} {
       allow get: if isValidId(attendanceId) && isTeacher();
       allow list: if isTeacher();
-      allow create: if isTeacher() && isValidId(attendanceId) && isValidAttendance(incoming()) && incoming().id == attendanceId && incoming().createdAt == request.time && incoming().updatedAt == request.time;
-      allow update: if isTeacher() && isValidId(attendanceId) && isValidAttendance(incoming()) && incoming().id == existing().id && incoming().createdAt == existing().createdAt && incoming().updatedAt == request.time;
-      allow delete: if isTeacher() && isValidId(attendanceId);
+      allow create: if isSignedIn() && isValidId(attendanceId) && isValidAttendance(incoming()) && isClassTeacherFor(incoming().classId) && incoming().id == attendanceId && incoming().createdAt == request.time && incoming().updatedAt == request.time;
+      allow update: if isSignedIn() && isValidId(attendanceId) && isValidAttendance(incoming()) && isClassTeacherFor(existing().classId) && isClassTeacherFor(incoming().classId) && incoming().id == existing().id && incoming().createdAt == existing().createdAt && incoming().updatedAt == request.time;
+      allow delete: if isSignedIn() && isValidId(attendanceId) && isClassTeacherFor(existing().classId);
     }
 
     match /studentAttendance/{recordId} {
       allow get: if isValidId(recordId) && (isTeacher() || (isSignedIn() && existing().isPublished == true && 'allowedUids' in existing() && request.auth.uid in existing().allowedUids));
       allow list: if isTeacher() || (isSignedIn() && existing().isPublished == true && 'allowedUids' in existing() && request.auth.uid in existing().allowedUids);
-      allow create: if isTeacher() && isValidId(recordId) && isValidStudentAttendance(incoming()) && incoming().id == recordId && incoming().createdAt == request.time && incoming().updatedAt == request.time;
-      allow update: if isTeacher() && isValidId(recordId) && isValidStudentAttendance(incoming()) && incoming().id == existing().id && incoming().createdAt == existing().createdAt && incoming().updatedAt == request.time;
-      allow delete: if isTeacher() && isValidId(recordId);
+      allow create: if isSignedIn() && isValidId(recordId) && isValidStudentAttendance(incoming()) && isClassTeacherFor(incoming().classId) && incoming().id == recordId && incoming().createdAt == request.time && incoming().updatedAt == request.time;
+      allow update: if isSignedIn() && isValidId(recordId) && isValidStudentAttendance(incoming()) && isClassTeacherFor(existing().classId) && isClassTeacherFor(incoming().classId) && incoming().id == existing().id && incoming().createdAt == existing().createdAt && incoming().updatedAt == request.time;
+      allow delete: if isSignedIn() && isValidId(recordId) && isClassTeacherFor(existing().classId);
     }
 
     match /homework/{homeworkId} {

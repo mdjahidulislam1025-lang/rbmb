@@ -159,6 +159,7 @@ import { mergeNctbHolidaysForActiveYear } from './utils/nctbHolidays';
 import {
   isHeadTeacherUser,
   findMatchingTeacher,
+  resolveTeacherAssignedClass,
   normalizeTeachingClasses,
   normalizeTeachingSubjects,
   inferCanonicalSubjectsFromText,
@@ -4652,10 +4653,25 @@ const App: React.FC = () => {
     void syncDocDelete('students', sanitizeFirestoreId(id), true);
   };
 
-  // Attendance (Teachers save full sheet + individual studentAttendance projections)
+  // Attendance (Strictly Class Teacher of own class + Admin)
   const saveAttendance = (record: AttendanceRecord) => {
     const id = sanitizeFirestoreId(record.id);
     const clean: AttendanceRecord = { ...record, id, isPublished: record.isPublished ?? true };
+
+    const isAdminActor = isCloudAdmin || user?.role === 'admin';
+    if (!isAdminActor) {
+      if (user?.role !== 'teacher') {
+        console.warn('Attendance denied: only Class Teacher or Admin can record attendance.');
+        return;
+      }
+      const matchedTeacher = findMatchingTeacher(teachers, user);
+      const assignedClass = resolveTeacherAssignedClass(matchedTeacher, user);
+      if (!assignedClass || assignedClass !== clean.classId) {
+        console.warn(`Attendance denied for Class ${clean.classId}: user is not the assigned Class Teacher.`);
+        return;
+      }
+    }
+
     const exists = attendanceRecords.some((a) => a.id === id);
     const updated = exists
       ? attendanceRecords.map((a) => (a.id === id ? clean : a))
