@@ -48,6 +48,7 @@ import {
   normalizeClassGroup,
 } from '../utils/teacherRole';
 import { buildNctbClassSyllabus } from '../utils/nctbSyllabus';
+import { downloadSyllabusPdf } from '../utils/syllabusPdf';
 import { FeeRecord, ExamQuestion, Holiday, StudyGroup } from '../types';
 import { calculateOverallGpa, isSafeHttpUrl, buildStudentRegistrationNo } from '../utils/security';
 import { exportCsv } from '../utils/exportUtils';
@@ -118,6 +119,7 @@ export const StudentPortal: React.FC = () => {
   const [selectedRoll, setSelectedRoll] = useState<string>(user?.linkedChildRoll || '01');
   const [syllabusGroupFilter, setSyllabusGroupFilter] = useState<'All' | StudyGroup>('All');
   const [syllabusSearch, setSyllabusSearch] = useState('');
+  const [downloadingSyllabus, setDownloadingSyllabus] = useState(false);
   const [toast, setToast] = useState<string | null>(null);
   const [reportCardOpen, setReportCardOpen] = useState(false);
   const [activeReceipt, setActiveReceipt] = useState<FeeRecord | null>(null);
@@ -1789,34 +1791,61 @@ export const StudentPortal: React.FC = () => {
               return (
                 t(sub.name).toLowerCase().includes(q) ||
                 t(sub.chaptersOutline).toLowerCase().includes(q) ||
-                sub.code.includes(q)
+                sub.code.includes(q) ||
+                sub.chapters.some(
+                  (ch) =>
+                    t(ch.chapterTitle).toLowerCase().includes(q) ||
+                    t(ch.topics).toLowerCase().includes(q)
+                )
               );
             });
 
-            const handleDownloadMySyllabus = () => {
-              const lines = [
-                `${t(settings.name)} - NCTB ACADEMIC SYLLABUS (${activeYear})`,
-                `===========================================================`,
-                `Student: ${matchedStudent?.name || user?.name || 'Student'} | Class: ${t(classSyllabus.className)} | Roll: ${selectedRoll}`,
-                `Official NCTB Portal: ${classSyllabus.nctbPortalUrl}`,
-                ``,
-                `All NCTB Subjects for Class ${selectedClassId}:`,
-                ...visibleSubjects.map(
-                  (sub, idx) =>
-                    `${idx + 1}. ${t(sub.name)} (#${sub.code}) · ${sub.totalMarks} Marks [${t(sub.marksBreakdown)}]${
-                      isSecondary ? ` [${sub.group}]` : ''
-                    }\n   ${t(sub.chaptersOutline)}`
-                ),
-              ];
-              const blob = new Blob([lines.join('\n')], { type: 'text/plain;charset=utf-8' });
-              const url = URL.createObjectURL(blob);
-              const a = document.createElement('a');
-              a.href = url;
-              a.download = `NCTB_Syllabus_Class_${selectedClassId}_${activeYear}.txt`;
-              document.body.appendChild(a);
-              a.click();
-              document.body.removeChild(a);
-              URL.revokeObjectURL(url);
+            const handleDownloadMySyllabus = async () => {
+              if (downloadingSyllabus) return;
+              const groupLabel = isSecondary
+                ? syllabusGroupFilter === 'All'
+                  ? lang === 'bn'
+                    ? 'সকল বিভাগ'
+                    : 'All Groups'
+                  : syllabusGroupFilter === 'Science'
+                  ? lang === 'bn'
+                    ? 'বিজ্ঞান'
+                    : 'Science'
+                  : syllabusGroupFilter === 'Humanities'
+                  ? lang === 'bn'
+                    ? 'মানবিক'
+                    : 'Humanities'
+                  : syllabusGroupFilter === 'Business Studies'
+                  ? lang === 'bn'
+                    ? 'ব্যবসায় শিক্ষা'
+                    : 'Business'
+                  : lang === 'bn'
+                  ? 'আবশ্যিক'
+                  : 'Common'
+                : undefined;
+
+              setDownloadingSyllabus(true);
+              try {
+                await downloadSyllabusPdf({
+                  schoolName: t(settings.name),
+                  eiin: settings.eiin,
+                  location: t(settings.location),
+                  className: t(classSyllabus.className),
+                  classId: selectedClassId,
+                  year: String(activeYear),
+                  lang,
+                  groupLabel,
+                  studentInfo: {
+                    name: matchedStudent?.name || user?.name || 'Student',
+                    roll: selectedRoll,
+                  },
+                  portalUrl: classSyllabus.nctbPortalUrl,
+                  subjects: visibleSubjects,
+                  translate: t,
+                });
+              } finally {
+                setDownloadingSyllabus(false);
+              }
             };
 
             return (
@@ -1843,11 +1872,22 @@ export const StudentPortal: React.FC = () => {
                   <div className="flex flex-wrap gap-2">
                     <button
                       type="button"
+                      disabled={downloadingSyllabus}
                       onClick={handleDownloadMySyllabus}
-                      className="px-4 py-2.5 rounded-xl bg-white text-emerald-900 hover:bg-emerald-50 text-xs font-black flex items-center gap-1.5"
+                      className="px-4 py-2.5 rounded-xl bg-white text-emerald-900 hover:bg-emerald-50 disabled:opacity-70 disabled:cursor-wait text-xs font-black flex items-center gap-1.5"
                     >
-                      <Download className="w-4 h-4" />
-                      {lang === 'bn' ? 'সিলেবাস ডাউনলোড' : 'Download Syllabus'}
+                      {downloadingSyllabus ? (
+                        <Loader2 className="w-4 h-4 animate-spin" />
+                      ) : (
+                        <Download className="w-4 h-4" />
+                      )}
+                      {downloadingSyllabus
+                        ? lang === 'bn'
+                          ? 'PDF তৈরি হচ্ছে...'
+                          : 'Generating PDF...'
+                        : lang === 'bn'
+                        ? 'সিলেবাস ডাউনলোড'
+                        : 'Download Syllabus'}
                     </button>
                     <a
                       href={classSyllabus.nctbPortalUrl}
@@ -1904,7 +1944,7 @@ export const StudentPortal: React.FC = () => {
                   {visibleSubjects.map((sub, idx) => (
                     <div
                       key={`${sub.code}-${sub.group}-${idx}`}
-                      className="bg-white dark:bg-slate-900 p-5 rounded-3xl border border-slate-200 dark:border-slate-800 shadow-sm space-y-2.5"
+                      className="bg-white dark:bg-slate-900 p-5 rounded-3xl border border-slate-200 dark:border-slate-800 shadow-sm space-y-3"
                     >
                       <div className="flex items-start justify-between gap-2">
                         <div className="min-w-0">
@@ -1927,9 +1967,26 @@ export const StudentPortal: React.FC = () => {
                           </span>
                         </div>
                       </div>
-                      <p className="text-xs text-slate-600 dark:text-slate-300 pl-6 leading-relaxed">
-                        {t(sub.chaptersOutline)}
-                      </p>
+
+                      {sub.chapters && sub.chapters.length > 0 && (
+                        <div className="pl-4 space-y-2">
+                          {sub.chapters.map((ch, chIdx) => (
+                            <div
+                              key={chIdx}
+                              className="pl-3 border-l-2 border-emerald-500/40 bg-slate-50/70 dark:bg-slate-800/40 rounded-r-xl py-1.5 pr-2.5 space-y-0.5"
+                            >
+                              <p className="text-xs font-extrabold text-slate-800 dark:text-slate-100 leading-snug">
+                                {t(ch.chapterTitle)}
+                              </p>
+                              <p className="text-[11px] text-slate-600 dark:text-slate-300 leading-relaxed">
+                                {lang === 'bn' ? 'পাঠ্য টপিক: ' : 'Topics: '}
+                                {t(ch.topics)}
+                              </p>
+                            </div>
+                          ))}
+                        </div>
+                      )}
+
                       {isSecondary && (
                         <div className="pl-6">
                           <span className="inline-block px-2 py-0.5 rounded-md bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 text-[10px] font-bold">

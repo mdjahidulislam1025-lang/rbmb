@@ -1,6 +1,9 @@
 import { SYLLABUS_2026 } from '../constants';
 import { LocalizedString, SchoolSubject, StudyGroup } from '../types';
 import { inferSubjectStudyGroup } from './teacherRole';
+import { NCTB_CHAPTERS_BY_CLASS_CODE, NctbSyllabusChapter } from './nctbChaptersData';
+
+export type { NctbSyllabusChapter };
 
 export interface NctbSyllabusSubjectDetail {
   code: string;
@@ -9,6 +12,7 @@ export interface NctbSyllabusSubjectDetail {
   totalMarks: number;
   marksBreakdown: LocalizedString;
   chaptersOutline: LocalizedString;
+  chapters: NctbSyllabusChapter[];
   nctbBookUrl: string;
 }
 
@@ -254,6 +258,15 @@ export function buildNctbClassSyllabus(
         en: 'Official 2026 NCTB approved chapters and competency units',
       },
     };
+    const classChapters = NCTB_CHAPTERS_BY_CLASS_CODE[`${classId}:${sub.code}`] || [
+      {
+        chapterTitle: {
+          bn: `${sub.name.bn} — NCTB নির্ধারিত অধ্যায়সমূহ`,
+          en: `${sub.name.en} — NCTB Prescribed Chapters`,
+        },
+        topics: meta.chaptersOutline,
+      },
+    ];
     return {
       code: sub.code,
       name: sub.name,
@@ -261,6 +274,7 @@ export function buildNctbClassSyllabus(
       totalMarks: meta.totalMarks,
       marksBreakdown: meta.marksBreakdown,
       chaptersOutline: meta.chaptersOutline,
+      chapters: classChapters,
       nctbBookUrl: sub.pdfUrl && sub.pdfUrl !== '#' ? sub.pdfUrl : portalUrl,
     };
   });
@@ -279,6 +293,19 @@ export function buildNctbClassSyllabus(
       if (exists) return;
 
       const meta = NCTB_CURRICULUM_META[cs.code];
+      const outline = meta?.chaptersOutline || {
+        bn: 'NCTB ও বিদ্যালয় নির্ধারিত অধ্যায়ভিত্তিক সিলেবাস',
+        en: 'NCTB & School Prescribed Chapter Syllabus',
+      };
+      const classChapters = NCTB_CHAPTERS_BY_CLASS_CODE[`${classId}:${cs.code}`] || [
+        {
+          chapterTitle: {
+            bn: `${cs.name.bn} — নির্ধারিত অধ্যায় ও পাঠ্যক্রম`,
+            en: `${cs.name.en} — Prescribed Chapters & Topics`,
+          },
+          topics: outline,
+        },
+      ];
       items.push({
         code: cs.code,
         name: cs.name,
@@ -288,10 +315,8 @@ export function buildNctbClassSyllabus(
           bn: 'বিদ্যালয় ও NCTB মূল্যায়ন কাঠামো',
           en: 'School & NCTB Assessment Structure',
         },
-        chaptersOutline: meta?.chaptersOutline || {
-          bn: 'NCTB ও বিদ্যালয় নির্ধারিত অধ্যায়ভিত্তিক সিলেবাস',
-          en: 'NCTB & School Prescribed Chapter Syllabus',
-        },
+        chaptersOutline: outline,
+        chapters: classChapters,
         nctbBookUrl: portalUrl,
       });
     });
