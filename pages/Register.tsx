@@ -91,7 +91,21 @@ const Register: React.FC = () => {
   };
 
   const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
-    setFormData((prev) => ({ ...prev, [e.target.name]: e.target.value }));
+    const { name, value } = e.target;
+    setFormData((prev) => {
+      if (name === 'classId') {
+        const isSec = value === '9' || value === '10';
+        const nextSec = isSec
+          ? ['Science', 'Humanities', 'Business Studies'].includes(prev.section)
+            ? prev.section
+            : 'Science'
+          : ['Science', 'Humanities', 'Business Studies'].includes(prev.section)
+          ? 'A'
+          : prev.section || 'A';
+        return { ...prev, classId: value, section: nextSec };
+      }
+      return { ...prev, [name]: value };
+    });
     setError('');
   };
 
@@ -497,17 +511,37 @@ const Register: React.FC = () => {
                       </div>
                       <div>
                         <label className="text-[11px] font-bold text-slate-600 dark:text-slate-300">
-                          {lang === 'bn' ? 'শাখা / বিভাগ *' : 'Section *'}
+                          {formData.classId === '9' || formData.classId === '10'
+                            ? lang === 'bn'
+                              ? 'বিভাগ (Group) *'
+                              : 'Group *'
+                            : lang === 'bn'
+                            ? 'শাখা (Section) *'
+                            : 'Section *'}
                         </label>
-                        <input
-                          required
-                          type="text"
-                          name="section"
-                          value={formData.section}
-                          onChange={handleChange}
-                          placeholder="Science / A"
-                          className="w-full mt-1 px-3 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 text-sm font-bold"
-                        />
+                        {formData.classId === '9' || formData.classId === '10' ? (
+                          <select
+                            required
+                            name="section"
+                            value={formData.section}
+                            onChange={handleChange}
+                            className="w-full mt-1 px-3 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 text-sm font-bold"
+                          >
+                            <option value="Science">{lang === 'bn' ? 'বিজ্ঞান (Science)' : 'Science'}</option>
+                            <option value="Humanities">{lang === 'bn' ? 'মানবিক (Humanities)' : 'Humanities'}</option>
+                            <option value="Business Studies">{lang === 'bn' ? 'ব্যবসায় শিক্ষা (Business Studies)' : 'Business Studies'}</option>
+                          </select>
+                        ) : (
+                          <input
+                            required
+                            type="text"
+                            name="section"
+                            value={formData.section}
+                            onChange={handleChange}
+                            placeholder="A / B"
+                            className="w-full mt-1 px-3 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 text-sm font-bold"
+                          />
+                        )}
                       </div>
                     </div>
 

@@ -66,9 +66,24 @@ service cloud.firestore {
     }
 
     // Validation Blueprints
+    function isValidAdmissionSchedule(sched) {
+      return sched is map
+        && sched.keys().hasAll(['mode', 'startDate', 'deadlineDate', 'examDate', 'resultDate', 'feeAmount'])
+        && sched.keys().hasOnly(['mode', 'startDate', 'deadlineDate', 'examDate', 'resultDate', 'feeAmount', 'sessionYear', 'autoRollYearly', 'noticeNote'])
+        && sched.mode is string && sched.mode in ['auto', 'open', 'closed']
+        && sched.startDate is string && sched.startDate.size() >= 4 && sched.startDate.size() <= 32
+        && sched.deadlineDate is string && sched.deadlineDate.size() >= 4 && sched.deadlineDate.size() <= 32
+        && sched.examDate is string && sched.examDate.size() >= 4 && sched.examDate.size() <= 32
+        && sched.resultDate is string && sched.resultDate.size() >= 4 && sched.resultDate.size() <= 32
+        && (sched.feeAmount is int || sched.feeAmount is float) && sched.feeAmount >= 0 && sched.feeAmount <= 50000
+        && (!('sessionYear' in sched) || (sched.sessionYear is string && sched.sessionYear.size() <= 16))
+        && (!('autoRollYearly' in sched) || sched.autoRollYearly is bool)
+        && (!('noticeNote' in sched) || (sched.noticeNote is string && sched.noticeNote.size() <= 300));
+    }
+
     function isValidSettings(data) {
       return data.keys().hasAll(['name', 'eiin', 'phone', 'email', 'location', 'updatedAt'])
-        && data.keys().hasOnly(['name', 'shortName', 'tagline', 'eiin', 'phone', 'email', 'location', 'schoolPhoto', 'headTeacherName', 'headTeacherMessage', 'headTeacherPhoto', 'latitude', 'longitude', 'updatedAt'])
+        && data.keys().hasOnly(['name', 'shortName', 'tagline', 'eiin', 'phone', 'email', 'location', 'schoolPhoto', 'headTeacherName', 'headTeacherMessage', 'headTeacherPhoto', 'latitude', 'longitude', 'admissionSchedule', 'updatedAt'])
         && isLocalizedString(data.name, 200)
         && (!('shortName' in data) || (data.shortName is string && data.shortName.size() <= 100))
         && (!('tagline' in data) || isLocalizedString(data.tagline, 300))
@@ -82,6 +97,7 @@ service cloud.firestore {
         && (!('headTeacherPhoto' in data) || (data.headTeacherPhoto is string && data.headTeacherPhoto.size() <= 600000))
         && (!('latitude' in data) || (data.latitude is int || data.latitude is float))
         && (!('longitude' in data) || (data.longitude is int || data.longitude is float))
+        && (!('admissionSchedule' in data) || isValidAdmissionSchedule(data.admissionSchedule))
         && data.updatedAt is timestamp;
     }
 

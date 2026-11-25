@@ -8,6 +8,20 @@ export interface LocalizedString {
   en: string;
 }
 
+export type AdmissionPortalMode = 'auto' | 'open' | 'closed';
+
+export interface AdmissionScheduleConfig {
+  mode: AdmissionPortalMode;
+  startDate: string;
+  deadlineDate: string;
+  examDate: string;
+  resultDate: string;
+  feeAmount: number;
+  sessionYear?: string;
+  autoRollYearly?: boolean;
+  noticeNote?: string;
+}
+
 export interface SchoolSettings {
   name: LocalizedString;
   shortName?: string;
@@ -22,6 +36,7 @@ export interface SchoolSettings {
   headTeacherPhoto?: string;
   latitude?: number;
   longitude?: number;
+  admissionSchedule?: AdmissionScheduleConfig;
 }
 
 export interface Notice {
@@ -100,11 +115,14 @@ export interface ExamRoutineItem {
   isPublic?: boolean;
 }
 
+export type StudyGroup = 'Common' | 'Science' | 'Humanities' | 'Business Studies';
+
 export interface SchoolSubject {
   id: string;
   code: string;
   name: LocalizedString;
   classId: string;
+  group?: StudyGroup | 'All';
   totalMarks: number;
   teacherName?: string;
   isPublic?: boolean;
@@ -116,6 +134,7 @@ export interface SyllabusItem {
   subjects: {
     name: LocalizedString;
     code: string;
+    group?: StudyGroup | 'All';
     pdfUrl: string;
   }[];
 }

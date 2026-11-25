@@ -28,7 +28,13 @@ import { CLASSES } from '../constants';
 import { useApp } from '../App';
 import { AdmissionStatusProjection } from '../types';
 import { compressImageFile } from '../utils/imageUtils';
-import { getDhakaTodayISO, getDhakaYear } from '../utils/dhakaTime';
+import { getDhakaTodayISO } from '../utils/dhakaTime';
+import {
+  formatAdmissionDate,
+  formatAdmissionFee,
+  resolveAdmissionSchedule,
+  toBengaliDigits,
+} from '../utils/admissionSchedule';
 
 const { useState } = React;
 
@@ -45,7 +51,9 @@ const Admission: React.FC = () => {
   const [last4Input, setLast4Input] = useState('');
   const [matchedStatus, setMatchedStatus] = useState<AdmissionStatusProjection | null>(null);
   const { lang, t, settings, addAdmission, lookupAdmissionStatus } = useApp();
-  const activeYear = getDhakaYear();
+  const schedule = resolveAdmissionSchedule(settings.admissionSchedule);
+  const sessionBn = toBengaliDigits(schedule.sessionYear);
+  const feeBn = toBengaliDigits(schedule.feeAmount);
   const todayDhaka = getDhakaTodayISO();
 
   const [formData, setFormData] = useState({
@@ -86,6 +94,14 @@ const Admission: React.FC = () => {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (!schedule.isOpen) {
+      setSubmitError(
+        lang === 'bn'
+          ? `বর্তমানে অনলাইন ভর্তি আবেদন বন্ধ আছে। আবেদন শুরু হবে: ${formatAdmissionDate(schedule.startDate, 'bn')}।`
+          : `Online admission portal is currently closed. Opens on ${formatAdmissionDate(schedule.startDate, 'en')}.`
+      );
+      return;
+    }
     setIsSubmitting(true);
     setSubmitError('');
     const appId = `RBHS-${Date.now().toString().slice(-6)}`;
@@ -124,14 +140,14 @@ const Admission: React.FC = () => {
           <p className="text-xs font-medium">{t(settings.location)}</p>
           <div className="pt-1">
             <span className="inline-block px-6 py-1 border-2 border-green-900 font-black text-sm uppercase bg-green-50 rounded-md">
-              {lang === 'bn' ? `ভর্তি আবেদন ফরম - ${activeYear}` : `Admission Application Form - ${activeYear}`}
+              {lang === 'bn' ? `ভর্তি আবেদন ফরম - ${sessionBn}` : `Admission Application Form - ${schedule.sessionYear}`}
             </span>
           </div>
         </div>
 
         <div className="flex justify-between items-center mb-4 text-xs font-black uppercase">
           <div className="bg-slate-100 px-3 py-1.5 rounded border border-slate-300">
-            App ID: <span className="text-green-800">{submittedAppId || `#RBHS-${activeYear}`}</span>
+            App ID: <span className="text-green-800">{submittedAppId || `#RBHS-${schedule.sessionYear}`}</span>
           </div>
           <div className="bg-slate-100 px-3 py-1.5 rounded border border-slate-300 tabular-nums">
             Date (GMT+6): {todayDhaka}
@@ -196,7 +212,7 @@ const Admission: React.FC = () => {
               : 'Important Instructions & Required Papers for School Office Submission:'}
           </p>
           <ul className="text-[11px] space-y-1 font-medium leading-snug">
-            <li>• আবেদনের এই প্রিন্ট কপি এবং ৩০০/- (তিনশত) টাকা ভর্তি আবেদন ফি স্কুল অফিসে জমা দিয়ে প্রবেশপত্র সংগ্রহ করুন।</li>
+            <li>• আবেদনের এই প্রিন্ট কপি এবং {feeBn}/- টাকা ভর্তি আবেদন ফি স্কুল অফিসে জমা দিয়ে প্রবেশপত্র সংগ্রহ করুন।</li>
             <li>• ভর্তি ফরম অফিসে জমাদানের সময় নিচের সকল প্রয়োজনীয় কাগজপত্র অবশ্যই সংযুক্ত করতে হবে:</li>
           </ul>
           <div className="grid grid-cols-2 gap-x-4 gap-y-1 pt-1 text-[10px] font-bold text-slate-800 border-t border-slate-200">
@@ -213,7 +229,7 @@ const Admission: React.FC = () => {
           <div className="p-2.5 bg-white border border-slate-300 rounded text-[10px] space-y-1.5">
             <p className="font-black border-b border-slate-200 pb-0.5 uppercase text-green-800">Office Verification</p>
             <div className="flex justify-between">
-              <span>Fee (৳300):</span> <span className="w-16 border-b border-black text-right">Paid / Due</span>
+              <span>Fee (৳{schedule.feeAmount}):</span> <span className="w-16 border-b border-black text-right">Paid / Due</span>
             </div>
             <div className="flex justify-between">
               <span>Adm. Roll:</span> <span className="w-16 border-b border-black"></span>
@@ -250,13 +266,13 @@ const Admission: React.FC = () => {
             </h1>
             <p className="text-slate-600 dark:text-slate-300 text-base font-medium max-w-md mx-auto">
               {lang === 'bn'
-                ? '২০২৬ শিক্ষাবর্ষের ভর্তির আবেদনটি পোর্টালে সংরক্ষিত হয়েছে। নিচের অ্যাপ্লিকেশন আইডি দিয়ে যেকোনো সময় স্ট্যাটাস যাচাই করতে পারবেন।'
-                : 'Your 2026 admission application is saved. Keep your Tracking ID below to check live status anytime.'}
+                ? `${sessionBn} শিক্ষাবর্ষের ভর্তির আবেদনটি পোর্টালে সংরক্ষিত হয়েছে। নিচের অ্যাপ্লিকেশন আইডি দিয়ে যেকোনো সময় স্ট্যাটাস যাচাই করতে পারবেন।`
+                : `Your ${schedule.sessionYear} admission application is saved. Keep your Tracking ID below to check live status anytime.`}
             </p>
 
             <div className="bg-slate-900 p-8 rounded-3xl border-2 border-green-500/40 inline-block text-white shadow-xl">
               <p className="text-[11px] text-green-400 font-black uppercase tracking-widest mb-2">Tracking App ID</p>
-              <p className="text-4xl font-mono font-black">{submittedAppId || 'RBHS-2026'}</p>
+              <p className="text-4xl font-mono font-black">{submittedAppId || `RBHS-${schedule.sessionYear}`}</p>
             </div>
 
             <div className="pt-4 flex flex-col sm:flex-row justify-center gap-4">
@@ -300,7 +316,7 @@ const Admission: React.FC = () => {
           <div className="bg-white dark:bg-slate-900 rounded-[2.5rem] shadow-2xl border border-slate-100 dark:border-slate-800 overflow-hidden">
             <div className="bg-green-700 p-10 text-white">
               <span className="inline-block bg-white/15 px-3 py-1 rounded-lg text-[11px] font-black uppercase tracking-wider">
-                Admission Portal 2026
+                {lang === 'bn' ? `ভর্তি পোর্টাল ${sessionBn}` : `Admission Portal ${schedule.sessionYear}`}
               </span>
               <h1 className="text-3xl md:text-4xl font-black mt-3">
                 {lang === 'bn' ? 'অনলাইন ভর্তি ফরম' : 'Online Admission Form'}
@@ -471,10 +487,10 @@ const Admission: React.FC = () => {
                       onChange={handleInputChange}
                       className="w-full px-4 py-3.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-slate-900 dark:text-white font-bold outline-none focus:ring-2 focus:ring-green-600"
                     >
-                      <option value="General">সাধারণ (৬ষ্ঠ-৮ম)</option>
-                      <option value="Science">বিজ্ঞান (Science)</option>
-                      <option value="Humanities">মানবিক (Humanities)</option>
-                      <option value="Commerce">ব্যবসায় শিক্ষা (Commerce)</option>
+                      <option value="General">{lang === 'bn' ? 'সাধারণ (৬ষ্ঠ–৮ম অভিন্ন)' : 'General (Class 6–8 Unified)'}</option>
+                      <option value="Science">{lang === 'bn' ? 'বিজ্ঞান (Science)' : 'Science'}</option>
+                      <option value="Humanities">{lang === 'bn' ? 'মানবিক (Humanities)' : 'Humanities'}</option>
+                      <option value="Business Studies">{lang === 'bn' ? 'ব্যবসায় শিক্ষা (Business Studies)' : 'Business Studies'}</option>
                     </select>
                   </div>
                   <div className="space-y-1.5">
@@ -557,15 +573,39 @@ const Admission: React.FC = () => {
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-12 space-y-14 no-print">
         {/* Hero */}
         <section className="text-center space-y-6">
-          <div className="inline-flex items-center gap-2 bg-green-100 dark:bg-green-950 text-green-700 dark:text-green-300 px-3.5 py-1.5 rounded-lg text-xs font-black uppercase tracking-widest">
-            <AlertCircle className="w-4 h-4" /> Admission Open 2026
+          <div
+            className={`inline-flex items-center gap-2 px-3.5 py-1.5 rounded-lg text-xs font-black uppercase tracking-widest ${
+              schedule.isOpen
+                ? 'bg-green-100 dark:bg-green-950 text-green-700 dark:text-green-300'
+                : 'bg-amber-100 dark:bg-amber-950/70 text-amber-800 dark:text-amber-300'
+            }`}
+          >
+            <AlertCircle className="w-4 h-4" />
+            {schedule.isOpen
+              ? lang === 'bn'
+                ? `ভর্তি চলছে • শিক্ষাবর্ষ ${sessionBn}`
+                : `Admission Open • Session ${schedule.sessionYear}`
+              : schedule.statusReason === 'upcoming-december'
+              ? lang === 'bn'
+                ? `শুরু হবে: ${formatAdmissionDate(schedule.startDate, 'bn')} (প্রতি বছর ডিসেম্বর)`
+                : `Opens ${formatAdmissionDate(schedule.startDate, 'en')} • Yearly December Cycle`
+              : lang === 'bn'
+              ? `ভর্তি পোর্টাল সাময়িকভাবে বন্ধ (${sessionBn})`
+              : `Admission Portal Closed (${schedule.sessionYear})`}
           </div>
           <h1 className="text-4xl md:text-6xl font-black text-green-900 dark:text-white tracking-tight">
-            {lang === 'bn' ? 'অনলাইন ভর্তি তথ্য ও আবেদন' : 'Online Admission Portal 2026'}
+            {lang === 'bn' ? `অনলাইন ভর্তি তথ্য ও আবেদন (${sessionBn})` : `Online Admission Portal ${schedule.sessionYear}`}
           </h1>
           <p className="text-slate-600 dark:text-slate-300 max-w-2xl mx-auto font-medium text-base md:text-lg">
-            {t(settings.name)}-এ আপনার সন্তানের আধুনিক শিক্ষা নিশ্চিত করতে অনলাইন ফরম পূরণ করুন এবং অ্যাপ্লিকেশন আইডি দিয়ে লাইভ স্ট্যাটাস দেখুন।
+            {lang === 'bn'
+              ? `${t(settings.name)}-এ প্রতি বছর ডিসেম্বর মাসে অনলাইন ভর্তি কার্যক্রম শুরু হয়। নির্ধারিত সময়ে ফরম পূরণ করুন ও App ID দিয়ে লাইভ স্ট্যাটাস দেখুন।`
+              : `Online admissions at ${t(settings.name)} open every year in December. Submit your form during the open window and track your App ID live.`}
           </p>
+          {schedule.noticeNote && (
+            <div className="max-w-2xl mx-auto px-4 py-3 rounded-2xl bg-emerald-50 dark:bg-emerald-950/50 border border-emerald-200 dark:border-emerald-800 text-xs sm:text-sm font-bold text-emerald-900 dark:text-emerald-200">
+              {schedule.noticeNote}
+            </div>
+          )}
         </section>
 
         {/* Live Application Status Checker (Non-PII Projection) */}
@@ -678,10 +718,37 @@ const Admission: React.FC = () => {
         {/* Highlights */}
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
           {[
-            { label: 'আবেদনের শেষ তারিখ', date: '১৫ জানুয়ারি, ২০২৬', icon: Calendar, accent: 'bg-orange-500' },
-            { label: 'ভর্তি পরীক্ষা', date: '১৮ জানুয়ারি, ২০২৬', icon: ClipboardList, accent: 'bg-blue-500' },
-            { label: 'আবেদন ফি', date: '৩০০ টাকা', icon: CreditCard, accent: 'bg-green-600' },
-            { label: 'ফলাফল প্রকাশ', date: '২০ জানুয়ারি, ২০২৬', icon: Award, accent: 'bg-purple-600' },
+            {
+              label: lang === 'bn' ? 'আবেদনের শেষ তারিখ' : 'Application Deadline',
+              date: formatAdmissionDate(schedule.deadlineDate, lang),
+              sub:
+                lang === 'bn'
+                  ? `শুরু: ${formatAdmissionDate(schedule.startDate, 'bn')}`
+                  : `Starts: ${formatAdmissionDate(schedule.startDate, 'en')}`,
+              icon: Calendar,
+              accent: 'bg-orange-500',
+            },
+            {
+              label: lang === 'bn' ? 'ভর্তি পরীক্ষা' : 'Admission Test',
+              date: formatAdmissionDate(schedule.examDate, lang),
+              sub: lang === 'bn' ? `শিক্ষাবর্ষ ${sessionBn}` : `Session ${schedule.sessionYear}`,
+              icon: ClipboardList,
+              accent: 'bg-blue-500',
+            },
+            {
+              label: lang === 'bn' ? 'আবেদন ফি' : 'Application Fee',
+              date: formatAdmissionFee(schedule.feeAmount, lang),
+              sub: lang === 'bn' ? 'স্কুল অফিসে প্রদেয়' : 'Payable at School Office',
+              icon: CreditCard,
+              accent: 'bg-green-600',
+            },
+            {
+              label: lang === 'bn' ? 'ফলাফল প্রকাশ' : 'Result Publish',
+              date: formatAdmissionDate(schedule.resultDate, lang),
+              sub: lang === 'bn' ? 'পোর্টাল ও নোটিশ বোর্ডে' : 'On Portal & Notice Board',
+              icon: Award,
+              accent: 'bg-purple-600',
+            },
           ].map((card, i) => (
             <div
               key={i}
@@ -692,6 +759,7 @@ const Admission: React.FC = () => {
               </div>
               <p className="text-[11px] font-black uppercase tracking-wider text-slate-400">{card.label}</p>
               <p className="text-xl font-black text-slate-900 dark:text-white mt-1">{card.date}</p>
+              <p className="text-[11px] font-bold text-slate-500 dark:text-slate-400 mt-1">{card.sub}</p>
             </div>
           ))}
         </div>
@@ -728,7 +796,7 @@ const Admission: React.FC = () => {
                 {[
                   { title: '১. অনলাইন ফরম পূরণ', desc: 'সঠিক তথ্য দিয়ে আবেদন ফরমটি সাবমিট করুন।' },
                   { title: '২. ফরম প্রিন্ট ও সংগ্রহ', desc: 'আবেদন শেষে App ID সহ ফরম প্রিন্ট করুন।' },
-                  { title: '৩. অফিসে জমা প্রদান', desc: 'কাগজপত্র সহ স্কুল অফিসে ৩০০/- ফি জমা দিন।' },
+                  { title: '৩. অফিসে জমা প্রদান', desc: `কাগজপত্র সহ স্কুল অফিসে ${feeBn}/- ফি জমা দিন।` },
                   { title: '৪. চূড়ান্ত ভর্তি', desc: 'ভর্তি পরীক্ষায় উত্তীর্ণ হয়ে ক্লাস শুরু করুন।' },
                 ].map((s, i) => (
                   <div key={i} className="bg-white dark:bg-slate-900 p-6 rounded-2xl border border-slate-100 dark:border-slate-800 shadow-sm">
@@ -741,20 +809,60 @@ const Admission: React.FC = () => {
           </div>
 
           <div className="lg:col-span-2 space-y-6">
-            <div className="bg-green-700 text-white p-8 rounded-[2.5rem] shadow-2xl space-y-6">
+            <div className={`${schedule.isOpen ? 'bg-green-700' : 'bg-slate-800'} text-white p-8 rounded-[2.5rem] shadow-2xl space-y-6`}>
               <span className="bg-white/15 inline-block px-3 py-1 rounded-lg text-[11px] font-black uppercase tracking-wider">
-                Portal Live 2026
+                {schedule.isOpen
+                  ? lang === 'bn'
+                    ? `পোর্টাল চালু • ${sessionBn}`
+                    : `Portal Live ${schedule.sessionYear}`
+                  : lang === 'bn'
+                  ? `পরবর্তী সেশন • ${sessionBn}`
+                  : `Upcoming ${schedule.sessionYear}`}
               </span>
-              <h2 className="text-3xl font-black leading-tight">ভর্তি হতে আজই আবেদন করুন</h2>
+              <h2 className="text-3xl font-black leading-tight">
+                {schedule.isOpen
+                  ? lang === 'bn'
+                    ? 'ভর্তি হতে আজই আবেদন করুন'
+                    : 'Apply Online for Admission'
+                  : schedule.statusReason === 'upcoming-december'
+                  ? lang === 'bn'
+                    ? `আবেদন শুরু ${formatAdmissionDate(schedule.startDate, 'bn')}`
+                    : `Opens ${formatAdmissionDate(schedule.startDate, 'en')}`
+                  : lang === 'bn'
+                  ? 'ভর্তি আবেদন বর্তমানে বন্ধ'
+                  : 'Admissions Currently Closed'}
+              </h2>
               <p className="opacity-90 text-sm font-medium leading-relaxed">
-                আপনার সন্তানের উজ্জ্বল ভবিষ্যতের জন্য ডিজিটাল পোর্টালে আবেদন সম্পন্ন করুন।
+                {schedule.isOpen
+                  ? lang === 'bn'
+                    ? `আবেদনের শেষ তারিখ ${formatAdmissionDate(schedule.deadlineDate, 'bn')}। আপনার সন্তানের উজ্জ্বল ভবিষ্যতের জন্য ডিজিটাল পোর্টালে আবেদন সম্পন্ন করুন।`
+                    : `Deadline: ${formatAdmissionDate(schedule.deadlineDate, 'en')}. Complete your digital admission application online.`
+                  : schedule.statusReason === 'upcoming-december'
+                  ? lang === 'bn'
+                    ? `প্রতি বছর ডিসেম্বর মাসে অনলাইন ভর্তি পোর্টাল চালু হয়। ${formatAdmissionDate(schedule.startDate, 'bn')} তারিখ থেকে অনলাইন ফরম পূরণ করা যাবে।`
+                    : `Online admission opens every year in December. Applications for Session ${schedule.sessionYear} open on ${formatAdmissionDate(schedule.startDate, 'en')}.`
+                  : lang === 'bn'
+                  ? 'এই মুহূর্তে নতুন আবেদন গ্রহণ বন্ধ রয়েছে। বিস্তারিত জানতে বিদ্যালয় অফিসে যোগাযোগ করুন অথবা App ID দিয়ে স্ট্যাটাস দেখুন।'
+                  : 'New admission applications are currently closed. Check back in December or contact the school office.'}
               </p>
-              <button
-                onClick={() => setIsFormOpen(true)}
-                className="w-full bg-white text-green-800 py-4 rounded-2xl font-black text-lg hover:bg-yellow-400 hover:text-green-950 shadow-xl transition-all flex items-center justify-center gap-2"
-              >
-                আবেদন শুরু করুন <ArrowRight className="w-5 h-5" />
-              </button>
+              {schedule.isOpen ? (
+                <button
+                  onClick={() => setIsFormOpen(true)}
+                  className="w-full bg-white text-green-800 py-4 rounded-2xl font-black text-lg hover:bg-yellow-400 hover:text-green-950 shadow-xl transition-all flex items-center justify-center gap-2"
+                >
+                  {lang === 'bn' ? 'আবেদন শুরু করুন' : 'Start Application'} <ArrowRight className="w-5 h-5" />
+                </button>
+              ) : (
+                <div className="w-full bg-white/10 border border-white/20 text-white py-3.5 px-4 rounded-2xl font-bold text-xs sm:text-sm text-center">
+                  {schedule.statusReason === 'upcoming-december'
+                    ? lang === 'bn'
+                      ? `আবেদন শুরু: ${formatAdmissionDate(schedule.startDate, 'bn')}`
+                      : `Opens: ${formatAdmissionDate(schedule.startDate, 'en')}`
+                    : lang === 'bn'
+                    ? 'অ্যাডমিন পোর্টাল বন্ধ রেখেছেন'
+                    : 'Portal closed by Administration'}
+                </div>
+              )}
             </div>
 
             <div className="bg-white dark:bg-slate-900 p-7 rounded-3xl shadow-sm border border-slate-100 dark:border-slate-800 space-y-4">
@@ -773,7 +881,7 @@ const Admission: React.FC = () => {
               </div>
               <div className="flex items-center gap-2 text-xs text-slate-500 dark:text-slate-400 font-semibold">
                 <ShieldCheck className="w-4 h-4 text-green-600" />
-                <span>Verified 2026 RBHS Portal</span>
+                <span>Verified {schedule.sessionYear} RBHS Portal</span>
               </div>
             </div>
           </div>

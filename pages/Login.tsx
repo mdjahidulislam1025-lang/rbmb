@@ -37,13 +37,29 @@ import {
   IdCard,
   ClipboardList,
   FileBadge2,
+  Search,
+  Menu,
+  Wallet,
+  BookOpenCheck,
+  ClipboardCheck,
+  Award,
+  School,
+  History,
+  Mail,
 } from 'lucide-react';
 import { TRANSLATIONS, EXAM_TERMS } from '../constants';
 import { useApp } from '../App';
-import { Notice, Teacher, GalleryItem, EBook, UserRole, FeeCategory, FeeRecord, PaymentMethod, SchoolStudent } from '../types';
+import { heroCampusImg } from '../src/assets/media';
+import { Notice, Teacher, GalleryItem, EBook, UserRole, FeeCategory, FeeRecord, PaymentMethod, SchoolStudent, AdmissionScheduleConfig } from '../types';
 import { compressImageFile } from '../utils/imageUtils';
 import { exportCsv } from '../utils/exportUtils';
 import { getDhakaTodayISO, attachDhakaTimeToDate, extractIsoDate, formatDhakaClock } from '../utils/dhakaTime';
+import {
+  formatAdmissionDate,
+  getDefaultYearlyAdmissionCycle,
+  resolveAdmissionSchedule,
+  sanitizeAdmissionScheduleConfig,
+} from '../utils/admissionSchedule';
 import { TeacherPortal } from '../components/TeacherPortal';
 import { StudentPortal } from '../components/StudentPortal';
 import { ParentPortal } from '../components/ParentPortal';
@@ -51,7 +67,12 @@ import { FeeReceiptModal } from '../components/FeeReceiptModal';
 import { StudentIdAdmitCard, CardMode } from '../components/StudentIdAdmitCard';
 import { TeacherIdCardModal } from '../components/TeacherIdCardModal';
 import { ClassTeacherAssignmentPanel } from '../components/ClassTeacherAssignmentPanel';
-import { isHeadTeacherDesignation } from '../utils/teacherRole';
+import {
+  isHeadTeacherDesignation,
+  CLASS_9_10_GROUPS,
+  getNctbSubjectsForClass,
+  inferSubjectStudyGroup,
+} from '../utils/teacherRole';
 
 const { useState, useEffect, useRef, useMemo } = React;
 const { useLocation, Link, useNavigate } = RouterDom;
@@ -127,6 +148,7 @@ const Login: React.FC = () => {
     subjects,
     addSubject,
     deleteSubject,
+    syncNctbSubjects,
     examRoutines,
     addExamRoutine,
     deleteExamRoutine,
@@ -187,8 +209,19 @@ const Login: React.FC = () => {
 
   const [dashboardView, setDashboardView] = useState<'main' | 'admin-management' | 'teacher-portal'>('main');
   const [managementTab, setManagementTab] = useState<ManagementTab>('analytics');
+  const [adminMobileNavOpen, setAdminMobileNavOpen] = useState(false);
+  const [adminSearchQuery, setAdminSearchQuery] = useState('');
+  const [adminClockText, setAdminClockText] = useState(() => formatDhakaClock(lang));
   const [leaveRemarks, setLeaveRemarks] = useState<Record<string, string>>({});
   const [adminReplyDrafts, setAdminReplyDrafts] = useState<Record<string, string>>({});
+
+  useEffect(() => {
+    setAdminClockText(formatDhakaClock(lang));
+    const timer = setInterval(() => {
+      setAdminClockText(formatDhakaClock(lang));
+    }, 30000);
+    return () => clearInterval(timer);
+  }, [lang]);
 
   const [isAddModalOpen, setIsAddModalOpen] = useState(false);
   const [modalError, setModalError] = useState('');
@@ -400,11 +433,20 @@ const Login: React.FC = () => {
     [classRoutines, routineClassId]
   );
 
-  const [newSubject, setNewSubject] = useState({ code: '101', nameBn: '', nameEn: '', classId: '9', totalMarks: 100 });
+  const [subjectClassFilter, setSubjectClassFilter] = useState<'all' | '6' | '7' | '8' | '9' | '10'>('all');
+  const [subjectGroupFilter, setSubjectGroupFilter] = useState<'all' | 'Common' | 'Science' | 'Humanities' | 'Business Studies'>('all');
+  const [newSubject, setNewSubject] = useState({
+    code: '101',
+    nameBn: '',
+    nameEn: '',
+    classId: '9',
+    group: 'Common' as 'Common' | 'Science' | 'Humanities' | 'Business Studies',
+    totalMarks: 100,
+  });
   const [newExamRoutine, setNewExamRoutine] = useState({
     examTerm: EXAM_TERMS[1].id,
     classId: '9',
-    subject: 'Bangla',
+    subject: 'Bangla 1st Paper',
     date: getDhakaTodayISO(),
     time: '10:00 AM - 01:00 PM',
     room: 'Room 101',
@@ -427,6 +469,11 @@ const Login: React.FC = () => {
     latitude: String(settings.latitude ?? 23.2248),
     longitude: String(settings.longitude ?? 91.3185),
   });
+
+  const [admissionScheduleForm, setAdmissionScheduleForm] = useState<AdmissionScheduleConfig>(() =>
+    sanitizeAdmissionScheduleConfig(settings.admissionSchedule)
+  );
+  const [admissionScheduleSaved, setAdmissionScheduleSaved] = useState(false);
 
   useEffect(() => {
     const path = location.pathname.toLowerCase();
@@ -454,6 +501,7 @@ const Login: React.FC = () => {
       latitude: String(settings.latitude ?? 23.2248),
       longitude: String(settings.longitude ?? 91.3185),
     });
+    setAdmissionScheduleForm(sanitizeAdmissionScheduleConfig(settings.admissionSchedule));
   }, [settings]);
 
   const handleQuickLogin = (role: 'teacher' | 'parent' | 'student') => {
@@ -729,6 +777,33 @@ const Login: React.FC = () => {
     }
   };
 
+  const handleSaveAdmissionSchedule = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setSettingsError('');
+    const cleanSchedule = sanitizeAdmissionScheduleConfig(admissionScheduleForm);
+    const ok = await updateSettings({
+      ...settings,
+      admissionSchedule: cleanSchedule,
+    });
+    if (ok) {
+      setAdmissionScheduleSaved(true);
+      setTimeout(() => setAdmissionScheduleSaved(false), 2500);
+    }
+  };
+
+  const handleResetAdmissionSchedule = async () => {
+    const defaults = getDefaultYearlyAdmissionCycle();
+    setAdmissionScheduleForm(defaults);
+    const ok = await updateSettings({
+      ...settings,
+      admissionSchedule: defaults,
+    });
+    if (ok) {
+      setAdmissionScheduleSaved(true);
+      setTimeout(() => setAdmissionScheduleSaved(false), 2500);
+    }
+  };
+
   if (user) {
     if (location.pathname.toLowerCase().includes('/login/admin') && user.role !== 'admin') {
       return (
@@ -788,166 +863,831 @@ const Login: React.FC = () => {
       return <StudentPortal />;
     }
 
+    if (user.role === 'teacher') {
+      return <TeacherPortal />;
+    }
+
+    if (user.role === 'parent') {
+      return (
+        <div className="max-w-7xl mx-auto px-4 py-8">
+          <div className="bg-white dark:bg-slate-900 rounded-3xl shadow-xl border border-slate-200 dark:border-slate-800 overflow-hidden min-h-[70vh]">
+            <div className="bg-emerald-800 p-6 md:p-8 text-white flex flex-col md:flex-row justify-between items-center gap-6">
+              <div className="flex items-center gap-5">
+                <div className="relative">
+                  <div className="w-16 h-16 md:w-20 md:h-20 rounded-2xl overflow-hidden bg-white/20 border-2 border-white/40 flex items-center justify-center">
+                    {user.photo ? <img src={user.photo} alt="" className="w-full h-full object-cover" /> : <UserIcon className="w-8 h-8" />}
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => fileInputRef.current?.click()}
+                    className="absolute -bottom-2 -right-2 bg-white text-emerald-700 p-1.5 rounded-xl shadow-lg"
+                  >
+                    <Camera className="w-4 h-4" />
+                  </button>
+                  <input ref={fileInputRef} type="file" accept="image/*" onChange={handlePhotoUpload} className="hidden" />
+                </div>
+                <div className="text-center md:text-left">
+                  <p className="text-[11px] font-bold uppercase tracking-widest text-emerald-200">{t(settings.name)}</p>
+                  <h1 className="text-2xl font-black">{user.name}</h1>
+                  <p className="opacity-85 font-bold uppercase tracking-widest text-xs mt-1">
+                    {lang === 'bn' ? 'অভিভাবক পোর্টাল' : 'Parent Portal'} • ID: {user.userId}
+                  </p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={logout}
+                className="bg-red-500 hover:bg-red-600 px-5 py-2.5 rounded-xl font-bold text-xs uppercase tracking-wider flex items-center gap-2"
+              >
+                <LogOut className="w-4 h-4" /> {lang === 'bn' ? 'লগআউট' : 'Logout'}
+              </button>
+            </div>
+            <div className="p-6 md:p-8">
+              <ParentPortal />
+            </div>
+          </div>
+        </div>
+      );
+    }
+
     const allUsers = getUsers();
-    const adminTabs: { id: ManagementTab; label: string }[] = [
-      { id: 'analytics', label: lang === 'bn' ? 'অ্যানালিটিক্স' : 'Analytics' },
-      { id: 'class-teachers', label: lang === 'bn' ? 'শ্রেণী শিক্ষক' : 'Class Teachers' },
-      { id: 'cards', label: lang === 'bn' ? 'অ্যাডমিট, রেজি ও আইডি' : 'Student Cards' },
-      { id: 'fees', label: lang === 'bn' ? 'ফি ও হিসাব' : 'Fee Ledger' },
-      { id: 'broadcasts', label: lang === 'bn' ? 'পোর্টাল ঘোষণা' : 'Broadcasts' },
-      { id: 'class-routine', label: lang === 'bn' ? 'ক্লাস রুটিন' : 'Class Routine' },
-      { id: 'notices', label: lang === 'bn' ? 'নোটিশ' : 'Notices' },
-      { id: 'teachers', label: lang === 'bn' ? 'শিক্ষক' : 'Teachers' },
-      { id: 'ebooks', label: lang === 'bn' ? 'লাইব্রেরি' : 'Library' },
-      { id: 'gallery', label: lang === 'bn' ? 'গ্যালারি' : 'Gallery' },
-      { id: 'subjects', label: lang === 'bn' ? 'বিষয়সমূহ' : 'Subjects' },
-      { id: 'exam-routines', label: lang === 'bn' ? 'পরীক্ষার রুটিন' : 'Exam Routine' },
-      { id: 'online-exams', label: lang === 'bn' ? 'MCQ পরীক্ষা' : 'MCQ Exams' },
-      { id: 'admissions', label: lang === 'bn' ? 'ভর্তি' : 'Admissions' },
-      { id: 'alumni', label: lang === 'bn' ? 'অ্যালামনাই' : 'Alumni' },
-      { id: 'parent-messages', label: lang === 'bn' ? 'অভিভাবক বার্তা' : 'Parent Msgs' },
-      { id: 'parent-links', label: lang === 'bn' ? 'অভিভাবক লিংক' : 'Parent Links' },
-      { id: 'messages', label: lang === 'bn' ? 'যোগাযোগ' : 'Messages' },
-      { id: 'leaves', label: lang === 'bn' ? 'শিক্ষক ছুটি' : 'Leaves' },
-      { id: 'users', label: lang === 'bn' ? 'ইউজার' : 'Users' },
-      { id: 'audit-logs', label: lang === 'bn' ? 'অডিট লগ' : 'Audit Logs' },
-      { id: 'system', label: lang === 'bn' ? 'সেটিংস' : 'System' },
+    const adminTabs: {
+      id: ManagementTab;
+      label: string;
+      icon: React.ComponentType<{ className?: string }>;
+      badge?: number;
+      badgeTone?: 'amber' | 'emerald';
+    }[] = [
+      { id: 'analytics', label: lang === 'bn' ? 'অ্যানালিটিক্স' : 'Analytics', icon: BarChart3 },
+      { id: 'class-teachers', label: lang === 'bn' ? 'শ্রেণী শিক্ষক' : 'Class Teachers', icon: ShieldCheck },
+      { id: 'cards', label: lang === 'bn' ? 'অ্যাডমিট, রেজি ও আইডি' : 'Student Cards', icon: IdCard },
+      { id: 'fees', label: lang === 'bn' ? 'ফি ও হিসাব' : 'Fee Ledger', icon: Receipt },
+      { id: 'broadcasts', label: lang === 'bn' ? 'পোর্টাল ঘোষণা' : 'Broadcasts', icon: Megaphone },
+      { id: 'class-routine', label: lang === 'bn' ? 'ক্লাস রুটিন' : 'Class Routine', icon: School },
+      { id: 'notices', label: lang === 'bn' ? 'নোটিশ' : 'Notices', icon: Bell },
+      { id: 'teachers', label: lang === 'bn' ? 'শিক্ষক' : 'Teachers', icon: Users },
+      { id: 'ebooks', label: lang === 'bn' ? 'লাইব্রেরি' : 'Library', icon: BookOpen },
+      { id: 'gallery', label: lang === 'bn' ? 'গ্যালারি' : 'Gallery', icon: ImageIcon },
+      { id: 'subjects', label: lang === 'bn' ? 'বিষয়সমূহ' : 'Subjects', icon: BookOpenCheck },
+      { id: 'exam-routines', label: lang === 'bn' ? 'পরীক্ষার রুটিন' : 'Exam Routine', icon: Calendar },
+      { id: 'online-exams', label: lang === 'bn' ? 'MCQ পরীক্ষা' : 'MCQ Exams', icon: Trophy },
+      {
+        id: 'admissions',
+        label: lang === 'bn' ? 'ভর্তি' : 'Admissions',
+        icon: UserPlus,
+        badge: analyticsSummary.pendingAdmissions > 0 ? analyticsSummary.pendingAdmissions : undefined,
+        badgeTone: 'amber',
+      },
+      {
+        id: 'alumni',
+        label: lang === 'bn' ? 'অ্যালামনাই' : 'Alumni',
+        icon: GraduationCap,
+        badge: analyticsSummary.pendingAlumni > 0 ? analyticsSummary.pendingAlumni : undefined,
+        badgeTone: 'amber',
+      },
+      { id: 'parent-messages', label: lang === 'bn' ? 'অভিভাবক বার্তা' : 'Parent Msgs', icon: MessageSquare },
+      {
+        id: 'parent-links',
+        label: lang === 'bn' ? 'অভিভাবক লিংক' : 'Parent Links',
+        icon: ClipboardCheck,
+        badge: analyticsSummary.pendingParentLinks > 0 ? analyticsSummary.pendingParentLinks : undefined,
+        badgeTone: 'amber',
+      },
+      { id: 'messages', label: lang === 'bn' ? 'যোগাযোগ' : 'Messages', icon: Mail },
+      {
+        id: 'leaves',
+        label: lang === 'bn' ? 'শিক্ষক ছুটি' : 'Leaves',
+        icon: Clock,
+        badge: analyticsSummary.pendingLeaves > 0 ? analyticsSummary.pendingLeaves : undefined,
+        badgeTone: 'amber',
+      },
+      { id: 'users', label: lang === 'bn' ? 'ইউজার' : 'Users', icon: UserIcon },
+      { id: 'audit-logs', label: lang === 'bn' ? 'অডিট লগ' : 'Audit Logs', icon: History },
+      { id: 'system', label: lang === 'bn' ? 'সেটিংস' : 'System', icon: Settings },
     ];
 
-    return (
-      <div className="max-w-7xl mx-auto px-4 py-10">
-        <div className="bg-white dark:bg-slate-900 rounded-3xl shadow-xl border border-slate-200 dark:border-slate-800 overflow-hidden min-h-[70vh]">
-          {/* Header */}
-          <div className="bg-emerald-700 p-6 md:p-8 text-white flex flex-col md:flex-row justify-between items-center gap-6">
-            <div className="flex items-center gap-5">
-              <div className="relative">
-                <div className="w-20 h-20 md:w-24 md:h-24 rounded-2xl overflow-hidden bg-white/20 border-2 border-white/40 flex items-center justify-center">
-                  {user.photo ? <img src={user.photo} alt="" className="w-full h-full object-cover" /> : <UserIcon className="w-10 h-10" />}
-                </div>
-                <button
-                  onClick={() => fileInputRef.current?.click()}
-                  className="absolute -bottom-2 -right-2 bg-white text-emerald-700 p-1.5 rounded-xl shadow-lg"
-                >
-                  <Camera className="w-4 h-4" />
-                </button>
-                <input ref={fileInputRef} type="file" accept="image/*" onChange={handlePhotoUpload} className="hidden" />
-              </div>
-              <div className="text-center md:text-left">
-                <h1 className="text-2xl md:text-3xl font-black">{user.name}</h1>
-                <p className="opacity-85 font-bold uppercase tracking-widest text-xs mt-1">
-                  {user.role} Portal • ID: {user.userId}
-                  {user.role === 'teacher' && user.assignedClass ? ` • Class ${user.assignedClass}` : ''}
-                </p>
-                <p className="text-[11px] font-semibold opacity-80 mt-0.5 tabular-nums">{formatDhakaClock(lang)}</p>
-              </div>
-            </div>
+    const openAdminTab = (tabId: ManagementTab) => {
+      setManagementTab(tabId);
+      setDashboardView('admin-management');
+      setAdminMobileNavOpen(false);
+    };
 
+    const qTrim = adminSearchQuery.trim().toLowerCase();
+    const adminSearchMatches: Array<{ label: string; category: string; onSelect: () => void }> = [];
+    if (qTrim) {
+      if ('teacher workspace marks attendance'.includes(qTrim) || 'শিক্ষক নম্বর হাজিরা'.includes(qTrim)) {
+        adminSearchMatches.push({
+          label: lang === 'bn' ? 'টিচার ও একাডেমিক পোর্টাল' : 'Academic & Teacher Workspace',
+          category: lang === 'bn' ? 'পোর্টাল' : 'Workspace',
+          onSelect: () => {
+            setDashboardView('teacher-portal');
+            setAdminSearchQuery('');
+          },
+        });
+      }
+      adminTabs.forEach((tb) => {
+        if (tb.label.toLowerCase().includes(qTrim) || tb.id.toLowerCase().includes(qTrim)) {
+          adminSearchMatches.push({
+            label: tb.label,
+            category: lang === 'bn' ? 'মডিউল' : 'Module',
+            onSelect: () => {
+              openAdminTab(tb.id);
+              setAdminSearchQuery('');
+            },
+          });
+        }
+      });
+      students.forEach((st) => {
+        if (st.name.toLowerCase().includes(qTrim) || st.roll.toLowerCase().includes(qTrim)) {
+          adminSearchMatches.push({
+            label: `${st.name} (Class ${st.classId} · Roll ${st.roll})`,
+            category: lang === 'bn' ? 'শিক্ষার্থী' : 'Student',
+            onSelect: () => {
+              setCardClassFilter(st.classId);
+              setCardSearch(st.roll);
+              openAdminTab('cards');
+              setAdminSearchQuery('');
+            },
+          });
+        }
+      });
+      teachers.forEach((tc) => {
+        const tcName = t(tc.name);
+        if (tcName.toLowerCase().includes(qTrim)) {
+          adminSearchMatches.push({
+            label: tcName,
+            category: lang === 'bn' ? 'শিক্ষক' : 'Teacher',
+            onSelect: () => {
+              openAdminTab('teachers');
+              setAdminSearchQuery('');
+            },
+          });
+        }
+      });
+      notices.forEach((n) => {
+        const nTitle = t(n.title);
+        if (nTitle.toLowerCase().includes(qTrim)) {
+          adminSearchMatches.push({
+            label: nTitle,
+            category: lang === 'bn' ? 'নোটিশ' : 'Notice',
+            onSelect: () => {
+              openAdminTab('notices');
+              setAdminSearchQuery('');
+            },
+          });
+        }
+      });
+    }
+
+    const activeAdminTabMeta = adminTabs.find((tb) => tb.id === managementTab);
+
+    const renderSidebarNav = (isMobile: boolean) => (
+      <nav className="p-3 space-y-1 flex-1 overflow-y-auto">
+        <button
+          type="button"
+          onClick={() => {
+            setDashboardView('main');
+            if (isMobile) setAdminMobileNavOpen(false);
+          }}
+          className={`w-full flex items-center justify-between gap-2 px-3.5 py-2.5 rounded-xl text-xs font-bold transition-all ${
+            dashboardView === 'main'
+              ? 'bg-emerald-700 text-white shadow-md'
+              : 'text-emerald-100/80 hover:bg-emerald-900/70 hover:text-white'
+          }`}
+        >
+          <span className="flex items-center gap-2.5 truncate">
+            <LayoutDashboard className="w-4 h-4 shrink-0" />
+            <span className="truncate">{lang === 'bn' ? 'অ্যাডমিন ড্যাশবোর্ড' : 'Dashboard'}</span>
+          </span>
+        </button>
+
+        <button
+          type="button"
+          onClick={() => {
+            setDashboardView('teacher-portal');
+            if (isMobile) setAdminMobileNavOpen(false);
+          }}
+          className={`w-full flex items-center justify-between gap-2 px-3.5 py-2.5 rounded-xl text-xs font-bold transition-all ${
+            dashboardView === 'teacher-portal'
+              ? 'bg-emerald-700 text-white shadow-md'
+              : 'text-emerald-100/80 hover:bg-emerald-900/70 hover:text-white'
+          }`}
+        >
+          <span className="flex items-center gap-2.5 truncate">
+            <GraduationCap className="w-4 h-4 shrink-0" />
+            <span className="truncate">{lang === 'bn' ? 'শিক্ষক ও একাডেমিক' : 'Teacher Workspace'}</span>
+          </span>
+        </button>
+
+        <div className="pt-2 pb-1 px-3">
+          <p className="text-[10px] font-extrabold uppercase tracking-wider text-emerald-400/80">
+            {lang === 'bn' ? 'স্কুল ম্যানেজমেন্ট' : 'School Modules'}
+          </p>
+        </div>
+
+        {adminTabs.map((tb) => {
+          const Icon = tb.icon;
+          const active = dashboardView === 'admin-management' && managementTab === tb.id;
+          return (
             <button
-              onClick={logout}
-              className="bg-red-500 hover:bg-red-600 px-5 py-2.5 rounded-xl font-bold text-xs uppercase tracking-wider flex items-center gap-2"
+              key={tb.id}
+              type="button"
+              onClick={() => openAdminTab(tb.id)}
+              className={`w-full flex items-center justify-between gap-2 px-3.5 py-2 rounded-xl text-xs font-bold transition-all ${
+                active
+                  ? 'bg-emerald-700 text-white shadow-md'
+                  : 'text-emerald-100/80 hover:bg-emerald-900/70 hover:text-white'
+              }`}
             >
-              <LogOut className="w-4 h-4" /> {lang === 'bn' ? 'লগআউট' : 'Logout'}
+              <span className="flex items-center gap-2.5 truncate">
+                <Icon className="w-4 h-4 shrink-0" />
+                <span className="truncate">{tb.label}</span>
+              </span>
+              {tb.badge !== undefined && (
+                <span
+                  className={`px-2 py-0.5 rounded-full text-[10px] font-black tabular-nums ${
+                    tb.badgeTone === 'amber' ? 'bg-amber-500 text-slate-950' : 'bg-emerald-500/30 text-emerald-100'
+                  }`}
+                >
+                  {tb.badge}
+                </span>
+              )}
             </button>
+          );
+        })}
+      </nav>
+    );
+
+    return (
+      <div className="min-h-[calc(100vh-4rem)] bg-slate-100 dark:bg-slate-950 flex flex-col lg:flex-row">
+        {/* Mobile Sidebar Drawer Overlay */}
+        {adminMobileNavOpen && (
+          <div className="fixed inset-0 z-[130] lg:hidden flex">
+            <div className="fixed inset-0 bg-slate-950/60 backdrop-blur-sm" onClick={() => setAdminMobileNavOpen(false)} />
+            <aside className="relative z-10 w-72 max-w-[85vw] bg-emerald-950 text-white flex flex-col h-full shadow-2xl">
+              <div className="p-5 border-b border-emerald-900 flex items-center justify-between gap-2">
+                <div className="flex items-center gap-2.5 min-w-0">
+                  <div className="w-9 h-9 rounded-xl bg-emerald-700/80 border border-emerald-500/40 flex items-center justify-center shrink-0">
+                    <ShieldCheck className="w-5 h-5 text-yellow-300" />
+                  </div>
+                  <div className="min-w-0">
+                    <p className="font-black text-xs truncate">{t(settings.name)}</p>
+                    <p className="text-[10px] text-emerald-300 font-bold">
+                      EIIN {settings.eiin} · {lang === 'bn' ? 'অ্যাডমিন প্যানেল' : 'Admin'}
+                    </p>
+                  </div>
+                </div>
+                <button type="button" onClick={() => setAdminMobileNavOpen(false)} className="p-1.5 rounded-lg hover:bg-emerald-900">
+                  <X className="w-5 h-5" />
+                </button>
+              </div>
+              {renderSidebarNav(true)}
+              <div className="p-4 m-3 rounded-2xl bg-emerald-900/60 border border-emerald-800/80 text-center space-y-1 shrink-0">
+                <GraduationCap className="w-6 h-6 text-yellow-300 mx-auto" />
+                <p className="text-xs font-black text-white">{t(settings.name)}</p>
+                <p className="text-[10px] text-emerald-200/80">Smart Education · Brighter Future</p>
+              </div>
+            </aside>
+          </div>
+        )}
+
+        {/* Desktop Left Forest-Green Sidebar */}
+        <aside className="hidden lg:flex lg:w-64 xl:w-68 shrink-0 bg-emerald-950 text-white flex-col justify-between border-r border-emerald-900 lg:max-h-[calc(100vh-4rem)] lg:sticky lg:top-16">
+          <div className="p-5 border-b border-emerald-900/80 flex items-center gap-3 shrink-0">
+            <div className="w-10 h-10 rounded-xl bg-emerald-800 border border-emerald-600/40 flex items-center justify-center shrink-0 shadow-sm">
+              <ShieldCheck className="w-5 h-5 text-yellow-300" />
+            </div>
+            <div className="min-w-0">
+              <p className="font-black text-xs leading-snug line-clamp-2 text-white">{t(settings.name)}</p>
+              <p className="text-[10px] font-bold text-emerald-300 mt-0.5">
+                {lang === 'bn' ? 'অ্যাডমিন প্যানেল' : 'Admin Control'} · EIIN {settings.eiin}
+              </p>
+            </div>
           </div>
 
-          <div className="p-6 md:p-8">
-            {user.role === 'teacher' ? (
-              <TeacherPortal />
-            ) : user.role === 'parent' ? (
-              <ParentPortal />
-            ) : user.role === 'student' ? (
-              <StudentPortal />
-            ) : dashboardView === 'teacher-portal' ? (
-              <div className="space-y-6">
-                <button
-                  onClick={() => setDashboardView('main')}
-                  className="px-4 py-2 rounded-xl bg-slate-100 dark:bg-slate-800 text-xs font-bold"
-                >
-                  ← {lang === 'bn' ? 'অ্যাডমিন হোমে ফিরুন' : 'Back to Admin Home'}
-                </button>
-                <TeacherPortal />
-              </div>
-            ) : dashboardView === 'main' ? (
-              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-                <button
-                  onClick={() => setDashboardView('admin-management')}
-                  className="bg-slate-900 dark:bg-slate-800 text-white p-7 rounded-3xl shadow-lg hover:bg-emerald-800 transition-all text-left space-y-4"
-                >
-                  <Settings className="w-8 h-8 text-yellow-400" />
-                  <h3 className="text-xl font-black">{lang === 'bn' ? 'স্কুল ম্যানেজমেন্ট সিস্টেম' : 'School Management System'}</h3>
-                  <p className="text-slate-300 text-xs">
-                    {lang === 'bn' ? 'শিক্ষার্থী, শিক্ষক, বিষয়, ফলাফল, নোটিশ, লাইব্রেরি, ভর্তি ও অ্যালামনাই নিয়ন্ত্রণ।' : 'Manage students, teachers, subjects, routines, notices, library, admissions & alumni.'}
-                  </p>
-                </button>
+          {renderSidebarNav(false)}
 
-                <button
-                  onClick={() => setDashboardView('teacher-portal')}
-                  className="bg-purple-700 text-white p-7 rounded-3xl shadow-lg hover:bg-purple-800 transition-all text-left space-y-4"
-                >
-                  <GraduationCap className="w-8 h-8 text-yellow-300" />
-                  <h3 className="text-xl font-black">{lang === 'bn' ? 'টিচার ও একাডেমিক পোর্টাল' : 'Academic & Teacher Workspace'}</h3>
-                  <p className="text-purple-100 text-xs">
-                    {lang === 'bn' ? 'হাজিরা, হোমওয়ার্ক মূল্যায়ন, পরীক্ষার নম্বর এন্ট্রি ও MCQ কুইজ তৈরি।' : 'Manage attendance, homework grading, exam marks & online MCQ quizzes.'}
-                  </p>
-                </button>
+          <div className="p-4 m-3 rounded-2xl bg-emerald-900/60 border border-emerald-800/70 text-center space-y-1.5 shrink-0">
+            <GraduationCap className="w-6 h-6 text-yellow-300 mx-auto" />
+            <p className="text-xs font-black text-white">{t(settings.name)}</p>
+            <p className="text-[10px] text-emerald-200/80">
+              {lang === 'bn' ? 'স্মার্ট শিক্ষা, উজ্জ্বল ভবিষ্যৎ' : 'Smart Education · Brighter Future'}
+            </p>
+          </div>
+        </aside>
 
-                <div className="bg-slate-50 dark:bg-slate-800/70 p-7 rounded-3xl border border-slate-200 dark:border-slate-700 space-y-4">
-                  <div className="flex items-center gap-2 text-xs font-extrabold uppercase text-emerald-700 dark:text-emerald-400">
-                    {isCloudAdmin ? <Cloud className="w-4 h-4" /> : <CloudOff className="w-4 h-4 text-amber-500" />}
-                    {isCloudAdmin ? 'Cloud Admin Synced' : 'Local Admin Session'}
-                  </div>
-                  <p className="text-xs text-slate-600 dark:text-slate-300">
-                    {isCloudAdmin
-                      ? lang === 'bn'
-                        ? 'আপনার Google অ্যাকাউন্ট সরাসরি Firestore ডাটাবেজের সাথে যুক্ত।'
-                        : 'Your verified Google account is synced with Firestore.'
-                      : lang === 'bn'
-                      ? 'ক্লাউড সিঙ্কের জন্য Google Sign-In ব্যবহার করুন।'
-                      : 'Sign in with Google Admin to sync across devices.'}
-                  </p>
-                  {!isCloudAdmin && (
-                    <button onClick={handleGoogleAuth} className="w-full py-2.5 rounded-xl bg-slate-900 text-white text-xs font-bold">
-                      Connect Google Admin
+        {/* Main Content Area */}
+        <div className="flex-1 min-w-0 flex flex-col">
+          {/* Sticky Top Bar */}
+          <header className="sticky top-0 z-30 bg-white/95 dark:bg-slate-900/95 backdrop-blur-md border-b border-slate-200 dark:border-slate-800 px-4 sm:px-6 py-3">
+            <div className="max-w-7xl mx-auto flex flex-wrap items-center justify-between gap-3">
+              <div className="flex items-center gap-2.5 flex-1 min-w-[200px] max-w-md relative">
+                <button
+                  type="button"
+                  onClick={() => setAdminMobileNavOpen(true)}
+                  className="lg:hidden p-2 rounded-xl bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-200"
+                  aria-label="Open menu"
+                >
+                  <Menu className="w-5 h-5" />
+                </button>
+                <div className="relative flex-1">
+                  <Search className="w-4 h-4 text-slate-400 absolute left-3.5 top-1/2 -translate-y-1/2" />
+                  <input
+                    value={adminSearchQuery}
+                    onChange={(e) => setAdminSearchQuery(e.target.value)}
+                    placeholder={lang === 'bn' ? 'মডিউল, শিক্ষার্থী, শিক্ষক বা নোটিশ খুঁজুন...' : 'Search modules, students, teachers...'}
+                    className="w-full pl-9 pr-8 py-2 rounded-full bg-slate-100 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-xs font-semibold outline-none focus:ring-2 focus:ring-emerald-600"
+                  />
+                  {adminSearchQuery && (
+                    <button
+                      type="button"
+                      onClick={() => setAdminSearchQuery('')}
+                      className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-700"
+                    >
+                      <X className="w-3.5 h-3.5" />
                     </button>
                   )}
-                  <div className="flex gap-2">
-                    <button onClick={exportDatabase} className="flex-1 py-2.5 rounded-xl bg-emerald-700 text-white text-xs font-bold flex items-center justify-center gap-1.5">
-                      <Download className="w-3.5 h-3.5" /> Backup
+
+                  {adminSearchMatches.length > 0 && (
+                    <div className="absolute left-0 right-0 mt-1.5 bg-white dark:bg-slate-900 rounded-2xl shadow-xl border border-slate-200 dark:border-slate-700 py-1.5 z-50">
+                      {adminSearchMatches.slice(0, 7).map((item, idx) => (
+                        <button
+                          key={`${item.category}-${idx}`}
+                          type="button"
+                          onClick={item.onSelect}
+                          className="w-full px-3.5 py-2 text-left hover:bg-slate-50 dark:hover:bg-slate-800 flex items-center justify-between gap-2 text-xs"
+                        >
+                          <span className="font-bold text-slate-800 dark:text-slate-100 truncate">{item.label}</span>
+                          <span className="text-[10px] font-extrabold uppercase px-2 py-0.5 rounded-md bg-emerald-100 dark:bg-emerald-950 text-emerald-700 dark:text-emerald-300 shrink-0">
+                            {item.category}
+                          </span>
+                        </button>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              </div>
+
+              <div className="flex items-center gap-2 sm:gap-3">
+                {/* Live GMT+6 Dhaka Clock */}
+                <div className="hidden xl:flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-emerald-50 dark:bg-emerald-950/60 border border-emerald-200 dark:border-emerald-800 text-emerald-800 dark:text-emerald-300 text-[11px] font-bold tabular-nums">
+                  <Clock className="w-3.5 h-3.5" />
+                  <span>{adminClockText}</span>
+                </div>
+
+                {/* Cloud Sync Status */}
+                {isCloudAdmin ? (
+                  <span className="hidden sm:inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-emerald-50 dark:bg-emerald-950/60 border border-emerald-200 dark:border-emerald-800 text-emerald-800 dark:text-emerald-300 text-[11px] font-extrabold">
+                    <Cloud className="w-3.5 h-3.5" />
+                    <span>{lang === 'bn' ? 'ক্লাউড সিঙ্ক' : 'Cloud Synced'}</span>
+                  </span>
+                ) : (
+                  <button
+                    type="button"
+                    onClick={handleGoogleAuth}
+                    className="hidden sm:inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-amber-100 dark:bg-amber-950 text-amber-900 dark:text-amber-200 text-[11px] font-extrabold"
+                  >
+                    <CloudOff className="w-3.5 h-3.5" />
+                    <span>{lang === 'bn' ? 'Google সিঙ্ক' : 'Sync Cloud'}</span>
+                  </button>
+                )}
+
+                {/* Pending Approvals Bell */}
+                <button
+                  type="button"
+                  onClick={() => openAdminTab(analyticsSummary.pendingAdmissions > 0 ? 'admissions' : analyticsSummary.pendingParentLinks > 0 ? 'parent-links' : 'analytics')}
+                  className="relative p-2.5 rounded-xl bg-slate-100 dark:bg-slate-800 hover:bg-emerald-50 dark:hover:bg-emerald-950/60 text-slate-700 dark:text-slate-200 transition-colors"
+                  title={lang === 'bn' ? 'অনুমোদনের অপেক্ষায়' : 'Pending Approvals'}
+                >
+                  <Bell className="w-4 h-4" />
+                  {analyticsSummary.pendingTotal > 0 && (
+                    <span className="absolute -top-1 -right-1 min-w-[18px] h-[18px] px-1 rounded-full bg-red-600 text-white text-[10px] font-black flex items-center justify-center tabular-nums">
+                      {analyticsSummary.pendingTotal}
+                    </span>
+                  )}
+                </button>
+
+                {/* Admin Profile & Avatar Upload */}
+                <div className="flex items-center gap-2.5 pl-1">
+                  <div className="relative">
+                    <div className="w-9 h-9 rounded-full overflow-hidden bg-emerald-100 dark:bg-emerald-950 border border-emerald-300 dark:border-emerald-700 flex items-center justify-center">
+                      {user.photo ? <img src={user.photo} alt="" className="w-full h-full object-cover" /> : <UserIcon className="w-4 h-4 text-emerald-700 dark:text-emerald-300" />}
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => fileInputRef.current?.click()}
+                      title={lang === 'bn' ? 'ছবি পরিবর্তন করুন' : 'Upload Photo'}
+                      className="absolute -bottom-1 -right-1 w-5 h-5 rounded-full bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 shadow flex items-center justify-center text-emerald-700 dark:text-emerald-400"
+                    >
+                      <Camera className="w-3 h-3" />
                     </button>
-                    <label className="flex-1 py-2.5 rounded-xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 text-xs font-bold flex items-center justify-center gap-1.5 cursor-pointer">
-                      <Upload className="w-3.5 h-3.5" /> Restore
-                      <input
-                        type="file"
-                        accept=".json"
-                        className="hidden"
-                        onChange={(e) => {
-                          const file = e.target.files?.[0];
-                          if (!file) return;
-                          const reader = new FileReader();
-                          reader.onload = (ev) => {
-                            const ok = importDatabase(String(ev.target?.result || ''));
-                            setDbFeedback({ ok, msg: ok ? 'Database restored!' : 'Invalid backup file' });
-                          };
-                          reader.readAsText(file);
-                        }}
-                      />
-                    </label>
+                    <input ref={fileInputRef} type="file" accept="image/*" onChange={handlePhotoUpload} className="hidden" />
                   </div>
-                  {dbFeedback && <p className="text-xs font-bold text-emerald-600">{dbFeedback.msg}</p>}
+                  <div className="hidden sm:block text-left leading-tight">
+                    <p className="text-xs font-extrabold text-slate-900 dark:text-white max-w-[140px] truncate">
+                      {user.name}
+                    </p>
+                    <p className="text-[10px] font-bold text-emerald-700 dark:text-emerald-400 tabular-nums">
+                      Admin · {user.userId}
+                    </p>
+                  </div>
+                </div>
+
+                <button
+                  type="button"
+                  onClick={logout}
+                  className="px-3 py-2 rounded-xl bg-red-500 hover:bg-red-600 text-white text-xs font-bold inline-flex items-center gap-1.5 whitespace-nowrap"
+                >
+                  <LogOut className="w-3.5 h-3.5" />
+                  <span className="hidden sm:inline">{lang === 'bn' ? 'লগআউট' : 'Logout'}</span>
+                </button>
+              </div>
+            </div>
+          </header>
+
+          {/* Main Scrollable Canvas */}
+          <main className="flex-1 p-4 sm:p-6 max-w-7xl w-full mx-auto space-y-6">
+            {adminToast && (
+              <div className="p-3.5 rounded-2xl bg-emerald-50 dark:bg-emerald-950/60 border border-emerald-200 dark:border-emerald-800 text-emerald-800 dark:text-emerald-200 text-xs font-bold flex items-center gap-2">
+                <CheckCircle className="w-4 h-4 shrink-0" />
+                <span>{adminToast}</span>
+              </div>
+            )}
+
+            {dashboardView === 'teacher-portal' ? (
+              <div className="space-y-5">
+                <div className="flex flex-wrap items-center justify-between gap-3 bg-white dark:bg-slate-900 p-4 rounded-2xl border border-slate-200 dark:border-slate-800">
+                  <div className="flex items-center gap-2.5">
+                    <button
+                      type="button"
+                      onClick={() => setDashboardView('main')}
+                      className="px-3.5 py-2 rounded-xl bg-slate-100 dark:bg-slate-800 hover:bg-emerald-50 text-xs font-bold"
+                    >
+                      ← {lang === 'bn' ? 'অ্যাডমিন ড্যাশবোর্ড' : 'Admin Dashboard'}
+                    </button>
+                    <h2 className="font-black text-sm sm:text-base text-slate-900 dark:text-white">
+                      {lang === 'bn' ? 'টিচার ও একাডেমিক ওয়ার্কস্পেস' : 'Academic & Teacher Workspace'}
+                    </h2>
+                  </div>
+                </div>
+                <TeacherPortal embedded />
+              </div>
+            ) : dashboardView === 'main' ? (
+              <div className="space-y-6">
+                {/* Campus Hero Welcome Banner */}
+                <div className="relative rounded-3xl overflow-hidden shadow-lg border border-emerald-900/20 min-h-[180px] flex items-center">
+                  <img
+                    src={settings.schoolPhoto || heroCampusImg}
+                    alt="Campus"
+                    className="absolute inset-0 w-full h-full object-cover"
+                  />
+                  <div className="absolute inset-0 bg-gradient-to-r from-emerald-950/92 via-emerald-900/80 to-emerald-800/60" />
+                  <div className="relative z-10 w-full p-6 sm:p-8 flex flex-col md:flex-row md:items-center justify-between gap-4 text-white">
+                    <div className="space-y-2 max-w-2xl">
+                      <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-emerald-700/80 border border-emerald-400/30 text-[11px] font-extrabold tracking-wide">
+                        <ShieldCheck className="w-3.5 h-3.5 text-yellow-300" />
+                        <span>
+                          {lang === 'bn' ? 'অ্যাডমিন কন্ট্রোল প্যানেল' : 'Admin Control Panel'} · EIIN {settings.eiin}
+                        </span>
+                      </div>
+                      <h1 className="text-2xl sm:text-3xl font-black tracking-tight">
+                        {t(settings.name)}
+                      </h1>
+                      <p className="text-xs sm:text-sm text-emerald-100/90 font-semibold">
+                        {lang === 'bn'
+                          ? `স্বাগতম, ${user.name}! শিক্ষার্থী, শিক্ষক, শ্রেণী শিক্ষক, ফলাফল, ফি ও অনুমোদন কার্যক্রম এক জায়গায় নিয়ন্ত্রণ করুন।`
+                          : `Welcome back, ${user.name}! Control admissions, class teachers, fees, marks, cards, and campus operations in one unified dashboard.`}
+                      </p>
+                      <div className="pt-1 flex flex-wrap gap-2 text-[11px] font-bold">
+                        <span className="px-3 py-1 rounded-full bg-emerald-600/90 text-white">
+                          Smart • Secure • Automated
+                        </span>
+                        <span className="px-3 py-1 rounded-full bg-white/15 text-emerald-50 tabular-nums">
+                          {teachers.length} {lang === 'bn' ? 'জন শিক্ষক' : 'Teachers'} · {students.length} {lang === 'bn' ? 'জন শিক্ষার্থী' : 'Students'}
+                        </span>
+                      </div>
+                    </div>
+                    <div className="hidden md:block text-right shrink-0 space-y-2">
+                      <p className="text-base font-black text-yellow-300 italic leading-snug">
+                        Together Towards a
+                        <br />
+                        Better Tomorrow
+                      </p>
+                      <div className="h-0.5 w-28 bg-yellow-400/80 ml-auto rounded-full" />
+                    </div>
+                  </div>
+                </div>
+
+                {/* 4 Core Real-Data KPI Cards */}
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+                  <button
+                    type="button"
+                    onClick={() => openAdminTab('analytics')}
+                    className="bg-white dark:bg-slate-900 p-4 rounded-2xl border border-slate-200 dark:border-slate-800 hover:border-emerald-400 flex items-center gap-3.5 shadow-sm text-left transition-colors"
+                  >
+                    <div className="w-11 h-11 rounded-xl bg-emerald-50 dark:bg-emerald-950/70 text-emerald-700 dark:text-emerald-400 flex items-center justify-center shrink-0">
+                      <Users className="w-5 h-5" />
+                    </div>
+                    <div className="min-w-0">
+                      <p className="text-[11px] font-bold text-slate-400 uppercase">{lang === 'bn' ? 'মোট শিক্ষার্থী' : 'Total Students'}</p>
+                      <p className="text-2xl font-black text-slate-900 dark:text-white tabular-nums">{analyticsSummary.totalStudents}</p>
+                      <p className="text-[11px] font-semibold text-emerald-700 dark:text-emerald-400 tabular-nums">
+                        {lang === 'bn' ? 'শ্রেণী ৬ষ্ঠ – ১০ম' : 'Classes 6 – 10'} · {teachers.length} {lang === 'bn' ? 'শিক্ষক' : 'Teachers'}
+                      </p>
+                    </div>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => openAdminTab('analytics')}
+                    className="bg-white dark:bg-slate-900 p-4 rounded-2xl border border-slate-200 dark:border-slate-800 hover:border-blue-400 flex items-center gap-3.5 shadow-sm text-left transition-colors"
+                  >
+                    <div className="w-11 h-11 rounded-xl bg-blue-50 dark:bg-blue-950/70 text-blue-700 dark:text-blue-400 flex items-center justify-center shrink-0">
+                      <ClipboardCheck className="w-5 h-5" />
+                    </div>
+                    <div className="min-w-0">
+                      <p className="text-[11px] font-bold text-slate-400 uppercase">{lang === 'bn' ? 'উপস্থিতির হার' : 'Attendance Rate'}</p>
+                      <p className="text-2xl font-black text-slate-900 dark:text-white tabular-nums">{analyticsSummary.attendanceRatePct}%</p>
+                      <p className="text-[11px] font-semibold text-blue-700 dark:text-blue-400 tabular-nums">
+                        {analyticsSummary.attTotal} {lang === 'bn' ? 'টি হাজিরা রেকর্ড' : 'recorded entries'}
+                      </p>
+                    </div>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => openAdminTab('fees')}
+                    className="bg-white dark:bg-slate-900 p-4 rounded-2xl border border-slate-200 dark:border-slate-800 hover:border-amber-400 flex items-center gap-3.5 shadow-sm text-left transition-colors"
+                  >
+                    <div className="w-11 h-11 rounded-xl bg-amber-50 dark:bg-amber-950/70 text-amber-600 dark:text-amber-400 flex items-center justify-center shrink-0">
+                      <Wallet className="w-5 h-5" />
+                    </div>
+                    <div className="min-w-0">
+                      <p className="text-[11px] font-bold text-slate-400 uppercase">{lang === 'bn' ? 'ফি আদায়ের হার' : 'Fee Collection'}</p>
+                      <p className="text-2xl font-black text-slate-900 dark:text-white tabular-nums">{analyticsSummary.feeCollectionPct}%</p>
+                      <p className="text-[11px] font-semibold text-amber-700 dark:text-amber-400 tabular-nums">
+                        ৳{analyticsSummary.collected.toLocaleString()} / ৳{analyticsSummary.billed.toLocaleString()}
+                      </p>
+                    </div>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => openAdminTab(analyticsSummary.pendingAdmissions > 0 ? 'admissions' : 'parent-links')}
+                    className="bg-white dark:bg-slate-900 p-4 rounded-2xl border border-slate-200 dark:border-slate-800 hover:border-purple-400 flex items-center gap-3.5 shadow-sm text-left transition-colors"
+                  >
+                    <div className="w-11 h-11 rounded-xl bg-purple-50 dark:bg-purple-950/70 text-purple-700 dark:text-purple-400 flex items-center justify-center shrink-0">
+                      <ShieldAlert className="w-5 h-5" />
+                    </div>
+                    <div className="min-w-0">
+                      <p className="text-[11px] font-bold text-slate-400 uppercase">{lang === 'bn' ? 'অনুমোদনের অপেক্ষায়' : 'Pending Approvals'}</p>
+                      <p className="text-2xl font-black text-slate-900 dark:text-white tabular-nums">{analyticsSummary.pendingTotal}</p>
+                      <p className="text-[11px] font-semibold text-purple-700 dark:text-purple-400 tabular-nums">
+                        Adm {analyticsSummary.pendingAdmissions} · Link {analyticsSummary.pendingParentLinks} · Leave {analyticsSummary.pendingLeaves}
+                      </p>
+                    </div>
+                  </button>
+                </div>
+
+                {/* 6-Step School Management Workflow */}
+                <div className="bg-white dark:bg-slate-900 p-5 sm:p-6 rounded-3xl border border-slate-200 dark:border-slate-800 shadow-sm space-y-4">
+                  <div className="flex flex-wrap items-center justify-between gap-2">
+                    <div className="flex items-center gap-2">
+                      <ShieldCheck className="w-5 h-5 text-emerald-700 dark:text-emerald-400" />
+                      <h2 className="text-sm sm:text-base font-black text-slate-900 dark:text-white">
+                        {lang === 'bn' ? 'অ্যাডমিন স্কুল ম্যানেজমেন্ট – অটোমেটেড ওয়ার্কফ্লো' : 'School Administration – Automated Workflow'}
+                      </h2>
+                    </div>
+                    <span className="text-[11px] font-bold text-emerald-700 dark:text-emerald-400">
+                      {lang === 'bn' ? 'সরাসরি মডিউলে প্রবেশ করুন' : 'Click any step to open'}
+                    </span>
+                  </div>
+
+                  <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3">
+                    {(
+                      [
+                        {
+                          title: lang === 'bn' ? 'ভর্তি আবেদন' : 'Admissions',
+                          sub: `${admissions.length} ${lang === 'bn' ? 'টি আবেদন' : 'Total'}`,
+                          icon: UserPlus,
+                          tone: 'bg-emerald-600 text-white',
+                          onClick: () => openAdminTab('admissions'),
+                        },
+                        {
+                          title: lang === 'bn' ? 'শ্রেণী শিক্ষক' : 'Class Teachers',
+                          sub: `${teachers.length} ${lang === 'bn' ? 'জন শিক্ষক' : 'Faculty'}`,
+                          icon: ShieldCheck,
+                          tone: 'bg-blue-600 text-white',
+                          onClick: () => openAdminTab('class-teachers'),
+                        },
+                        {
+                          title: lang === 'bn' ? 'হাজিরা ও নম্বর' : 'Marks & Att.',
+                          sub: `${examMarks.length} ${lang === 'bn' ? 'নম্বর এন্ট্রি' : 'Marks'}`,
+                          icon: Award,
+                          tone: 'bg-amber-500 text-white',
+                          onClick: () => setDashboardView('teacher-portal'),
+                        },
+                        {
+                          title: lang === 'bn' ? 'ফি ও হিসাব' : 'Fee Ledger',
+                          sub: `${analyticsSummary.feeCollectionPct}% ${lang === 'bn' ? 'আদায়' : 'Collected'}`,
+                          icon: Receipt,
+                          tone: 'bg-teal-600 text-white',
+                          onClick: () => openAdminTab('fees'),
+                        },
+                        {
+                          title: lang === 'bn' ? 'অ্যাডমিট ও আইডি' : 'Cards & Admit',
+                          sub: `${students.length} ${lang === 'bn' ? 'জন কার্ড' : 'Profiles'}`,
+                          icon: IdCard,
+                          tone: 'bg-purple-600 text-white',
+                          onClick: () => openAdminTab('cards'),
+                        },
+                        {
+                          title: lang === 'bn' ? 'শ্রেণীভিত্তিক ডাটা' : 'Class Explorer',
+                          sub: lang === 'bn' ? '৬ষ্ঠ–১০ম বিশ্লেষণ' : 'Analytics & CSV',
+                          icon: BarChart3,
+                          tone: 'bg-slate-800 text-white',
+                          onClick: () => openAdminTab('analytics'),
+                        },
+                      ] as const
+                    ).map((step, idx) => {
+                      const Icon = step.icon;
+                      return (
+                        <button
+                          key={step.title}
+                          type="button"
+                          onClick={step.onClick}
+                          className="p-3.5 rounded-2xl bg-slate-50 dark:bg-slate-800/70 border border-slate-200/80 dark:border-slate-700 hover:border-emerald-400 text-center space-y-2 transition-all"
+                        >
+                          <div className="flex items-center justify-center">
+                            <div className={`w-10 h-10 rounded-full flex items-center justify-center shadow-sm ${step.tone}`}>
+                              <Icon className="w-5 h-5" />
+                            </div>
+                          </div>
+                          <div className="space-y-0.5">
+                            <p className="text-[10px] font-bold text-slate-400 uppercase">
+                              {lang === 'bn' ? `ধাপ ${idx + 1}` : `Step ${idx + 1}`}
+                            </p>
+                            <p className="text-xs font-extrabold text-slate-900 dark:text-white">{step.title}</p>
+                            <p className="text-[11px] font-bold text-emerald-700 dark:text-emerald-400 truncate">{step.sub}</p>
+                          </div>
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+
+                {/* Quick Actions + Cloud Sync & Backup Row */}
+                <div className="grid lg:grid-cols-12 gap-6">
+                  <div className="lg:col-span-8 bg-white dark:bg-slate-900 p-5 sm:p-6 rounded-3xl border border-slate-200 dark:border-slate-800 shadow-sm space-y-4">
+                    <h2 className="text-sm sm:text-base font-black text-slate-900 dark:text-white">
+                      {lang === 'bn' ? 'দ্রুত ম্যানেজমেন্ট ও শর্টকাট' : 'Quick Actions & Core Modules'}
+                    </h2>
+                    <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
+                      <button
+                        type="button"
+                        onClick={() => openAdminTab('analytics')}
+                        className="p-3.5 rounded-2xl bg-emerald-50 dark:bg-emerald-950/40 border border-emerald-200 dark:border-emerald-800 hover:border-emerald-400 text-left flex items-center gap-2.5 transition-all"
+                      >
+                        <BarChart3 className="w-5 h-5 text-emerald-700 shrink-0" />
+                        <span className="text-xs font-extrabold text-slate-800 dark:text-slate-100">
+                          {lang === 'bn' ? 'শ্রেণীভিত্তিক ডাটা' : 'Class-Wise Analytics'}
+                        </span>
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => openAdminTab('class-teachers')}
+                        className="p-3.5 rounded-2xl bg-sky-50 dark:bg-sky-950/40 border border-sky-200 dark:border-sky-800 hover:border-sky-400 text-left flex items-center gap-2.5 transition-all"
+                      >
+                        <ShieldCheck className="w-5 h-5 text-sky-600 shrink-0" />
+                        <span className="text-xs font-extrabold text-slate-800 dark:text-slate-100">
+                          {lang === 'bn' ? 'শ্রেণী শিক্ষক নিয়োগ' : 'Assign Class Teachers'}
+                        </span>
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setDashboardView('teacher-portal')}
+                        className="p-3.5 rounded-2xl bg-purple-50 dark:bg-purple-950/40 border border-purple-200 dark:border-purple-800 hover:border-purple-400 text-left flex items-center gap-2.5 transition-all"
+                      >
+                        <GraduationCap className="w-5 h-5 text-purple-600 shrink-0" />
+                        <span className="text-xs font-extrabold text-slate-800 dark:text-slate-100">
+                          {lang === 'bn' ? 'নম্বর এন্ট্রি ও হাজিরা' : 'Teacher & Marks Portal'}
+                        </span>
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => openAdminTab('notices')}
+                        className="p-3.5 rounded-2xl bg-amber-50 dark:bg-amber-950/40 border border-amber-200 dark:border-amber-800 hover:border-amber-400 text-left flex items-center gap-2.5 transition-all"
+                      >
+                        <Bell className="w-5 h-5 text-amber-600 shrink-0" />
+                        <span className="text-xs font-extrabold text-slate-800 dark:text-slate-100">
+                          {lang === 'bn' ? 'নোটিশ ও ঘোষণা' : 'Notices & Alerts'}
+                        </span>
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => openAdminTab('cards')}
+                        className="p-3.5 rounded-2xl bg-teal-50 dark:bg-teal-950/40 border border-teal-200 dark:border-teal-800 hover:border-teal-400 text-left flex items-center gap-2.5 transition-all"
+                      >
+                        <IdCard className="w-5 h-5 text-teal-600 shrink-0" />
+                        <span className="text-xs font-extrabold text-slate-800 dark:text-slate-100">
+                          {lang === 'bn' ? 'অ্যাডমিট অনুমোদন' : 'Admit & ID Cards'}
+                        </span>
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => openAdminTab('system')}
+                        className="p-3.5 rounded-2xl bg-slate-50 dark:bg-slate-800/70 border border-slate-200 dark:border-slate-700 hover:border-slate-400 text-left flex items-center gap-2.5 transition-all"
+                      >
+                        <Settings className="w-5 h-5 text-slate-600 dark:text-slate-300 shrink-0" />
+                        <span className="text-xs font-extrabold text-slate-800 dark:text-slate-100">
+                          {lang === 'bn' ? 'বিদ্যালয়ের সেটিংস' : 'School Settings'}
+                        </span>
+                      </button>
+                    </div>
+                  </div>
+
+                  {/* Cloud Sync & JSON Backup/Restore */}
+                  <div className="lg:col-span-4 bg-white dark:bg-slate-900 p-5 sm:p-6 rounded-3xl border border-slate-200 dark:border-slate-800 shadow-sm flex flex-col justify-between gap-4">
+                    <div className="space-y-2">
+                      <div className="flex items-center gap-2 text-xs font-extrabold uppercase text-emerald-700 dark:text-emerald-400">
+                        {isCloudAdmin ? <Cloud className="w-4 h-4" /> : <CloudOff className="w-4 h-4 text-amber-500" />}
+                        {isCloudAdmin ? (lang === 'bn' ? 'ক্লাউড অ্যাডমিন সিঙ্কড' : 'Cloud Admin Synced') : (lang === 'bn' ? 'লোকাল অ্যাডমিন সেশন' : 'Local Admin Session')}
+                      </div>
+                      <p className="text-xs text-slate-600 dark:text-slate-300 leading-relaxed">
+                        {isCloudAdmin
+                          ? lang === 'bn'
+                            ? 'আপনার Google অ্যাকাউন্ট সরাসরি Firestore ডাটাবেজের সাথে যুক্ত রয়েছে।'
+                            : 'Your verified Google account is synced live with Firestore.'
+                          : lang === 'bn'
+                          ? 'ক্লাউড সিঙ্কের জন্য Google Sign-In ব্যবহার করুন।'
+                          : 'Sign in with Google Admin to sync across devices.'}
+                      </p>
+                    </div>
+                    <div className="space-y-2.5">
+                      {!isCloudAdmin && (
+                        <button
+                          type="button"
+                          onClick={handleGoogleAuth}
+                          className="w-full py-2.5 rounded-xl bg-slate-900 hover:bg-slate-800 text-white text-xs font-bold"
+                        >
+                          Connect Google Admin
+                        </button>
+                      )}
+                      <div className="flex gap-2">
+                        <button
+                          type="button"
+                          onClick={exportDatabase}
+                          className="flex-1 py-2.5 rounded-xl bg-emerald-700 hover:bg-emerald-800 text-white text-xs font-bold flex items-center justify-center gap-1.5"
+                        >
+                          <Download className="w-3.5 h-3.5" /> Backup
+                        </button>
+                        <label className="flex-1 py-2.5 rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 hover:border-emerald-500 text-xs font-bold flex items-center justify-center gap-1.5 cursor-pointer">
+                          <Upload className="w-3.5 h-3.5" /> Restore
+                          <input
+                            type="file"
+                            accept=".json"
+                            className="hidden"
+                            onChange={(e) => {
+                              const file = e.target.files?.[0];
+                              if (!file) return;
+                              const reader = new FileReader();
+                              reader.onload = (ev) => {
+                                const ok = importDatabase(String(ev.target?.result || ''));
+                                setDbFeedback({ ok, msg: ok ? 'Database restored!' : 'Invalid backup file' });
+                              };
+                              reader.readAsText(file);
+                            }}
+                          />
+                        </label>
+                      </div>
+                      {dbFeedback && (
+                        <p className={`text-xs font-bold ${dbFeedback.ok ? 'text-emerald-600' : 'text-red-600'}`}>
+                          {dbFeedback.msg}
+                        </p>
+                      )}
+                    </div>
+                  </div>
                 </div>
               </div>
             ) : (
               /* Admin Management Workspace */
               <div className="space-y-6">
-                <div className="flex flex-wrap items-center justify-between gap-3">
-                  <button
-                    onClick={() => setDashboardView('main')}
-                    className="px-4 py-2 rounded-xl bg-slate-100 dark:bg-slate-800 text-xs font-bold"
-                  >
-                    ← {lang === 'bn' ? 'অ্যাডমিন হোম' : 'Admin Home'}
-                  </button>
+                <div className="flex flex-wrap items-center justify-between gap-3 bg-white dark:bg-slate-900 p-4 rounded-2xl border border-slate-200 dark:border-slate-800">
+                  <div className="flex items-center gap-2.5">
+                    <button
+                      type="button"
+                      onClick={() => setDashboardView('main')}
+                      className="px-3.5 py-2 rounded-xl bg-slate-100 dark:bg-slate-800 hover:bg-emerald-50 text-xs font-bold"
+                    >
+                      ← {lang === 'bn' ? 'অ্যাডমিন হোম' : 'Admin Home'}
+                    </button>
+                    <h2 className="font-black text-sm sm:text-base text-slate-900 dark:text-white">
+                      {activeAdminTabMeta?.label || managementTab}
+                    </h2>
+                  </div>
                   {['notices', 'teachers', 'ebooks', 'gallery', 'users'].includes(managementTab) && (
                     <button
+                      type="button"
                       onClick={openAddModal}
                       className="px-4 py-2 rounded-xl bg-emerald-700 hover:bg-emerald-800 text-white text-xs font-bold flex items-center gap-1.5"
                     >
@@ -957,29 +1697,23 @@ const Login: React.FC = () => {
                   )}
                 </div>
 
-                {/* Tab strip */}
-                <div className="flex flex-wrap gap-1.5 bg-slate-100 dark:bg-slate-800 p-1.5 rounded-2xl">
+                {/* Quick Module Strip on Mobile / Tablet */}
+                <div className="flex lg:hidden flex-wrap gap-1.5 bg-white dark:bg-slate-900 p-2 rounded-2xl border border-slate-200 dark:border-slate-800">
                   {adminTabs.map((tb) => (
                     <button
                       key={tb.id}
+                      type="button"
                       onClick={() => setManagementTab(tb.id)}
-                      className={`px-3 py-2 rounded-xl text-xs font-bold transition-colors ${
+                      className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-colors ${
                         managementTab === tb.id
-                          ? 'bg-white dark:bg-slate-900 text-emerald-700 dark:text-emerald-300 shadow-sm'
-                          : 'text-slate-500 dark:text-slate-300 hover:text-slate-800'
+                          ? 'bg-emerald-700 text-white shadow-sm'
+                          : 'bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300'
                       }`}
                     >
                       {tb.label}
                     </button>
                   ))}
                 </div>
-
-                {adminToast && (
-                  <div className="p-3.5 rounded-2xl bg-emerald-50 dark:bg-emerald-950/60 border border-emerald-200 dark:border-emerald-800 text-emerald-800 dark:text-emerald-200 text-xs font-bold flex items-center gap-2">
-                    <CheckCircle className="w-4 h-4 shrink-0" />
-                    <span>{adminToast}</span>
-                  </div>
-                )}
 
                 {managementTab === 'analytics' && (
                   <div className="space-y-6">
@@ -2088,12 +2822,78 @@ const Login: React.FC = () => {
 
                 {managementTab === 'subjects' && (
                   <div className="space-y-4">
-                    <div className="grid grid-cols-2 sm:grid-cols-5 gap-2">
+                    <div className="flex flex-wrap items-center justify-between gap-2 pb-2 border-b border-slate-100 dark:border-slate-800">
+                      <div className="flex flex-wrap items-center gap-1.5">
+                        {(['all', '6', '7', '8', '9', '10'] as const).map((cid) => (
+                          <button
+                            key={cid}
+                            type="button"
+                            onClick={() => setSubjectClassFilter(cid)}
+                            className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-colors ${
+                              subjectClassFilter === cid
+                                ? 'bg-emerald-700 text-white'
+                                : 'bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300'
+                            }`}
+                          >
+                            {cid === 'all' ? (lang === 'bn' ? 'সকল শ্রেণী' : 'All Classes') : `Class ${cid}`}
+                          </button>
+                        ))}
+                      </div>
+                      <div className="flex flex-wrap items-center gap-2">
+                        {(subjectClassFilter === 'all' || subjectClassFilter === '9' || subjectClassFilter === '10') && (
+                          <select
+                            value={subjectGroupFilter}
+                            onChange={(e) => setSubjectGroupFilter(e.target.value as any)}
+                            className="px-3 py-1.5 rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-xs font-bold"
+                          >
+                            <option value="all">{lang === 'bn' ? 'সকল বিভাগ (৯ম–১০ম)' : 'All Groups (9–10)'}</option>
+                            <option value="Common">{lang === 'bn' ? 'আবশ্যিক / সাধারণ (৬ষ্ঠ–১০ম)' : 'Common / Unified (6–8 & 9–10)'}</option>
+                            {CLASS_9_10_GROUPS.map((g) => (
+                              <option key={g.id} value={g.id}>
+                                {lang === 'bn' ? g.bn : g.en}
+                              </option>
+                            ))}
+                          </select>
+                        )}
+                        <button
+                          type="button"
+                          onClick={syncNctbSubjects}
+                          className="px-3 py-1.5 rounded-xl bg-slate-900 dark:bg-emerald-800 text-white text-xs font-bold inline-flex items-center gap-1.5"
+                        >
+                          <RotateCcw className="w-3.5 h-3.5" />
+                          {lang === 'bn' ? 'NCTB বিষয় সিঙ্ক করুন' : 'Sync NCTB Subjects'}
+                        </button>
+                      </div>
+                    </div>
+
+                    <div className="grid grid-cols-2 sm:grid-cols-6 gap-2">
                       <input value={newSubject.code} onChange={(e) => setNewSubject((p) => ({ ...p, code: e.target.value }))} placeholder="Code" className="px-3 py-2 rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-xs font-bold" />
                       <input value={newSubject.nameBn} onChange={(e) => setNewSubject((p) => ({ ...p, nameBn: e.target.value }))} placeholder="বিষয়ের নাম (বাংলা)" className="px-3 py-2 rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-xs font-bold" />
                       <input value={newSubject.nameEn} onChange={(e) => setNewSubject((p) => ({ ...p, nameEn: e.target.value }))} placeholder="Subject Name (EN)" className="px-3 py-2 rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-xs font-bold" />
-                      <select value={newSubject.classId} onChange={(e) => setNewSubject((p) => ({ ...p, classId: e.target.value }))} className="px-3 py-2 rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-xs font-bold">
+                      <select
+                        value={newSubject.classId}
+                        onChange={(e) => {
+                          const cid = e.target.value;
+                          setNewSubject((p) => ({
+                            ...p,
+                            classId: cid,
+                            group: cid === '6' || cid === '7' || cid === '8' ? 'Common' : p.group,
+                          }));
+                        }}
+                        className="px-3 py-2 rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-xs font-bold"
+                      >
                         {['6', '7', '8', '9', '10'].map((c) => <option key={c} value={c}>Class {c}</option>)}
+                      </select>
+                      <select
+                        disabled={newSubject.classId === '6' || newSubject.classId === '7' || newSubject.classId === '8'}
+                        value={newSubject.classId === '6' || newSubject.classId === '7' || newSubject.classId === '8' ? 'Common' : newSubject.group}
+                        onChange={(e) => setNewSubject((p) => ({ ...p, group: e.target.value as any }))}
+                        className="px-3 py-2 rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-xs font-bold disabled:opacity-60"
+                      >
+                        <option value="Common">{lang === 'bn' ? 'আবশ্যিক / সাধারণ' : 'Common'}</option>
+                        <option value="Science">{lang === 'bn' ? 'বিজ্ঞান' : 'Science'}</option>
+                        <option value="Humanities">{lang === 'bn' ? 'মানবিক' : 'Humanities'}</option>
+                        <option value="Business Studies">{lang === 'bn' ? 'ব্যবসায় শিক্ষা' : 'Business Studies'}</option>
                       </select>
                       <button
                         onClick={() => {
@@ -2103,6 +2903,7 @@ const Login: React.FC = () => {
                             code: newSubject.code,
                             name: { bn: newSubject.nameBn || newSubject.nameEn, en: newSubject.nameEn || newSubject.nameBn },
                             classId: newSubject.classId,
+                            group: newSubject.classId === '6' || newSubject.classId === '7' || newSubject.classId === '8' ? 'Common' : newSubject.group,
                             totalMarks: Number(newSubject.totalMarks) || 100,
                             isPublic: true,
                           });
@@ -2114,12 +2915,30 @@ const Login: React.FC = () => {
                       </button>
                     </div>
                     <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-3">
-                      {subjects.map((s) => (
-                        <div key={s.id} className="p-3.5 rounded-2xl bg-slate-50 dark:bg-slate-800 flex justify-between items-center text-xs">
-                          <span><b>[{s.code}]</b> {t(s.name)} — Class {s.classId} ({s.totalMarks}m)</span>
-                          <button onClick={() => deleteSubject(s.id)} className="text-red-500"><Trash2 className="w-3.5 h-3.5" /></button>
-                        </div>
-                      ))}
+                      {subjects
+                        .filter((s) => {
+                          if (subjectClassFilter !== 'all' && s.classId !== subjectClassFilter) return false;
+                          const grp = inferSubjectStudyGroup(s.classId, s.code, s.name?.en, s.group);
+                          if (subjectGroupFilter !== 'all' && grp !== subjectGroupFilter) return false;
+                          return true;
+                        })
+                        .map((s) => {
+                          const grp = inferSubjectStudyGroup(s.classId, s.code, s.name?.en, s.group);
+                          return (
+                            <div key={s.id} className="p-3.5 rounded-2xl bg-slate-50 dark:bg-slate-800 flex justify-between items-center gap-2 text-xs">
+                              <div className="min-w-0">
+                                <p className="font-bold truncate">
+                                  <span className="font-mono text-emerald-700 dark:text-emerald-400 mr-1.5">[{s.code}]</span>
+                                  {t(s.name)}
+                                </p>
+                                <p className="text-[11px] text-slate-500 tabular-nums">
+                                  Class {s.classId} · {s.classId === '9' || s.classId === '10' ? grp : (lang === 'bn' ? 'অভিন্ন NCTB' : 'Unified 6–8')} · {s.totalMarks}m
+                                </p>
+                              </div>
+                              <button onClick={() => deleteSubject(s.id)} className="text-red-500 shrink-0"><Trash2 className="w-3.5 h-3.5" /></button>
+                            </div>
+                          );
+                        })}
                     </div>
                   </div>
                 )}
@@ -2127,10 +2946,24 @@ const Login: React.FC = () => {
                 {managementTab === 'exam-routines' && (
                   <div className="space-y-4">
                     <div className="grid grid-cols-2 sm:grid-cols-6 gap-2">
-                      <select value={newExamRoutine.classId} onChange={(e) => setNewExamRoutine((p) => ({ ...p, classId: e.target.value }))} className="px-3 py-2 rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-xs font-bold">
+                      <select
+                        value={newExamRoutine.classId}
+                        onChange={(e) => {
+                          const cid = e.target.value;
+                          const firstSub = getNctbSubjectsForClass(cid)[0]?.id || 'Bangla';
+                          setNewExamRoutine((p) => ({ ...p, classId: cid, subject: firstSub }));
+                        }}
+                        className="px-3 py-2 rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-xs font-bold"
+                      >
                         {['6', '7', '8', '9', '10'].map((c) => <option key={c} value={c}>Class {c}</option>)}
                       </select>
-                      <input value={newExamRoutine.subject} onChange={(e) => setNewExamRoutine((p) => ({ ...p, subject: e.target.value }))} placeholder="Subject" className="px-3 py-2 rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-xs font-bold" />
+                      <select value={newExamRoutine.subject} onChange={(e) => setNewExamRoutine((p) => ({ ...p, subject: e.target.value }))} className="px-3 py-2 rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-xs font-bold">
+                        {getNctbSubjectsForClass(newExamRoutine.classId).map((sub) => (
+                          <option key={`${sub.id}-${sub.group}`} value={sub.id}>
+                            {lang === 'bn' ? sub.bn : sub.en}
+                          </option>
+                        ))}
+                      </select>
                       <input type="date" value={newExamRoutine.date} onChange={(e) => setNewExamRoutine((p) => ({ ...p, date: e.target.value }))} className="px-3 py-2 rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-xs font-bold" />
                       <input value={newExamRoutine.time} onChange={(e) => setNewExamRoutine((p) => ({ ...p, time: e.target.value }))} placeholder="Time" className="px-3 py-2 rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-xs font-bold" />
                       <input value={newExamRoutine.room} onChange={(e) => setNewExamRoutine((p) => ({ ...p, room: e.target.value }))} placeholder="Room" className="px-3 py-2 rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-xs font-bold" />
@@ -2161,25 +2994,248 @@ const Login: React.FC = () => {
                   </div>
                 )}
 
-                {managementTab === 'admissions' && (
-                  <div className="space-y-3">
-                    {admissions.length === 0 ? (
-                      <p className="text-sm text-slate-400 text-center py-8">No admission applications yet.</p>
-                    ) : admissions.map((a) => (
-                      <div key={a.appId} className="p-4 rounded-2xl bg-slate-50 dark:bg-slate-800 flex flex-wrap justify-between items-center gap-3 text-xs">
-                        <div>
-                          <p className="font-extrabold text-sm">{a.studentName} ({a.appId})</p>
-                          <p className="text-slate-500">Class {a.targetClass} • Guardian: {a.guardianMobile} • Status: <b className="uppercase">{a.status}</b></p>
+                {managementTab === 'admissions' && (() => {
+                  const previewSchedule = resolveAdmissionSchedule(admissionScheduleForm);
+                  return (
+                    <div className="space-y-6">
+                      <form
+                        onSubmit={handleSaveAdmissionSchedule}
+                        className="p-5 sm:p-6 rounded-3xl bg-slate-50 dark:bg-slate-800/80 border border-slate-200 dark:border-slate-700 space-y-4"
+                      >
+                        <div className="flex flex-wrap items-center justify-between gap-3 border-b border-slate-200 dark:border-slate-700 pb-3">
+                          <div>
+                            <h3 className="font-black text-sm sm:text-base text-slate-900 dark:text-white flex items-center gap-2">
+                              <Calendar className="w-4 h-4 text-emerald-600" />
+                              {lang === 'bn'
+                                ? 'অনলাইন ভর্তি পোর্টাল ও বার্ষিক সময়সূচি নিয়ন্ত্রণ'
+                                : 'Online Admission Portal & Yearly Schedule'}
+                            </h3>
+                            <p className="text-[11px] text-slate-500 dark:text-slate-400">
+                              {lang === 'bn'
+                                ? 'প্রতি বছর ডিসেম্বর মাসে স্বয়ংক্রিয়ভাবে ভর্তি শুরু হয়; অ্যাডমিন এখান থেকে তারিখ, ফি ও পোর্টাল চালু/বন্ধ নিয়ন্ত্রণ করতে পারবেন।'
+                                : 'Starts automatically every December; Admin can customize dates, fee, or force open/close anytime.'}
+                            </p>
+                          </div>
+                          <span
+                            className={`px-3 py-1 rounded-full text-[11px] font-black uppercase ${
+                              previewSchedule.isOpen
+                                ? 'bg-emerald-100 text-emerald-800 dark:bg-emerald-950 dark:text-emerald-300'
+                                : 'bg-amber-100 text-amber-800 dark:bg-amber-950 dark:text-amber-300'
+                            }`}
+                          >
+                            {previewSchedule.isOpen
+                              ? lang === 'bn'
+                                ? `চালু (Session ${previewSchedule.sessionYear})`
+                                : `LIVE OPEN (${previewSchedule.sessionYear})`
+                              : previewSchedule.statusReason === 'upcoming-december'
+                              ? lang === 'bn'
+                                ? `শুরু: ${formatAdmissionDate(previewSchedule.startDate, 'bn')}`
+                                : `OPENS ${formatAdmissionDate(previewSchedule.startDate, 'en')}`
+                              : lang === 'bn'
+                              ? 'বন্ধ (Closed)'
+                              : 'CLOSED'}
+                          </span>
                         </div>
-                        <div className="flex gap-1.5">
-                          <button onClick={() => updateAdmissionStatus(a.appId, 'approved')} className="px-3 py-1.5 rounded-lg bg-emerald-600 text-white font-bold">Approve</button>
-                          <button onClick={() => updateAdmissionStatus(a.appId, 'rejected')} className="px-3 py-1.5 rounded-lg bg-red-600 text-white font-bold">Reject</button>
-                          <button onClick={() => deleteAdmission(a.appId)} className="p-1.5 text-slate-400 hover:text-red-500"><Trash2 className="w-4 h-4" /></button>
+
+                        <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-3">
+                          <div>
+                            <label className="block text-[11px] font-bold text-slate-500 mb-1">
+                              {lang === 'bn' ? 'পোর্টাল মোড' : 'Portal Mode'}
+                            </label>
+                            <select
+                              value={admissionScheduleForm.mode}
+                              onChange={(e) =>
+                                setAdmissionScheduleForm((p) => ({
+                                  ...p,
+                                  mode: e.target.value as AdmissionScheduleConfig['mode'],
+                                }))
+                              }
+                              className="w-full px-3 py-2 rounded-xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 text-xs font-bold"
+                            >
+                              <option value="auto">
+                                {lang === 'bn' ? 'স্বয়ংক্রিয় (প্রতি বছর ডিসেম্বর থেকে)' : 'Auto Yearly (Starts Every December)'}
+                              </option>
+                              <option value="open">
+                                {lang === 'bn' ? 'সর্বদা চালু রাখুন (Force Open)' : 'Force Open Now'}
+                              </option>
+                              <option value="closed">
+                                {lang === 'bn' ? 'বন্ধ রাখুন (Force Closed)' : 'Force Closed'}
+                              </option>
+                            </select>
+                          </div>
+
+                          <div>
+                            <label className="block text-[11px] font-bold text-slate-500 mb-1">
+                              {lang === 'bn' ? 'আবেদন শুরু (ডিসেম্বর)' : 'Start Date'}
+                            </label>
+                            <input
+                              type="date"
+                              required
+                              value={admissionScheduleForm.startDate}
+                              onChange={(e) =>
+                                setAdmissionScheduleForm((p) => ({ ...p, startDate: e.target.value }))
+                              }
+                              className="w-full px-3 py-2 rounded-xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 text-xs font-bold"
+                            />
+                          </div>
+
+                          <div>
+                            <label className="block text-[11px] font-bold text-slate-500 mb-1">
+                              {lang === 'bn' ? 'আবেদনের শেষ তারিখ' : 'Application Deadline'}
+                            </label>
+                            <input
+                              type="date"
+                              required
+                              value={admissionScheduleForm.deadlineDate}
+                              onChange={(e) =>
+                                setAdmissionScheduleForm((p) => ({ ...p, deadlineDate: e.target.value }))
+                              }
+                              className="w-full px-3 py-2 rounded-xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 text-xs font-bold"
+                            />
+                          </div>
+
+                          <div>
+                            <label className="block text-[11px] font-bold text-slate-500 mb-1">
+                              {lang === 'bn' ? 'ভর্তি পরীক্ষা' : 'Admission Test Date'}
+                            </label>
+                            <input
+                              type="date"
+                              required
+                              value={admissionScheduleForm.examDate}
+                              onChange={(e) =>
+                                setAdmissionScheduleForm((p) => ({ ...p, examDate: e.target.value }))
+                              }
+                              className="w-full px-3 py-2 rounded-xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 text-xs font-bold"
+                            />
+                          </div>
+
+                          <div>
+                            <label className="block text-[11px] font-bold text-slate-500 mb-1">
+                              {lang === 'bn' ? 'ফলাফল প্রকাশ' : 'Result Publish Date'}
+                            </label>
+                            <input
+                              type="date"
+                              required
+                              value={admissionScheduleForm.resultDate}
+                              onChange={(e) =>
+                                setAdmissionScheduleForm((p) => ({ ...p, resultDate: e.target.value }))
+                              }
+                              className="w-full px-3 py-2 rounded-xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 text-xs font-bold"
+                            />
+                          </div>
+
+                          <div className="grid grid-cols-2 gap-2">
+                            <div>
+                              <label className="block text-[11px] font-bold text-slate-500 mb-1">
+                                {lang === 'bn' ? 'আবেদন ফি (৳)' : 'Fee (BDT)'}
+                              </label>
+                              <input
+                                type="number"
+                                min={0}
+                                max={50000}
+                                required
+                                value={admissionScheduleForm.feeAmount}
+                                onChange={(e) =>
+                                  setAdmissionScheduleForm((p) => ({
+                                    ...p,
+                                    feeAmount: Math.max(0, Number(e.target.value) || 0),
+                                  }))
+                                }
+                                className="w-full px-3 py-2 rounded-xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 text-xs font-bold"
+                              />
+                            </div>
+                            <div>
+                              <label className="block text-[11px] font-bold text-slate-500 mb-1">
+                                {lang === 'bn' ? 'শিক্ষাবর্ষ' : 'Session'}
+                              </label>
+                              <input
+                                type="text"
+                                maxLength={16}
+                                value={admissionScheduleForm.sessionYear || ''}
+                                onChange={(e) =>
+                                  setAdmissionScheduleForm((p) => ({ ...p, sessionYear: e.target.value }))
+                                }
+                                placeholder="2027"
+                                className="w-full px-3 py-2 rounded-xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 text-xs font-bold"
+                              />
+                            </div>
+                          </div>
                         </div>
+
+                        <div className="grid sm:grid-cols-2 gap-3 items-center">
+                          <input
+                            type="text"
+                            maxLength={300}
+                            value={admissionScheduleForm.noticeNote || ''}
+                            onChange={(e) =>
+                              setAdmissionScheduleForm((p) => ({ ...p, noticeNote: e.target.value }))
+                            }
+                            placeholder={
+                              lang === 'bn'
+                                ? 'ঐচ্ছিক ভর্তি নির্দেশনা/বিজ্ঞপ্তি (যদি থাকে)...'
+                                : 'Optional admission portal notice banner...'
+                            }
+                            className="w-full px-3 py-2 rounded-xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 text-xs"
+                          />
+                          <label className="inline-flex items-center gap-2 text-xs font-bold text-slate-700 dark:text-slate-300 cursor-pointer">
+                            <input
+                              type="checkbox"
+                              checked={admissionScheduleForm.autoRollYearly !== false}
+                              onChange={(e) =>
+                                setAdmissionScheduleForm((p) => ({ ...p, autoRollYearly: e.target.checked }))
+                              }
+                              className="w-4 h-4 rounded accent-emerald-700"
+                            />
+                            {lang === 'bn'
+                              ? 'প্রতি বছর ডিসেম্বর মাসে স্বয়ংক্রিয়ভাবে নতুন শিক্ষাবর্ষ আপডেট হবে'
+                              : 'Auto-roll schedule every December for next year'}
+                          </label>
+                        </div>
+
+                        <div className="flex flex-wrap items-center gap-2.5 pt-1">
+                          <button
+                            type="submit"
+                            className="px-4 py-2 rounded-xl bg-emerald-700 hover:bg-emerald-800 text-white text-xs font-bold inline-flex items-center gap-1.5"
+                          >
+                            <Save className="w-3.5 h-3.5" />
+                            {lang === 'bn' ? 'ভর্তি সূচি সেভ করুন' : 'Save Admission Schedule'}
+                          </button>
+                          <button
+                            type="button"
+                            onClick={handleResetAdmissionSchedule}
+                            className="px-4 py-2 rounded-xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 text-xs font-bold hover:bg-slate-100"
+                          >
+                            {lang === 'bn' ? 'ডিসেম্বর ডিফল্ট রিসেট' : 'Reset to Dec Auto Default'}
+                          </button>
+                          {admissionScheduleSaved && (
+                            <span className="text-xs font-bold text-emerald-600 inline-flex items-center gap-1">
+                              <CheckCircle className="w-3.5 h-3.5" />
+                              {lang === 'bn' ? 'সংরক্ষিত!' : 'Saved!'}
+                            </span>
+                          )}
+                        </div>
+                      </form>
+
+                      <div className="space-y-3">
+                        {admissions.length === 0 ? (
+                          <p className="text-sm text-slate-400 text-center py-8">No admission applications yet.</p>
+                        ) : admissions.map((a) => (
+                          <div key={a.appId} className="p-4 rounded-2xl bg-slate-50 dark:bg-slate-800 flex flex-wrap justify-between items-center gap-3 text-xs">
+                            <div>
+                              <p className="font-extrabold text-sm">{a.studentName} ({a.appId})</p>
+                              <p className="text-slate-500">Class {a.targetClass} • Guardian: {a.guardianMobile} • Status: <b className="uppercase">{a.status}</b></p>
+                            </div>
+                            <div className="flex gap-1.5">
+                              <button onClick={() => updateAdmissionStatus(a.appId, 'approved')} className="px-3 py-1.5 rounded-lg bg-emerald-600 text-white font-bold">Approve</button>
+                              <button onClick={() => updateAdmissionStatus(a.appId, 'rejected')} className="px-3 py-1.5 rounded-lg bg-red-600 text-white font-bold">Reject</button>
+                              <button onClick={() => deleteAdmission(a.appId)} className="p-1.5 text-slate-400 hover:text-red-500"><Trash2 className="w-4 h-4" /></button>
+                            </div>
+                          </div>
+                        ))}
                       </div>
-                    ))}
-                  </div>
-                )}
+                    </div>
+                  );
+                })()}
 
                 {managementTab === 'alumni' && (
                   <div className="space-y-3">
@@ -2801,7 +3857,7 @@ const Login: React.FC = () => {
                 )}
               </div>
             )}
-          </div>
+          </main>
         </div>
 
         {/* Add/Edit Modal */}

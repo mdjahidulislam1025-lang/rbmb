@@ -761,23 +761,42 @@ export const ClassTeacherAssignmentPanel: React.FC<ClassTeacherAssignmentPanelPr
                     : 'All Subjects'}
                 </button>
               </div>
-              <div className="flex flex-wrap gap-1.5">
-                {CANONICAL_SUBJECTS.map((sub) => {
-                  const selected = newForm.teachingSubjects.includes(sub.id);
+              <div className="space-y-2 max-h-52 overflow-y-auto pr-1">
+                {(
+                  [
+                    { key: 'common', bn: '৬ষ্ঠ–৮ম ও আবশ্যিক বিষয়', en: 'Class 6–8 & Common' },
+                    { key: 'science', bn: 'বিজ্ঞান বিভাগ (৯ম–১০ম)', en: 'Science Group (9–10)' },
+                    { key: 'humanities', bn: 'মানবিক বিভাগ (৯ম–১০ম)', en: 'Humanities Group (9–10)' },
+                    { key: 'business', bn: 'ব্যবসায় শিক্ষা (৯ম–১০ম)', en: 'Business Studies (9–10)' },
+                  ] as const
+                ).map((cat) => {
+                  const items = CANONICAL_SUBJECTS.filter((s) => s.category === cat.key);
                   return (
-                    <button
-                      key={sub.id}
-                      type="button"
-                      onClick={() => toggleNewFormSubject(sub.id)}
-                      className={`px-2.5 py-1 rounded-xl border text-[11px] font-bold inline-flex items-center gap-1 transition-colors ${
-                        selected
-                          ? 'bg-purple-700 border-purple-700 text-white'
-                          : 'bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-300'
-                      }`}
-                    >
-                      {selected && <Check className="w-3 h-3" />}
-                      {lang === 'bn' ? sub.bn : sub.en}
-                    </button>
+                    <div key={cat.key} className="space-y-1">
+                      <p className="text-[10px] font-bold text-slate-500 dark:text-slate-400">
+                        {lang === 'bn' ? cat.bn : cat.en}
+                      </p>
+                      <div className="flex flex-wrap gap-1">
+                        {items.map((sub) => {
+                          const selected = newForm.teachingSubjects.includes(sub.id);
+                          return (
+                            <button
+                              key={sub.id}
+                              type="button"
+                              onClick={() => toggleNewFormSubject(sub.id)}
+                              className={`px-2 py-0.5 rounded-lg border text-[11px] font-bold inline-flex items-center gap-1 transition-colors ${
+                                selected
+                                  ? 'bg-purple-700 border-purple-700 text-white'
+                                  : 'bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-300'
+                              }`}
+                            >
+                              {selected && <Check className="w-3 h-3" />}
+                              <span>{lang === 'bn' ? sub.bn : sub.en}</span>
+                            </button>
+                          );
+                        })}
+                      </div>
+                    </div>
                   );
                 })}
               </div>
@@ -1114,28 +1133,44 @@ export const ClassTeacherAssignmentPanel: React.FC<ClassTeacherAssignmentPanelPr
                       ? 'যে বিষয়ের নম্বর এন্ট্রি দিবেন (নিজ শ্রেণী ছাড়া অন্য শ্রেণীতে):'
                       : 'Assigned Subjects (For Marks Entry in Teaching Classes):'}
                   </span>
-                  <div className="flex flex-wrap gap-1">
-                    {CANONICAL_SUBJECTS.map((sub) => {
-                      const active = item.teachingSubjects.some(
-                        (s) => s.toLowerCase() === sub.id.toLowerCase()
-                      );
-                      return (
-                        <button
-                          key={sub.id}
-                          type="button"
-                          disabled={savingKey !== null}
-                          onClick={() => void handleToggleTeachingSubject(item, sub.id)}
-                          className={`px-2 py-0.5 rounded-lg border text-[10px] font-bold inline-flex items-center gap-1 transition-colors ${
-                            active
-                              ? 'bg-purple-700 border-purple-700 text-white'
-                              : 'bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-700 text-slate-500 dark:text-slate-400'
-                          }`}
-                        >
-                          {active && <Check className="w-2.5 h-2.5" />}
-                          <span>{lang === 'bn' ? sub.bn : sub.en}</span>
-                        </button>
-                      );
-                    })}
+                  <div className="max-h-44 overflow-y-auto space-y-1.5 pr-1">
+                    {(
+                      [
+                        { key: 'common', bn: '৬ষ্ঠ–৮ম ও আবশ্যিক', en: 'Common / 6–8' },
+                        { key: 'science', bn: 'বিজ্ঞান (৯ম–১০ম)', en: 'Science' },
+                        { key: 'humanities', bn: 'মানবিক (৯ম–১০ম)', en: 'Humanities' },
+                        { key: 'business', bn: 'ব্যবসায় শিক্ষা (৯ম–১০ম)', en: 'Business Studies' },
+                      ] as const
+                    ).map((cat) => (
+                      <div key={cat.key} className="space-y-1">
+                        <p className="text-[9px] font-bold text-slate-400">
+                          {lang === 'bn' ? cat.bn : cat.en}
+                        </p>
+                        <div className="flex flex-wrap gap-1">
+                          {CANONICAL_SUBJECTS.filter((s) => s.category === cat.key).map((sub) => {
+                            const active = item.teachingSubjects.some(
+                              (s) => s.toLowerCase() === sub.id.toLowerCase()
+                            );
+                            return (
+                              <button
+                                key={sub.id}
+                                type="button"
+                                disabled={savingKey !== null}
+                                onClick={() => void handleToggleTeachingSubject(item, sub.id)}
+                                className={`px-2 py-0.5 rounded-lg border text-[10px] font-bold inline-flex items-center gap-1 transition-colors ${
+                                  active
+                                    ? 'bg-purple-700 border-purple-700 text-white'
+                                    : 'bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-700 text-slate-500 dark:text-slate-400'
+                                }`}
+                              >
+                                {active && <Check className="w-2.5 h-2.5" />}
+                                <span>{lang === 'bn' ? sub.bn : sub.en}</span>
+                              </button>
+                            );
+                          })}
+                        </div>
+                      </div>
+                    ))}
                   </div>
                 </div>
 

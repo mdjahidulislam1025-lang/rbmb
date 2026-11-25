@@ -466,7 +466,7 @@ const EBookLibrary: React.FC = () => {
                     ? t(readerBook.description)
                     : lang === 'bn'
                     ? 'রাণীর বাজার মাধ্যমিক বিদ্যালয়ের ২০২৬ শিক্ষাবর্ষের অনুমোদিত ডিজিটাল পাঠ্য সহায়িকা।'
-                    : 'Official 2026 academic curriculum digital material from Ranir Bazar Secondary High School.'}
+                    : 'Official 2026 academic curriculum digital material from রাণীর বাজার মাধ্যমিক বিদ্যালয়.'}
                 </p>
               </div>
               <div className="flex flex-wrap gap-3">

@@ -287,11 +287,8 @@ const QrBadge: React.FC<{
 };
 
 function getSchoolHeaderInfo(settings: SchoolSettings, cardLang: 'en' | 'bn') {
-  const rawName = cardLang === 'bn' ? settings.name.bn : settings.name.en;
-  const hasTag = rawName.includes('RBMB') || rawName.includes('আরবিএমবি');
-  const schoolName = hasTag
-    ? rawName
-    : `${rawName} (${cardLang === 'bn' ? 'আরবিএমবি' : 'RBMB'})`;
+  const rawName = (cardLang === 'bn' ? settings.name?.bn : settings.name?.en) || 'রাণীর বাজার মাধ্যমিক বিদ্যালয়';
+  const schoolName = rawName;
   const locationText = cardLang === 'bn' ? settings.location.bn : settings.location.en;
   const headTeacherTitle = cardLang === 'bn' ? 'প্রধান শিক্ষক' : 'Head Teacher';
   const headTeacherName =

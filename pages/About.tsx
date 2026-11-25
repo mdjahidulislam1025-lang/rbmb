@@ -108,7 +108,7 @@ const About: React.FC = () => {
             <p className="text-slate-600 dark:text-slate-300 text-base leading-relaxed font-medium">
               {lang === 'bn'
                 ? `${t(settings.name)} কুমিল্লার চৌদ্দগ্রাম অঞ্চলের একটি ঐতিহ্যবাহী মাধ্যমিক শিক্ষা প্রতিষ্ঠান। ১৯৫৮ সাল থেকে নৈতিক মূল্যবোধ, বিজ্ঞানমনস্ক পাঠদান এবং ডিজিটাল ক্যাম্পাস উদ্যোগের মাধ্যমে আমরা মানসম্মত শিক্ষা বিস্তার করে আসছি।`
-                : `${t(settings.name)} is a respected secondary institution in Chauddagram, Cumilla. Since 1958, we have combined disciplined scholarship, scientific curiosity, and RBMB Digital Campus tools to serve generations of students.`}
+                : `${t(settings.name)} is a respected secondary institution in Chauddagram, Cumilla. Since 1958, we have combined disciplined scholarship, scientific curiosity, and digital campus tools to serve generations of students.`}
             </p>
             <div className="grid grid-cols-2 gap-4 pt-2">
               <div className="bg-white dark:bg-slate-900 p-5 rounded-2xl border border-slate-200 dark:border-slate-800">
@@ -294,7 +294,7 @@ const About: React.FC = () => {
             <p className="text-slate-600 dark:text-slate-300 text-base leading-relaxed font-medium">
               {lang === 'bn'
                 ? 'প্রযুক্তি ও মেধার সমন্বয়ে একটি আদর্শ আধুনিক ডিজিটাল শিক্ষা প্রতিষ্ঠান হিসেবে নিজেদের প্রতিষ্ঠিত করা।'
-                : 'To establish RBMB Digital Campus as a model center of academic excellence and smart school governance.'}
+                : 'To establish রাণীর বাজার মাধ্যমিক বিদ্যালয় as a model center of academic excellence and smart school governance.'}
             </p>
           </div>
         </section>

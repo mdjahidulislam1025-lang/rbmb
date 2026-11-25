@@ -34,8 +34,16 @@ import {
   Lock,
   ShieldAlert,
   ShieldCheck,
+  LayoutDashboard,
+  Menu,
+  LogOut,
+  User as UserIcon,
+  GraduationCap,
+  Wallet,
+  FileText,
 } from 'lucide-react';
 import { useApp } from '../App';
+import { heroCampusImg } from '../src/assets/media';
 import { CLASSES, CLASS_SUBJECTS, EXAM_TERMS } from '../constants';
 import {
   AttendanceStatus,
@@ -65,12 +73,18 @@ import {
   resolveTeacherAllowedSubjects,
   isSubjectMatched,
   SCHOOL_CLASS_IDS,
+  CLASS_9_10_GROUPS,
+  Class910GroupId,
+  getNctbSubjectsForClass,
+  getSubjectDisplayLabel,
+  normalizeClassGroup,
 } from '../utils/teacherRole';
 import { computeClassMeritRanking, isYearFinalExamTerm } from '../utils/meritRoll';
 
 const { useState, useEffect, useMemo, useRef } = React;
 
 type TeacherTab =
+  | 'overview'
   | 'attendance'
   | 'homework'
   | 'marks'
@@ -84,11 +98,16 @@ type TeacherTab =
   | 'my-leave'
   | 'student-leaves';
 
-export const TeacherPortal: React.FC = () => {
+export interface TeacherPortalProps {
+  embedded?: boolean;
+}
+
+export const TeacherPortal: React.FC<TeacherPortalProps> = ({ embedded = false }) => {
   const {
     lang,
     t,
     user,
+    logout,
     isCloudAdmin,
     isCloudTeacher,
     signInWithGoogle,
@@ -145,7 +164,11 @@ export const TeacherPortal: React.FC = () => {
     settings,
   } = useApp();
 
-  const [activeTab, setActiveTab] = useState<TeacherTab>('attendance');
+  const [activeTab, setActiveTab] = useState<TeacherTab>(embedded ? 'attendance' : 'overview');
+  const [mobileNavOpen, setMobileNavOpen] = useState(false);
+  const [searchQuery, setSearchQuery] = useState('');
+  const [dhakaClockText, setDhakaClockText] = useState(() => formatDhakaClock(lang));
+  const avatarInputRef = useRef<HTMLInputElement>(null);
   const [toast, setToast] = useState<string | null>(null);
   const [activeReceipt, setActiveReceipt] = useState<FeeRecord | null>(null);
   const [idCardStudent, setIdCardStudent] = useState<SchoolStudent | null>(null);
@@ -153,6 +176,14 @@ export const TeacherPortal: React.FC = () => {
   const [certStudent, setCertStudent] = useState<SchoolStudent | null>(null);
   const [teacherIdCardOpen, setTeacherIdCardOpen] = useState(false);
   const todayStr = getDhakaTodayISO();
+
+  useEffect(() => {
+    setDhakaClockText(formatDhakaClock(lang));
+    const timer = setInterval(() => {
+      setDhakaClockText(formatDhakaClock(lang));
+    }, 30000);
+    return () => clearInterval(timer);
+  }, [lang]);
 
   const matchedTeacherIdx = useMemo(() => {
     const uid = (user?.userId || '').trim().toLowerCase();
@@ -192,7 +223,7 @@ export const TeacherPortal: React.FC = () => {
       },
       qualification: {
         bn: user?.qualification || 'রাণীর বাজার মাধ্যমিক বিদ্যালয়',
-        en: user?.qualification || 'Ranir Bazar Secondary High School',
+        en: user?.qualification || 'রাণীর বাজার মাধ্যমিক বিদ্যালয়',
       },
       phone: user?.phone,
       bloodGroup: user?.bloodGroup,
@@ -448,6 +479,7 @@ export const TeacherPortal: React.FC = () => {
 
   // --- 3. Exam Marks ---
   const [markClassId, setMarkClassId] = useState<string>(availableClassIds[0] || '9');
+  const [markGroup, setMarkGroup] = useState<'all' | Class910GroupId>('all');
   const [markTerm, setMarkTerm] = useState<string>(EXAM_TERMS[1].id);
   const [markSubject, setMarkSubject] = useState<string>(CLASS_SUBJECTS['9'][0]);
   const [markTotal, setMarkTotal] = useState<number>(100);
@@ -456,6 +488,13 @@ export const TeacherPortal: React.FC = () => {
   const [quickAddStudent, setQuickAddStudent] = useState({ roll: '', name: '', section: 'A', guardianMobile: '' });
   const [marksDraft, setMarksDraft] = useState<Record<string, string>>({});
   const lastMarksKeyRef = useRef<string>('');
+
+  const isMarkSecondaryClass = markClassId === '9' || markClassId === '10';
+
+  const markSubjectOptions = useMemo(
+    () => getNctbSubjectsForClass(markClassId, isMarkSecondaryClass ? markGroup : 'all'),
+    [markClassId, isMarkSecondaryClass, markGroup]
+  );
 
   const markClassStudents = useMemo(
     () =>
@@ -467,11 +506,15 @@ export const TeacherPortal: React.FC = () => {
 
   const filteredMarkStudents = useMemo(() => {
     const q = markSearch.trim().toLowerCase();
-    if (!q) return markClassStudents;
-    return markClassStudents.filter(
-      (st) => st.name.toLowerCase().includes(q) || st.roll.toLowerCase().includes(q) || st.section.toLowerCase().includes(q)
-    );
-  }, [markClassStudents, markSearch]);
+    return markClassStudents.filter((st) => {
+      if (isMarkSecondaryClass && markGroup !== 'all') {
+        const stGroup = normalizeClassGroup(st.section);
+        if (stGroup && stGroup !== markGroup) return false;
+      }
+      if (!q) return true;
+      return st.name.toLowerCase().includes(q) || st.roll.toLowerCase().includes(q) || st.section.toLowerCase().includes(q);
+    });
+  }, [markClassStudents, markSearch, isMarkSecondaryClass, markGroup]);
 
   const isCurrentYearFinal = isYearFinalExamTerm(markTerm);
   const canEditCurrentSubject = canEnterMarksForSubject(markClassId, markSubject);
@@ -485,7 +528,14 @@ export const TeacherPortal: React.FC = () => {
   }, [isCurrentYearFinal, markClassStudents, visibleExamMarks, markClassId, markTerm]);
 
   useEffect(() => {
-    const subs = CLASS_SUBJECTS[markClassId] || ['Bangla'];
+    if (!isMarkSecondaryClass && markGroup !== 'all') {
+      setMarkGroup('all');
+    }
+  }, [isMarkSecondaryClass, markGroup]);
+
+  useEffect(() => {
+    const subs = markSubjectOptions.map((s) => s.id);
+    if (subs.length === 0) return;
     if (!subs.includes(markSubject)) {
       const firstPermitted = subs.find((s) => canEnterMarksForSubject(markClassId, s)) || subs[0];
       setMarkSubject(firstPermitted);
@@ -495,7 +545,7 @@ export const TeacherPortal: React.FC = () => {
         setMarkSubject(firstPermitted);
       }
     }
-  }, [markClassId, resolvedAssignedClass, isAdminUser, allowedSubjects]);
+  }, [markClassId, markSubjectOptions, resolvedAssignedClass, isAdminUser, allowedSubjects]);
 
   useEffect(() => {
     const activeKey = `${markClassId}__${markTerm}__${markSubject}`;
@@ -892,9 +942,22 @@ export const TeacherPortal: React.FC = () => {
     [classRoutines, manageClassId]
   );
 
-  const tabs: { id: TeacherTab; label: string; icon: React.ComponentType<{ className?: string }> }[] = [
+  const tabs: {
+    id: TeacherTab;
+    label: string;
+    icon: React.ComponentType<{ className?: string }>;
+    badge?: number | string;
+    badgeTone?: 'amber' | 'emerald';
+  }[] = [
+    { id: 'overview', label: lang === 'bn' ? 'ড্যাশবোর্ড' : 'Dashboard', icon: LayoutDashboard },
     { id: 'attendance', label: lang === 'bn' ? 'হাজিরা' : 'Attendance', icon: ClipboardCheck },
-    { id: 'homework', label: lang === 'bn' ? 'হোমওয়ার্ক ও মূল্যায়ন' : 'Assignments', icon: BookOpenCheck },
+    {
+      id: 'homework',
+      label: lang === 'bn' ? 'হোমওয়ার্ক ও মূল্যায়ন' : 'Assignments',
+      icon: BookOpenCheck,
+      badge: visibleHomeworks.length > 0 ? visibleHomeworks.length : undefined,
+      badgeTone: 'emerald',
+    },
     { id: 'marks', label: lang === 'bn' ? 'নম্বর এন্ট্রি' : 'Marks Entry', icon: Award },
     { id: 'fees', label: lang === 'bn' ? 'ফি ও বকেয়া' : 'Fee Ledger', icon: Receipt },
     { id: 'notices', label: lang === 'bn' ? 'নোটিশ ও ঘোষণা' : 'Notices & Alerts', icon: Bell },
@@ -904,149 +967,440 @@ export const TeacherPortal: React.FC = () => {
       ? [{ id: 'class-teachers' as TeacherTab, label: lang === 'bn' ? 'শ্রেণী শিক্ষক নির্ধারণ' : 'Class Teachers', icon: ShieldCheck }]
       : []),
     { id: 'online-exams', label: lang === 'bn' ? 'MCQ পরীক্ষা তৈরি' : 'Create MCQ Exam', icon: Trophy },
-    { id: 'parent-messages', label: lang === 'bn' ? 'অভিভাবক বার্তা' : 'Parent Messages', icon: MessageSquare },
+    {
+      id: 'parent-messages',
+      label: lang === 'bn' ? 'অভিভাবক বার্তা' : 'Parent Messages',
+      icon: MessageSquare,
+      badge: myParentMessages.filter((pm) => !pm.reply).length > 0 ? myParentMessages.filter((pm) => !pm.reply).length : undefined,
+      badgeTone: 'amber',
+    },
     { id: 'my-leave', label: lang === 'bn' ? 'নিজের ছুটি' : 'My Leave', icon: CalendarPlus },
-    { id: 'student-leaves', label: lang === 'bn' ? 'শিক্ষার্থীর ছুটি' : 'Student Leaves', icon: UserCheck },
+    {
+      id: 'student-leaves',
+      label: lang === 'bn' ? 'শিক্ষার্থীর ছুটি' : 'Student Leaves',
+      icon: UserCheck,
+      badge: visibleStudentLeaves.filter((l) => l.status === 'pending').length > 0 ? visibleStudentLeaves.filter((l) => l.status === 'pending').length : undefined,
+      badgeTone: 'amber',
+    },
   ];
 
-  if (!isHeadTeacher && !hasAnyAssignedClass) {
-    return (
-      <div className="space-y-6">
-        <div className="p-8 rounded-3xl bg-amber-50 dark:bg-amber-950/40 border border-amber-200 dark:border-amber-800 text-center space-y-4">
-          <div className="w-14 h-14 rounded-2xl bg-amber-100 dark:bg-amber-900/60 text-amber-700 dark:text-amber-300 flex items-center justify-center mx-auto">
-            <ShieldAlert className="w-7 h-7" />
-          </div>
-          <h3 className="text-xl font-black text-slate-900 dark:text-white">
-            {lang === 'bn' ? 'আপনার জন্য এখনো কোনো পাঠদানের শ্রেণী নির্ধারিত হয়নি' : 'No Teaching Classes Assigned Yet'}
-          </h3>
-          <p className="text-sm text-slate-600 dark:text-slate-300 max-w-lg mx-auto leading-relaxed">
-            {lang === 'bn'
-              ? 'অ্যাডমিন বা প্রধান শিক্ষক আপনার জন্য পাঠদানের শ্রেণী (সব শ্রেণী বা ১/২/৩টি নির্দিষ্ট শ্রেণী) নির্ধারণ করলে সকল শ্রেণীভিত্তিক শিক্ষার্থী ও কার্যক্রম এখানে দেখা যাবে।'
-              : 'Once Admin or Head Teacher assigns your teaching classes (All or selected classes), your class-wise students and tools will appear here.'}
-          </p>
-          <button
-            type="button"
-            onClick={() => setTeacherIdCardOpen(true)}
-            className="px-5 py-2.5 rounded-xl bg-emerald-700 hover:bg-emerald-800 text-white text-xs font-bold inline-flex items-center gap-2 shadow-sm"
-          >
-            <IdCard className="w-4 h-4" />
-            <span>{lang === 'bn' ? 'আমার শিক্ষক আইডি কার্ড' : 'My Teacher ID Card'}</span>
-          </button>
-        </div>
+  const handleTeacherAvatarUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    const compressed = await compressImageFile(file, 450, 0.78);
+    if (user) {
+      await updateUser({ ...user, photo: compressed });
+    }
+    if (matchedTeacherProfile) {
+      updateTeacher({ ...matchedTeacherProfile, photo: compressed });
+    }
+    notify(lang === 'bn' ? 'প্রোফাইল ছবি আপডেট হয়েছে!' : 'Profile photo updated!');
+  };
 
-        <TeacherIdCardModal
-          open={teacherIdCardOpen}
-          onClose={() => setTeacherIdCardOpen(false)}
-          teacher={resolvedTeacherCardProfile}
-          teacherIndex={matchedTeacherIdx !== -1 ? matchedTeacherIdx : teachers.length}
-          phoneOverride={user?.phone}
-        />
-      </div>
-    );
-  }
+  const quickSearchMatches = useMemo(() => {
+    const q = searchQuery.trim().toLowerCase();
+    if (!q) return [];
+    const results: Array<{ label: string; category: string; tab: TeacherTab }> = [];
 
-  return (
-    <div className="space-y-6">
-      {toast && (
-        <div className="fixed bottom-6 left-1/2 -translate-x-1/2 z-[120] bg-slate-900 text-white px-5 py-3 rounded-2xl shadow-2xl flex items-center gap-2 font-bold text-xs">
-          <CheckCircle2 className="w-4 h-4 text-emerald-400" />
-          <span>{toast}</span>
-        </div>
-      )}
+    tabs.forEach((tb) => {
+      if (tb.label.toLowerCase().includes(q) || tb.id.toLowerCase().includes(q)) {
+        results.push({ label: tb.label, category: lang === 'bn' ? 'মেনু' : 'Module', tab: tb.id });
+      }
+    });
+    visibleStudents.forEach((st) => {
+      if (st.name.toLowerCase().includes(q) || st.roll.toLowerCase().includes(q)) {
+        results.push({
+          label: `${st.name} (Class ${st.classId} · Roll ${st.roll})`,
+          category: lang === 'bn' ? 'শিক্ষার্থী' : 'Student',
+          tab: 'classes',
+        });
+      }
+    });
+    notices.forEach((n) => {
+      const title = t(n.title);
+      if (title.toLowerCase().includes(q)) {
+        results.push({ label: title, category: lang === 'bn' ? 'নোটিশ' : 'Notice', tab: 'notices' });
+      }
+    });
+    return results.slice(0, 7);
+  }, [searchQuery, visibleStudents, notices, t, lang, isHeadTeacher]);
 
-      {/* Cloud Sync & Teaching Role Banner */}
-      <div
-        className={`flex flex-wrap items-center justify-between gap-4 p-4 rounded-2xl border ${
-          isCloudTeacher
-            ? 'bg-emerald-50 dark:bg-emerald-950/50 border-emerald-200 dark:border-emerald-800 text-emerald-900 dark:text-emerald-200'
-            : 'bg-amber-50 dark:bg-amber-950/50 border-amber-200 dark:border-amber-800 text-amber-900 dark:text-amber-200'
-        }`}
-      >
-        <div className="flex flex-wrap items-center gap-2.5 text-xs font-bold">
-          {isCloudTeacher ? <Cloud className="w-5 h-5 text-emerald-600" /> : <CloudOff className="w-5 h-5 text-amber-600" />}
-          <span>
-            {isCloudTeacher
-              ? lang === 'bn'
-                ? 'ক্লাউড সিঙ্ক সক্রিয় — সকল তথ্য ফায়ারবেজে সংরক্ষিত হচ্ছে।'
-                : 'Cloud sync active — all changes persist to Firebase.'
-              : lang === 'bn'
-              ? 'লোকাল মোড সক্রিয় — ক্লাউডে সেভ করতে Google দিয়ে যুক্ত হতে পারেন।'
-              : 'Local storage mode — connect Google to sync to cloud.'}
-          </span>
-          {isAdminUser ? (
+  const teacherAttendanceCount = useMemo(
+    () =>
+      attendanceRecords.filter((r) => isHeadTeacher || accessibleClassIds.includes(r.classId)).length,
+    [attendanceRecords, isHeadTeacher, accessibleClassIds]
+  );
+
+  const pendingRepliesCount = useMemo(
+    () => myParentMessages.filter((pm) => !pm.reply).length,
+    [myParentMessages]
+  );
+
+  const pendingStudentLeaveCount = useMemo(
+    () => visibleStudentLeaves.filter((sl) => sl.status === 'pending').length,
+    [visibleStudentLeaves]
+  );
+
+  const teacherRoleTitle = isAdminUser
+    ? lang === 'bn'
+      ? 'অ্যাডমিন — সকল শ্রেণী ও বিষয়'
+      : 'Admin — All Classes & Subjects'
+    : isHeadTeacher
+    ? lang === 'bn'
+      ? 'প্রধান শিক্ষক — সকল শ্রেণী'
+      : 'Head Teacher — All Classes'
+    : resolvedAssignedClass
+    ? lang === 'bn'
+      ? `শ্রেণী শিক্ষক: ${resolvedAssignedClass}ম শ্রেণী`
+      : `Class Teacher: Class ${resolvedAssignedClass}`
+    : lang === 'bn'
+    ? 'বিষয়ভিত্তিক শিক্ষক'
+    : 'Subject Teacher';
+
+  const teacherPhoto = resolvedTeacherCardProfile.photo || user?.photo || '';
+  const teacherDisplayCode =
+    resolvedTeacherCardProfile.teacherCode || user?.userId || 'TEACHER';
+
+  const teacherBodyContent = (
+    <>
+      {/* Cloud Sync & Teaching Role Banner (in embedded mode or sub-tabs) */}
+      {embedded && (
+        <div
+          className={`flex flex-wrap items-center justify-between gap-4 p-4 rounded-2xl border ${
+            isCloudTeacher
+              ? 'bg-emerald-50 dark:bg-emerald-950/50 border-emerald-200 dark:border-emerald-800 text-emerald-900 dark:text-emerald-200'
+              : 'bg-amber-50 dark:bg-amber-950/50 border-amber-200 dark:border-amber-800 text-amber-900 dark:text-amber-200'
+          }`}
+        >
+          <div className="flex flex-wrap items-center gap-2.5 text-xs font-bold">
+            {isCloudTeacher ? <Cloud className="w-5 h-5 text-emerald-600" /> : <CloudOff className="w-5 h-5 text-amber-600" />}
+            <span>
+              {isCloudTeacher
+                ? lang === 'bn'
+                  ? 'ক্লাউড সিঙ্ক সক্রিয় — সকল তথ্য ফায়ারবেজে সংরক্ষিত হচ্ছে।'
+                  : 'Cloud sync active — all changes persist to Firebase.'
+                : lang === 'bn'
+                ? 'লোকাল মোড সক্রিয় — ক্লাউডে সেভ করতে Google দিয়ে যুক্ত হতে পারেন।'
+                : 'Local storage mode — connect Google to sync to cloud.'}
+            </span>
             <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-xl bg-emerald-100 dark:bg-emerald-950/70 border border-emerald-300 dark:border-emerald-800 text-emerald-900 dark:text-emerald-200 font-extrabold">
               <ShieldCheck className="w-3.5 h-3.5" />
-              {lang === 'bn' ? 'অ্যাডমিন — সকল শ্রেণী ও সকল বিষয়' : 'Admin — All Classes & All Subjects'}
+              {teacherRoleTitle}
             </span>
-          ) : isHeadTeacher ? (
-            <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-xl bg-amber-100 dark:bg-amber-950/70 border border-amber-300 dark:border-amber-800 text-amber-900 dark:text-amber-200 font-extrabold">
-              <ShieldCheck className="w-3.5 h-3.5" />
-              {lang === 'bn' ? 'প্রধান শিক্ষক — সকল শ্রেণী ও শ্রেণী শিক্ষক নির্ধারণ' : 'Head Teacher — All Classes & Class Teacher Control'}
-            </span>
-          ) : null}
-          {resolvedAssignedClass && (
-            <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-xl bg-purple-100 dark:bg-purple-950/70 border border-purple-300 dark:border-purple-800 text-purple-800 dark:text-purple-200 font-extrabold">
-              <ShieldCheck className="w-3.5 h-3.5" />
-              {lang === 'bn'
-                ? `শ্রেণী শিক্ষক: ${resolvedAssignedClass}ম শ্রেণী (সব বিষয়)`
-                : `Class Teacher: Class ${resolvedAssignedClass} (All Subjects)`}
-            </span>
-          )}
-          {!isAdminUser && (
-            <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-xl bg-blue-100 dark:bg-blue-950/70 border border-blue-200 dark:border-blue-800 text-blue-900 dark:text-blue-200 font-extrabold">
-              <School className="w-3.5 h-3.5" />
-              {lang === 'bn'
-                ? `পাঠদান: ${hasAllClasses ? 'সব শ্রেণী (৬ষ্ঠ–১০ম)' : `শ্রেণী ${availableClassIds.join(', ')}`}`
-                : `Classes: ${hasAllClasses ? 'All (6–10)' : availableClassIds.join(', ')}`}
-              {allowedSubjects.length > 0 ? ` · ${allowedSubjects.join(', ')}` : ''}
-            </span>
-          )}
-          <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-xl bg-white/80 dark:bg-slate-900/70 border border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-300 tabular-nums">
-            <Clock className="w-3 h-3 text-emerald-600" />
-            {formatDhakaClock(lang)}
-          </span>
-        </div>
-        <div className="flex flex-wrap items-center gap-2">
+          </div>
           <button
             type="button"
             onClick={() => setTeacherIdCardOpen(true)}
             className="px-4 py-2 rounded-xl bg-emerald-700 hover:bg-emerald-800 text-white text-xs font-bold inline-flex items-center gap-2 shadow-sm transition-colors"
           >
             <IdCard className="w-4 h-4" />
-            <span>{lang === 'bn' ? 'আমার শিক্ষক আইডি কার্ড' : 'My Teacher ID Card'}</span>
+            <span>{lang === 'bn' ? 'শিক্ষক আইডি কার্ড' : 'Teacher ID Card'}</span>
           </button>
-          {!isCloudTeacher && (
-            <button
-              onClick={() => void signInWithGoogle()}
-              className="px-4 py-2 rounded-xl bg-slate-900 text-white text-xs font-bold"
-            >
-              Google Sync
-            </button>
-          )}
         </div>
-      </div>
+      )}
 
-      {/* Tabs */}
-      <div className="flex bg-slate-100 dark:bg-slate-800 p-1.5 rounded-2xl overflow-x-auto border border-slate-200 dark:border-slate-700 gap-1">
-        {tabs.map((tab) => {
-          const Icon = tab.icon;
-          const active = activeTab === tab.id;
-          return (
-            <button
-              key={tab.id}
-              onClick={() => setActiveTab(tab.id)}
-              className={`flex items-center gap-2 py-2.5 px-3.5 rounded-xl text-xs font-bold whitespace-nowrap transition-all ${
-                active
-                  ? 'bg-white dark:bg-slate-900 text-emerald-700 dark:text-emerald-300 shadow-sm'
-                  : 'text-slate-500 dark:text-slate-300 hover:text-slate-800'
-              }`}
-            >
-              <Icon className="w-4 h-4" />
-              <span>{tab.label}</span>
-            </button>
-          );
-        })}
-      </div>
+      {/* Embedded Tab Bar */}
+      {embedded && (
+        <div className="flex bg-slate-100 dark:bg-slate-800 p-1.5 rounded-2xl overflow-x-auto border border-slate-200 dark:border-slate-700 gap-1">
+          {tabs.map((tab) => {
+            const Icon = tab.icon;
+            const active = activeTab === tab.id;
+            return (
+              <button
+                key={tab.id}
+                onClick={() => setActiveTab(tab.id)}
+                className={`flex items-center gap-2 py-2.5 px-3.5 rounded-xl text-xs font-bold whitespace-nowrap transition-all ${
+                  active
+                    ? 'bg-white dark:bg-slate-900 text-emerald-700 dark:text-emerald-300 shadow-sm'
+                    : 'text-slate-500 dark:text-slate-300 hover:text-slate-800'
+                }`}
+              >
+                <Icon className="w-4 h-4" />
+                <span>{tab.label}</span>
+              </button>
+            );
+          })}
+        </div>
+      )}
+
+      {/* OVERVIEW DASHBOARD */}
+      {activeTab === 'overview' && (
+        <div className="space-y-6">
+          {/* Campus Hero Welcome Banner */}
+          <div className="relative rounded-3xl overflow-hidden shadow-lg border border-emerald-900/20 min-h-[180px] flex items-center">
+            <img
+              src={settings.schoolPhoto || heroCampusImg}
+              alt="Campus"
+              className="absolute inset-0 w-full h-full object-cover"
+            />
+            <div className="absolute inset-0 bg-gradient-to-r from-emerald-950/92 via-emerald-900/80 to-emerald-800/60" />
+            <div className="relative z-10 w-full p-6 sm:p-8 flex flex-col md:flex-row md:items-center justify-between gap-4 text-white">
+              <div className="space-y-2 max-w-2xl">
+                <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-emerald-700/80 border border-emerald-400/30 text-[11px] font-extrabold tracking-wide">
+                  <ShieldCheck className="w-3.5 h-3.5 text-yellow-300" />
+                  <span>{teacherRoleTitle}</span>
+                </div>
+                <h1 className="text-2xl sm:text-3xl font-black tracking-tight">
+                  {t(settings.name)}
+                </h1>
+                <p className="text-xs sm:text-sm text-emerald-100/90 font-semibold">
+                  {lang === 'bn'
+                    ? `স্বাগতম, ${t(resolvedTeacherCardProfile.name)}! আপনার পাঠদানকৃত শ্রেণীসমূহের হাজিরা, নম্বর এন্ট্রি, হোমওয়ার্ক ও রুটিন পরিচালনা করুন।`
+                    : `Welcome, ${t(resolvedTeacherCardProfile.name)}! Manage class attendance, marks entry, assignments, and schedules in one place.`}
+                </p>
+                <div className="pt-1 flex flex-wrap gap-2 text-[11px] font-bold">
+                  <span className="px-3 py-1 rounded-full bg-emerald-600/90 text-white">
+                    Smart • Secure • Automated
+                  </span>
+                  <span className="px-3 py-1 rounded-full bg-white/15 text-emerald-50 tabular-nums">
+                    {lang === 'bn'
+                      ? `পাঠদান: ${hasAllClasses ? 'সব শ্রেণী (৬ষ্ঠ–১০ম)' : `শ্রেণী ${availableClassIds.join(', ')}`}`
+                      : `Classes: ${hasAllClasses ? 'All (6–10)' : availableClassIds.join(', ')}`}
+                    {allowedSubjects.length > 0 ? ` · ${allowedSubjects.join(', ')}` : ''}
+                  </span>
+                </div>
+              </div>
+              <div className="hidden md:block text-right shrink-0 space-y-2">
+                <p className="text-base font-black text-yellow-300 italic leading-snug">
+                  Together Towards a
+                  <br />
+                  Better Tomorrow
+                </p>
+                <div className="h-0.5 w-28 bg-yellow-400/80 ml-auto rounded-full" />
+                <button
+                  type="button"
+                  onClick={() => setTeacherIdCardOpen(true)}
+                  className="mt-2 px-3.5 py-2 rounded-xl bg-white/15 hover:bg-white/25 border border-white/25 text-white text-xs font-extrabold inline-flex items-center gap-1.5 backdrop-blur-sm transition-colors"
+                >
+                  <IdCard className="w-4 h-4 text-yellow-300" />
+                  <span>{lang === 'bn' ? 'শিক্ষক আইডি কার্ড' : 'Teacher ID Card'}</span>
+                </button>
+              </div>
+            </div>
+          </div>
+
+          {/* 4 Live-Data KPI Cards */}
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+            <div className="bg-white dark:bg-slate-900 p-4 rounded-2xl border border-slate-200 dark:border-slate-800 flex items-center gap-3.5 shadow-sm">
+              <div className="w-11 h-11 rounded-xl bg-emerald-50 dark:bg-emerald-950/70 text-emerald-700 dark:text-emerald-400 flex items-center justify-center shrink-0">
+                <GraduationCap className="w-5 h-5" />
+              </div>
+              <div className="min-w-0">
+                <p className="text-[11px] font-bold text-slate-400 uppercase">{lang === 'bn' ? 'পাঠদানের শিক্ষার্থী' : 'Assigned Students'}</p>
+                <p className="text-2xl font-black text-slate-900 dark:text-white tabular-nums">{visibleStudents.length}</p>
+                <p className="text-[11px] font-semibold text-emerald-700 dark:text-emerald-400 tabular-nums">
+                  {availableClassIds.length} {lang === 'bn' ? 'টি নির্ধারিত শ্রেণী' : 'assigned classes'}
+                </p>
+              </div>
+            </div>
+
+            <div className="bg-white dark:bg-slate-900 p-4 rounded-2xl border border-slate-200 dark:border-slate-800 flex items-center gap-3.5 shadow-sm">
+              <div className="w-11 h-11 rounded-xl bg-blue-50 dark:bg-blue-950/70 text-blue-700 dark:text-blue-400 flex items-center justify-center shrink-0">
+                <ClipboardCheck className="w-5 h-5" />
+              </div>
+              <div className="min-w-0">
+                <p className="text-[11px] font-bold text-slate-400 uppercase">{lang === 'bn' ? 'হাজিরা রেকর্ড' : 'Attendance Logs'}</p>
+                <p className="text-2xl font-black text-slate-900 dark:text-white tabular-nums">{teacherAttendanceCount}</p>
+                <p className="text-[11px] font-semibold text-blue-700 dark:text-blue-400 tabular-nums">
+                  {visibleOnlineExams.length} {lang === 'bn' ? 'টি অনলাইন কুইজ' : 'online MCQ exams'}
+                </p>
+              </div>
+            </div>
+
+            <div className="bg-white dark:bg-slate-900 p-4 rounded-2xl border border-slate-200 dark:border-slate-800 flex items-center gap-3.5 shadow-sm">
+              <div className="w-11 h-11 rounded-xl bg-amber-50 dark:bg-amber-950/70 text-amber-600 dark:text-amber-400 flex items-center justify-center shrink-0">
+                <Award className="w-5 h-5" />
+              </div>
+              <div className="min-w-0">
+                <p className="text-[11px] font-bold text-slate-400 uppercase">{lang === 'bn' ? 'নম্বর ও হোমওয়ার্ক' : 'Marks & Tasks'}</p>
+                <p className="text-2xl font-black text-slate-900 dark:text-white tabular-nums">{visibleExamMarks.length}</p>
+                <p className="text-[11px] font-semibold text-amber-700 dark:text-amber-400 tabular-nums">
+                  {visibleHomeworks.length} {lang === 'bn' ? 'হোমওয়ার্ক' : 'assignments'} · {visibleSubmissions.length} {lang === 'bn' ? 'জমা' : 'submissions'}
+                </p>
+              </div>
+            </div>
+
+            <div className="bg-white dark:bg-slate-900 p-4 rounded-2xl border border-slate-200 dark:border-slate-800 flex items-center gap-3.5 shadow-sm">
+              <div className="w-11 h-11 rounded-xl bg-purple-50 dark:bg-purple-950/70 text-purple-700 dark:text-purple-400 flex items-center justify-center shrink-0">
+                <MessageSquare className="w-5 h-5" />
+              </div>
+              <div className="min-w-0">
+                <p className="text-[11px] font-bold text-slate-400 uppercase">{lang === 'bn' ? 'বার্তা ও ছুটি' : 'Messages & Leaves'}</p>
+                <p className="text-2xl font-black text-slate-900 dark:text-white tabular-nums">{pendingRepliesCount + pendingStudentLeaveCount}</p>
+                <p className="text-[11px] font-semibold text-purple-700 dark:text-purple-400 tabular-nums">
+                  {pendingRepliesCount} {lang === 'bn' ? 'অভিভাবক বার্তা' : 'parent msgs'} · {pendingStudentLeaveCount} {lang === 'bn' ? 'ছুটি' : 'leaves'}
+                </p>
+              </div>
+            </div>
+          </div>
+
+          {/* 6-Step Teacher Academic Workflow */}
+          <div className="bg-white dark:bg-slate-900 p-5 sm:p-6 rounded-3xl border border-slate-200 dark:border-slate-800 shadow-sm space-y-4">
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <div className="flex items-center gap-2">
+                <ShieldCheck className="w-5 h-5 text-emerald-700 dark:text-emerald-400" />
+                <h2 className="text-sm sm:text-base font-black text-slate-900 dark:text-white">
+                  {lang === 'bn' ? 'দৈনন্দিন শিক্ষক কার্যক্রম – কুইক ওয়ার্কফ্লো' : 'Daily Teaching Workflow – Quick Access'}
+                </h2>
+              </div>
+              <div className="flex items-center gap-2">
+                {!isCloudTeacher && (
+                  <button
+                    type="button"
+                    onClick={() => void signInWithGoogle()}
+                    className="px-3 py-1.5 rounded-xl bg-slate-900 text-white text-[11px] font-bold"
+                  >
+                    Google Sync
+                  </button>
+                )}
+                <span className="text-[11px] font-bold text-emerald-700 dark:text-emerald-400">
+                  {isCloudTeacher
+                    ? lang === 'bn' ? 'ক্লাউড সিঙ্ক সক্রিয়' : 'Cloud Sync Active'
+                    : lang === 'bn' ? 'লোকাল মোড' : 'Local Mode'}
+                </span>
+              </div>
+            </div>
+
+            <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3">
+              {(
+                [
+                  {
+                    title: lang === 'bn' ? 'হাজিরা গ্রহণ' : 'Attendance',
+                    sub: lang === 'bn' ? 'দৈনিক উপস্থিতি' : 'Daily Roll Call',
+                    icon: ClipboardCheck,
+                    tone: 'bg-emerald-600 text-white',
+                    onClick: () => setActiveTab('attendance'),
+                  },
+                  {
+                    title: lang === 'bn' ? 'হোমওয়ার্ক' : 'Assignments',
+                    sub: `${visibleHomeworks.length} ${lang === 'bn' ? 'টি চলমান' : 'Active'}`,
+                    icon: BookOpenCheck,
+                    tone: 'bg-blue-600 text-white',
+                    onClick: () => setActiveTab('homework'),
+                  },
+                  {
+                    title: lang === 'bn' ? 'নম্বর এন্ট্রি' : 'Marks Entry',
+                    sub: allowedSubjects.length > 0 ? allowedSubjects[0] : (lang === 'bn' ? 'সকল বিষয়' : 'All Subjects'),
+                    icon: Award,
+                    tone: 'bg-amber-500 text-white',
+                    onClick: () => setActiveTab('marks'),
+                  },
+                  {
+                    title: lang === 'bn' ? 'ফি ও বকেয়া' : 'Fee Ledger',
+                    sub: `${visibleFees.length} ${lang === 'bn' ? 'টি রেকর্ড' : 'Records'}`,
+                    icon: Wallet,
+                    tone: 'bg-teal-600 text-white',
+                    onClick: () => setActiveTab('fees'),
+                  },
+                  {
+                    title: lang === 'bn' ? 'অভিভাবক বার্তা' : 'Parent Inbox',
+                    sub: `${myParentMessages.length} ${lang === 'bn' ? 'টি বার্তা' : 'Messages'}`,
+                    icon: MessageSquare,
+                    tone: 'bg-purple-600 text-white',
+                    onClick: () => setActiveTab('parent-messages'),
+                  },
+                  {
+                    title: lang === 'bn' ? 'শিক্ষক আইডি কার্ড' : 'Faculty ID Card',
+                    sub: lang === 'bn' ? 'দেখুন ও প্রিন্ট' : 'View / Print',
+                    icon: IdCard,
+                    tone: 'bg-slate-800 text-white',
+                    onClick: () => setTeacherIdCardOpen(true),
+                  },
+                ] as const
+              ).map((step, idx) => {
+                const Icon = step.icon;
+                return (
+                  <button
+                    key={step.title}
+                    type="button"
+                    onClick={step.onClick}
+                    className="p-3.5 rounded-2xl bg-slate-50 dark:bg-slate-800/70 border border-slate-200/80 dark:border-slate-700 hover:border-emerald-400 text-center space-y-2 transition-all"
+                  >
+                    <div className="flex items-center justify-center">
+                      <div className={`w-10 h-10 rounded-full flex items-center justify-center shadow-sm ${step.tone}`}>
+                        <Icon className="w-5 h-5" />
+                      </div>
+                    </div>
+                    <div className="space-y-0.5">
+                      <p className="text-[10px] font-bold text-slate-400 uppercase">
+                        {lang === 'bn' ? `ধাপ ${idx + 1}` : `Step ${idx + 1}`}
+                      </p>
+                      <p className="text-xs font-extrabold text-slate-900 dark:text-white">{step.title}</p>
+                      <p className="text-[11px] font-bold text-emerald-700 dark:text-emerald-400 truncate">{step.sub}</p>
+                    </div>
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+
+          {/* Class-Wise Roster Quick Jump Cards */}
+          <div className="bg-white dark:bg-slate-900 p-5 sm:p-6 rounded-3xl border border-slate-200 dark:border-slate-800 shadow-sm space-y-4">
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <h2 className="text-sm sm:text-base font-black text-slate-900 dark:text-white">
+                {lang === 'bn' ? 'শ্রেণীভিত্তিক শিক্ষার্থী ও কার্যক্রম' : 'Class-Wise Students & Quick Navigation'}
+              </h2>
+              <button
+                type="button"
+                onClick={() => setActiveTab('classes')}
+                className="text-xs font-extrabold text-emerald-700 dark:text-emerald-400 hover:underline"
+              >
+                {lang === 'bn' ? 'সবগুলো দেখুন →' : 'Open Class Roster →'}
+              </button>
+            </div>
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-3">
+              {availableClassIds.map((cid) => {
+                const count = visibleStudents.filter((s) => s.classId === cid).length;
+                const isCt = resolvedAssignedClass === cid;
+                return (
+                  <div
+                    key={cid}
+                    className="p-4 rounded-2xl bg-slate-50 dark:bg-slate-800/70 border border-slate-200 dark:border-slate-700 flex flex-col justify-between gap-3"
+                  >
+                    <div>
+                      <div className="flex items-center justify-between gap-2">
+                        <p className="font-black text-sm text-slate-900 dark:text-white">
+                          {lang === 'bn' ? `${cid}ম শ্রেণী` : `Class ${cid}`}
+                        </p>
+                        {isCt && (
+                          <span className="px-2 py-0.5 rounded-md bg-purple-100 dark:bg-purple-950 text-purple-700 dark:text-purple-300 text-[10px] font-black">
+                            CT
+                          </span>
+                        )}
+                      </div>
+                      <p className="text-xl font-black text-emerald-700 dark:text-emerald-400 tabular-nums mt-1">
+                        {count} <span className="text-[11px] font-bold text-slate-400">{lang === 'bn' ? 'জন' : 'students'}</span>
+                      </p>
+                    </div>
+                    <div className="flex gap-1.5">
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setAttClassId(cid);
+                          setActiveTab('attendance');
+                        }}
+                        className="flex-1 py-1.5 px-2 rounded-lg bg-emerald-700 hover:bg-emerald-800 text-white text-[11px] font-bold"
+                      >
+                        {lang === 'bn' ? 'হাজিরা' : 'Att.'}
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setMarkClassId(cid);
+                          setActiveTab('marks');
+                        }}
+                        className="flex-1 py-1.5 px-2 rounded-lg bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 hover:border-emerald-500 text-slate-800 dark:text-slate-100 text-[11px] font-bold"
+                      >
+                        {lang === 'bn' ? 'নম্বর' : 'Marks'}
+                      </button>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* 1. Attendance */}
       {activeTab === 'attendance' && (
@@ -1147,7 +1501,8 @@ export const TeacherPortal: React.FC = () => {
                 disabled={isSingleClassOnly}
                 onChange={(e) => {
                   const cid = e.target.value;
-                  setHwForm((p) => ({ ...p, classId: cid, subject: (CLASS_SUBJECTS[cid] || ['Bangla'])[0] }));
+                  const firstSub = getNctbSubjectsForClass(cid)[0]?.id || 'Bangla';
+                  setHwForm((p) => ({ ...p, classId: cid, subject: firstSub }));
                 }}
                 className="px-3 py-2.5 rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-sm font-bold disabled:opacity-75"
               >
@@ -1158,7 +1513,12 @@ export const TeacherPortal: React.FC = () => {
                 onChange={(e) => setHwForm((p) => ({ ...p, subject: e.target.value }))}
                 className="px-3 py-2.5 rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-sm font-bold"
               >
-                {(CLASS_SUBJECTS[hwForm.classId] || ['Bangla']).map((sub) => <option key={sub} value={sub}>{sub}</option>)}
+                {getNctbSubjectsForClass(hwForm.classId).map((sub) => (
+                  <option key={sub.id} value={sub.id}>
+                    {lang === 'bn' ? sub.bn : sub.en}
+                    {(hwForm.classId === '9' || hwForm.classId === '10') && sub.group !== 'Common' ? ` (${sub.group})` : ''}
+                  </option>
+                ))}
               </select>
             </div>
             <input
@@ -1275,7 +1635,7 @@ export const TeacherPortal: React.FC = () => {
       {activeTab === 'marks' && (
         <div className="bg-white dark:bg-slate-900 p-6 rounded-3xl border border-slate-200 dark:border-slate-800 space-y-5">
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-12 gap-3 items-end">
-            <div className="lg:col-span-3">
+            <div className={isMarkSecondaryClass ? 'lg:col-span-2' : 'lg:col-span-3'}>
               <label className="text-[10px] font-bold uppercase text-slate-400 block mb-1">
                 {lang === 'bn' ? 'পরীক্ষার টার্ম' : 'Term'}
               </label>
@@ -1300,20 +1660,46 @@ export const TeacherPortal: React.FC = () => {
                 {availableClassIds.map((c) => <option key={c} value={c}>Class {c}</option>)}
               </select>
             </div>
-            <div className="lg:col-span-3">
+            {isMarkSecondaryClass && (
+              <div className="lg:col-span-2">
+                <label className="text-[10px] font-bold uppercase text-slate-400 block mb-1">
+                  {lang === 'bn' ? 'বিভাগ (Group)' : 'Group'}
+                </label>
+                <select
+                  value={markGroup}
+                  onChange={(e) => setMarkGroup(e.target.value as 'all' | Class910GroupId)}
+                  className="w-full px-3 py-2.5 rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-xs font-bold"
+                >
+                  <option value="all">{lang === 'bn' ? 'সকল বিভাগ' : 'All Groups'}</option>
+                  {CLASS_9_10_GROUPS.map((g) => (
+                    <option key={g.id} value={g.id}>
+                      {lang === 'bn' ? g.bn : g.en}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            )}
+            <div className={isMarkSecondaryClass ? 'lg:col-span-2' : 'lg:col-span-3'}>
               <label className="text-[10px] font-bold uppercase text-slate-400 block mb-1">
-                {lang === 'bn' ? 'বিষয়' : 'Subject'}
+                {lang === 'bn' ? 'বিষয় (NCTB)' : 'Subject (NCTB)'}
               </label>
               <select
                 value={markSubject}
-                onChange={(e) => setMarkSubject(e.target.value)}
+                onChange={(e) => {
+                  const nextSub = e.target.value;
+                  setMarkSubject(nextSub);
+                  const found = markSubjectOptions.find((m) => m.id === nextSub);
+                  if (found?.totalMarks) setMarkTotal(found.totalMarks);
+                }}
                 className="w-full px-3 py-2.5 rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-xs font-bold"
               >
-                {(CLASS_SUBJECTS[markClassId] || ['Bangla']).map((s) => {
-                  const unlocked = canEnterMarksForSubject(markClassId, s);
+                {markSubjectOptions.map((sub) => {
+                  const unlocked = canEnterMarksForSubject(markClassId, sub.id);
                   return (
-                    <option key={s} value={s}>
-                      {s}{unlocked ? '' : ' 🔒'}
+                    <option key={`${sub.id}-${sub.group}`} value={sub.id}>
+                      [{sub.code}] {lang === 'bn' ? sub.bn : sub.en}
+                      {isMarkSecondaryClass && markGroup === 'all' && sub.group !== 'Common' ? ` · ${sub.group}` : ''}
+                      {unlocked ? '' : ' 🔒'}
                     </option>
                   );
                 })}
@@ -1380,7 +1766,7 @@ export const TeacherPortal: React.FC = () => {
               <BookOpen className="w-4 h-4 text-blue-600 shrink-0" />
               <span>
                 {lang === 'bn'
-                  ? `বিষয় শিক্ষক: আপনি আপনার নির্ধারিত "${markSubject}" বিষয়ের নম্বর এন্ট্রি দিতে পারবেন।`
+                  ? `বিষয় শিক্ষক: আপনি আপনার নির্ধারিত "${getSubjectDisplayLabel(markSubject, 'bn')}" বিষয়ের নম্বর এন্ট্রি দিতে পারবেন।`
                   : `Subject Teacher: Authorized to enter marks for your assigned subject "${markSubject}".`}
               </span>
             </div>
@@ -1992,7 +2378,17 @@ export const TeacherPortal: React.FC = () => {
                 ))}
               </select>
             </div>
-            <input value={matForm.subject} onChange={(e) => setMatForm((p) => ({ ...p, subject: e.target.value }))} placeholder="Subject" className="w-full px-4 py-2.5 rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-sm" />
+            <select
+              value={matForm.subject}
+              onChange={(e) => setMatForm((p) => ({ ...p, subject: e.target.value }))}
+              className="w-full px-4 py-2.5 rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-sm font-bold"
+            >
+              {getNctbSubjectsForClass(matForm.classId).map((sub) => (
+                <option key={sub.id} value={sub.id}>
+                  [{sub.code}] {lang === 'bn' ? sub.bn : sub.en}
+                </option>
+              ))}
+            </select>
             <textarea rows={2} value={matForm.descEn} onChange={(e) => setMatForm((p) => ({ ...p, descEn: e.target.value, descBn: e.target.value }))} placeholder={lang === 'bn' ? 'সংক্ষিপ্ত বর্ণনা' : 'Short summary'} className="w-full px-4 py-2.5 rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-sm" />
             <input value={matForm.downloadUrl} onChange={(e) => setMatForm((p) => ({ ...p, downloadUrl: e.target.value }))} placeholder="PDF / Resource URL (or #)" className="w-full px-4 py-2.5 rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-sm" />
             <button type="submit" className="w-full py-3 rounded-xl bg-emerald-700 hover:bg-emerald-800 text-white text-xs font-bold">
@@ -2093,7 +2489,17 @@ export const TeacherPortal: React.FC = () => {
               <form onSubmit={handleSaveStudent} className="grid grid-cols-2 sm:grid-cols-3 gap-2">
                 <input required placeholder="Roll" value={studentForm.roll} onChange={(e) => setStudentForm((p) => ({ ...p, roll: e.target.value }))} className="px-3 py-2 rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-xs font-bold" />
                 <input required placeholder="Student Name" value={studentForm.name} onChange={(e) => setStudentForm((p) => ({ ...p, name: e.target.value }))} className="px-3 py-2 rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-xs font-bold" />
-                <input required placeholder="Section" value={studentForm.section} onChange={(e) => setStudentForm((p) => ({ ...p, section: e.target.value }))} className="px-3 py-2 rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-xs font-bold" />
+                {(manageClassId === '9' || manageClassId === '10') ? (
+                  <select required value={studentForm.section} onChange={(e) => setStudentForm((p) => ({ ...p, section: e.target.value }))} className="px-3 py-2 rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-xs font-bold">
+                    <option value="Science">{lang === 'bn' ? 'বিজ্ঞান (Science)' : 'Science'}</option>
+                    <option value="Humanities">{lang === 'bn' ? 'মানবিক (Humanities)' : 'Humanities'}</option>
+                    <option value="Business Studies">{lang === 'bn' ? 'ব্যবসায় শিক্ষা (Business Studies)' : 'Business Studies'}</option>
+                    <option value="A">Section A</option>
+                    <option value="B">Section B</option>
+                  </select>
+                ) : (
+                  <input required placeholder="Section (A / B)" value={studentForm.section} onChange={(e) => setStudentForm((p) => ({ ...p, section: e.target.value }))} className="px-3 py-2 rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-xs font-bold" />
+                )}
                 <input placeholder={lang === 'bn' ? 'অভিভাবকের নাম' : 'Guardian Name'} value={studentForm.guardianName} onChange={(e) => setStudentForm((p) => ({ ...p, guardianName: e.target.value }))} className="px-3 py-2 rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-xs font-bold" />
                 <input placeholder={lang === 'bn' ? 'অভিভাবকের মোবাইল' : 'Guardian Mobile'} value={studentForm.guardianMobile} onChange={(e) => setStudentForm((p) => ({ ...p, guardianMobile: e.target.value }))} className="px-3 py-2 rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-xs font-bold" />
                 <div className="flex gap-1.5">
@@ -2175,7 +2581,13 @@ export const TeacherPortal: React.FC = () => {
                 <select value={routineForm.classId} disabled={isSingleClassOnly} onChange={(e) => setRoutineForm((p) => ({ ...p, classId: e.target.value }))} className="px-3 py-2 rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-xs font-bold disabled:opacity-75">
                   {availableClassIds.map((c) => <option key={c} value={c}>Class {c}</option>)}
                 </select>
-                <input value={routineForm.subject} onChange={(e) => setRoutineForm((p) => ({ ...p, subject: e.target.value }))} placeholder="Subject" className="px-3 py-2 rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-xs font-bold" />
+                <select value={routineForm.subject} onChange={(e) => setRoutineForm((p) => ({ ...p, subject: e.target.value }))} className="px-3 py-2 rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-xs font-bold">
+                  {getNctbSubjectsForClass(routineForm.classId).map((sub) => (
+                    <option key={sub.id} value={sub.id}>
+                      {lang === 'bn' ? sub.bn : sub.en}
+                    </option>
+                  ))}
+                </select>
               </div>
               <div className="grid grid-cols-2 gap-2">
                 <input type="date" value={routineForm.date} onChange={(e) => setRoutineForm((p) => ({ ...p, date: e.target.value }))} className="px-3 py-2 rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-xs font-bold" />
@@ -2378,7 +2790,13 @@ export const TeacherPortal: React.FC = () => {
               <select value={mcqForm.classId} disabled={isSingleClassOnly} onChange={(e) => setMcqForm((p) => ({ ...p, classId: e.target.value }))} className="px-3 py-2.5 rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-xs font-bold disabled:opacity-75">
                 {availableClassIds.map((c) => <option key={c} value={c}>Class {c}</option>)}
               </select>
-              <input value={mcqForm.subject} onChange={(e) => setMcqForm((p) => ({ ...p, subject: e.target.value }))} placeholder="Subject" className="px-3 py-2.5 rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-xs font-bold" />
+              <select value={mcqForm.subject} onChange={(e) => setMcqForm((p) => ({ ...p, subject: e.target.value }))} className="px-3 py-2.5 rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-xs font-bold">
+                {getNctbSubjectsForClass(mcqForm.classId).map((sub) => (
+                  <option key={sub.id} value={sub.id}>
+                    {lang === 'bn' ? sub.bn : sub.en}
+                  </option>
+                ))}
+              </select>
               <input value={mcqForm.chapter} onChange={(e) => setMcqForm((p) => ({ ...p, chapter: e.target.value }))} placeholder="Chapter / Topic" className="px-3 py-2.5 rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-xs font-bold" />
             </div>
             <div className="grid grid-cols-2 gap-2">
@@ -2631,6 +3049,35 @@ export const TeacherPortal: React.FC = () => {
       {activeTab === 'class-teachers' && isHeadTeacher && (
         <ClassTeacherAssignmentPanel allowAddNew={false} onNotify={notify} />
       )}
+    </>
+  );
+
+  const unassignedNoticeContent = (
+    <div className="p-8 rounded-3xl bg-amber-50 dark:bg-amber-950/40 border border-amber-200 dark:border-amber-800 text-center space-y-4">
+      <div className="w-14 h-14 rounded-2xl bg-amber-100 dark:bg-amber-900/60 text-amber-700 dark:text-amber-300 flex items-center justify-center mx-auto">
+        <ShieldAlert className="w-7 h-7" />
+      </div>
+      <h3 className="text-xl font-black text-slate-900 dark:text-white">
+        {lang === 'bn' ? 'আপনার জন্য এখনো কোনো পাঠদানের শ্রেণী নির্ধারিত হয়নি' : 'No Teaching Classes Assigned Yet'}
+      </h3>
+      <p className="text-sm text-slate-600 dark:text-slate-300 max-w-lg mx-auto leading-relaxed">
+        {lang === 'bn'
+          ? 'অ্যাডমিন বা প্রধান শিক্ষক আপনার জন্য পাঠদানের শ্রেণী (সব শ্রেণী বা ১/২/৩টি নির্দিষ্ট শ্রেণী) নির্ধারণ করলে সকল শ্রেণীভিত্তিক শিক্ষার্থী ও কার্যক্রম এখানে দেখা যাবে।'
+          : 'Once Admin or Head Teacher assigns your teaching classes (All or selected classes), your class-wise students and tools will appear here.'}
+      </p>
+      <button
+        type="button"
+        onClick={() => setTeacherIdCardOpen(true)}
+        className="px-5 py-2.5 rounded-xl bg-emerald-700 hover:bg-emerald-800 text-white text-xs font-bold inline-flex items-center gap-2 shadow-sm"
+      >
+        <IdCard className="w-4 h-4" />
+        <span>{lang === 'bn' ? 'আমার শিক্ষক আইডি কার্ড' : 'My Teacher ID Card'}</span>
+      </button>
+    </div>
+  );
+
+  const renderModals = () => (
+    <>
 
       <FeeReceiptModal fee={activeReceipt} onClose={() => setActiveReceipt(null)} />
       {idCardStudent && (
@@ -2717,6 +3164,292 @@ export const TeacherPortal: React.FC = () => {
           notify(lang === 'bn' ? 'শিক্ষকের ছবি সংরক্ষিত হয়েছে!' : 'Teacher photo saved!');
         }}
       />
+    </>
+  );
+
+  if (embedded) {
+    return (
+      <div className="space-y-6">
+        {toast && (
+          <div className="fixed bottom-6 left-1/2 -translate-x-1/2 z-[150] bg-slate-900 text-white px-5 py-3 rounded-2xl shadow-2xl flex items-center gap-2 font-bold text-xs">
+            <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0" />
+            <span>{toast}</span>
+          </div>
+        )}
+        {!isHeadTeacher && !hasAnyAssignedClass ? unassignedNoticeContent : teacherBodyContent}
+        {renderModals()}
+      </div>
+    );
+  }
+
+  return (
+    <div className="min-h-[calc(100vh-4rem)] bg-slate-100 dark:bg-slate-950 flex flex-col lg:flex-row">
+      {toast && (
+        <div className="fixed bottom-6 left-1/2 -translate-x-1/2 z-[150] bg-slate-900 text-white px-5 py-3 rounded-2xl shadow-2xl flex items-center gap-2 font-bold text-xs">
+          <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0" />
+          <span>{toast}</span>
+        </div>
+      )}
+
+      {/* Mobile Sidebar Drawer Overlay */}
+      {mobileNavOpen && (
+        <div className="fixed inset-0 z-[130] lg:hidden flex">
+          <div className="fixed inset-0 bg-slate-950/60 backdrop-blur-sm" onClick={() => setMobileNavOpen(false)} />
+          <aside className="relative z-10 w-72 max-w-[85vw] bg-emerald-950 text-white flex flex-col h-full shadow-2xl overflow-y-auto">
+            <div className="p-5 border-b border-emerald-900 flex items-center justify-between gap-2">
+              <div className="flex items-center gap-2.5 min-w-0">
+                <div className="w-9 h-9 rounded-xl bg-emerald-700/80 border border-emerald-500/40 flex items-center justify-center shrink-0">
+                  <GraduationCap className="w-5 h-5 text-yellow-300" />
+                </div>
+                <div className="min-w-0">
+                  <p className="font-black text-xs truncate">{t(settings.name)}</p>
+                  <p className="text-[10px] text-emerald-300 font-bold">
+                    EIIN {settings.eiin} · {lang === 'bn' ? 'শিক্ষক পোর্টাল' : 'Teacher'}
+                  </p>
+                </div>
+              </div>
+              <button type="button" onClick={() => setMobileNavOpen(false)} className="p-1.5 rounded-lg hover:bg-emerald-900">
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+            <nav className="p-3 space-y-1 flex-1">
+              {tabs.map((item) => {
+                const Icon = item.icon;
+                const active = activeTab === item.id;
+                return (
+                  <button
+                    key={item.id}
+                    type="button"
+                    onClick={() => {
+                      setActiveTab(item.id);
+                      setMobileNavOpen(false);
+                    }}
+                    className={`w-full flex items-center justify-between gap-2 px-3.5 py-2.5 rounded-xl text-xs font-bold transition-all ${
+                      active
+                        ? 'bg-emerald-700 text-white shadow-md'
+                        : 'text-emerald-100/80 hover:bg-emerald-900/70 hover:text-white'
+                    }`}
+                  >
+                    <span className="flex items-center gap-2.5 truncate">
+                      <Icon className="w-4 h-4 shrink-0" />
+                      <span className="truncate">{item.label}</span>
+                    </span>
+                    {item.badge !== undefined && (
+                      <span
+                        className={`px-2 py-0.5 rounded-full text-[10px] font-black tabular-nums ${
+                          item.badgeTone === 'amber' ? 'bg-amber-500 text-slate-950' : 'bg-emerald-500/30 text-emerald-100'
+                        }`}
+                      >
+                        {item.badge}
+                      </span>
+                    )}
+                  </button>
+                );
+              })}
+            </nav>
+            <div className="p-4 m-3 rounded-2xl bg-emerald-900/60 border border-emerald-800/80 text-center space-y-1">
+              <GraduationCap className="w-6 h-6 text-yellow-300 mx-auto" />
+              <p className="text-xs font-black text-white">{t(settings.name)}</p>
+              <p className="text-[10px] text-emerald-200/80">Smart Education · Brighter Future</p>
+            </div>
+          </aside>
+        </div>
+      )}
+
+      {/* Desktop Left Forest-Green Sidebar */}
+      <aside className="hidden lg:flex lg:w-64 xl:w-68 shrink-0 bg-emerald-950 text-white flex-col justify-between border-r border-emerald-900">
+        <div>
+          <div className="p-5 border-b border-emerald-900/80 flex items-center gap-3">
+            <div className="w-10 h-10 rounded-xl bg-emerald-800 border border-emerald-600/40 flex items-center justify-center shrink-0 shadow-sm">
+              <GraduationCap className="w-5 h-5 text-yellow-300" />
+            </div>
+            <div className="min-w-0">
+              <p className="font-black text-xs leading-snug line-clamp-2 text-white">{t(settings.name)}</p>
+              <p className="text-[10px] font-bold text-emerald-300 mt-0.5">
+                {lang === 'bn' ? 'শিক্ষক পোর্টাল' : 'Teacher Portal'} · EIIN {settings.eiin}
+              </p>
+            </div>
+          </div>
+
+          <nav className="p-3 space-y-1">
+            {tabs.map((item) => {
+              const Icon = item.icon;
+              const active = activeTab === item.id;
+              return (
+                <button
+                  key={item.id}
+                  type="button"
+                  onClick={() => setActiveTab(item.id)}
+                  className={`w-full flex items-center justify-between gap-2 px-3.5 py-2.5 rounded-xl text-xs font-bold transition-all ${
+                    active
+                      ? 'bg-emerald-700 text-white shadow-md'
+                      : 'text-emerald-100/80 hover:bg-emerald-900/70 hover:text-white'
+                  }`}
+                >
+                  <span className="flex items-center gap-2.5 truncate">
+                    <Icon className="w-4 h-4 shrink-0" />
+                    <span className="truncate">{item.label}</span>
+                  </span>
+                  {item.badge !== undefined && (
+                    <span
+                      className={`px-2 py-0.5 rounded-full text-[10px] font-black tabular-nums ${
+                        item.badgeTone === 'amber' ? 'bg-amber-500 text-slate-950' : 'bg-emerald-500/30 text-emerald-100'
+                      }`}
+                    >
+                      {item.badge}
+                    </span>
+                  )}
+                </button>
+              );
+            })}
+          </nav>
+        </div>
+
+        <div className="p-4 m-3 rounded-2xl bg-emerald-900/60 border border-emerald-800/70 text-center space-y-1.5">
+          <GraduationCap className="w-7 h-7 text-yellow-300 mx-auto" />
+          <p className="text-xs font-black text-white">{t(settings.name)}</p>
+          <p className="text-[10px] text-emerald-200/80">
+            {lang === 'bn' ? 'স্মার্ট শিক্ষা, উজ্জ্বল ভবিষ্যৎ' : 'Smart Education · Brighter Future'}
+          </p>
+        </div>
+      </aside>
+
+      {/* Main Content Area */}
+      <div className="flex-1 min-w-0 flex flex-col">
+        {/* Sticky Top Bar */}
+        <header className="sticky top-0 z-30 bg-white/95 dark:bg-slate-900/95 backdrop-blur-md border-b border-slate-200 dark:border-slate-800 px-4 sm:px-6 py-3">
+          <div className="max-w-7xl mx-auto flex flex-wrap items-center justify-between gap-3">
+            <div className="flex items-center gap-2.5 flex-1 min-w-[200px] max-w-md relative">
+              <button
+                type="button"
+                onClick={() => setMobileNavOpen(true)}
+                className="lg:hidden p-2 rounded-xl bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-200"
+                aria-label="Open menu"
+              >
+                <Menu className="w-5 h-5" />
+              </button>
+              <div className="relative flex-1">
+                <Search className="w-4 h-4 text-slate-400 absolute left-3.5 top-1/2 -translate-y-1/2" />
+                <input
+                  value={searchQuery}
+                  onChange={(e) => setSearchQuery(e.target.value)}
+                  placeholder={lang === 'bn' ? 'শিক্ষার্থী, মেনু বা নোটিশ খুঁজুন...' : 'Search students, tabs, notices...'}
+                  className="w-full pl-9 pr-8 py-2 rounded-full bg-slate-100 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-xs font-semibold outline-none focus:ring-2 focus:ring-emerald-600"
+                />
+                {searchQuery && (
+                  <button
+                    type="button"
+                    onClick={() => setSearchQuery('')}
+                    className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-700"
+                  >
+                    <X className="w-3.5 h-3.5" />
+                  </button>
+                )}
+
+                {quickSearchMatches.length > 0 && (
+                  <div className="absolute left-0 right-0 mt-1.5 bg-white dark:bg-slate-900 rounded-2xl shadow-xl border border-slate-200 dark:border-slate-700 py-1.5 z-50">
+                    {quickSearchMatches.map((item, idx) => (
+                      <button
+                        key={`${item.tab}-${idx}`}
+                        type="button"
+                        onClick={() => {
+                          setActiveTab(item.tab);
+                          setSearchQuery('');
+                        }}
+                        className="w-full px-3.5 py-2 text-left hover:bg-slate-50 dark:hover:bg-slate-800 flex items-center justify-between gap-2 text-xs"
+                      >
+                        <span className="font-bold text-slate-800 dark:text-slate-100 truncate">{item.label}</span>
+                        <span className="text-[10px] font-extrabold uppercase px-2 py-0.5 rounded-md bg-emerald-100 dark:bg-emerald-950 text-emerald-700 dark:text-emerald-300 shrink-0">
+                          {item.category}
+                        </span>
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </div>
+            </div>
+
+            <div className="flex items-center gap-2 sm:gap-3">
+              {/* Live GMT+6 Dhaka Clock */}
+              <div className="hidden xl:flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-emerald-50 dark:bg-emerald-950/60 border border-emerald-200 dark:border-emerald-800 text-emerald-800 dark:text-emerald-300 text-[11px] font-bold tabular-nums">
+                <Clock className="w-3.5 h-3.5" />
+                <span>{dhakaClockText}</span>
+              </div>
+
+              {/* Teacher ID Card Shortcut */}
+              <button
+                type="button"
+                onClick={() => setTeacherIdCardOpen(true)}
+                className="hidden sm:inline-flex items-center gap-1.5 px-3 py-2 rounded-xl bg-emerald-50 dark:bg-emerald-950/60 border border-emerald-200 dark:border-emerald-800 text-emerald-800 dark:text-emerald-300 text-xs font-bold hover:bg-emerald-100 transition-colors"
+              >
+                <IdCard className="w-4 h-4" />
+                <span>{lang === 'bn' ? 'আইডি কার্ড' : 'ID Card'}</span>
+              </button>
+
+              {/* Parent Messages / Alerts Bell */}
+              <button
+                type="button"
+                onClick={() => setActiveTab(pendingRepliesCount > 0 ? 'parent-messages' : 'notices')}
+                className="relative p-2.5 rounded-xl bg-slate-100 dark:bg-slate-800 hover:bg-emerald-50 dark:hover:bg-emerald-950/60 text-slate-700 dark:text-slate-200 transition-colors"
+                title={lang === 'bn' ? 'বার্তা ও বিজ্ঞপ্তি' : 'Messages & Alerts'}
+              >
+                <Bell className="w-4 h-4" />
+                {(pendingRepliesCount + pendingStudentLeaveCount) > 0 && (
+                  <span className="absolute -top-1 -right-1 min-w-[18px] h-[18px] px-1 rounded-full bg-red-600 text-white text-[10px] font-black flex items-center justify-center tabular-nums">
+                    {pendingRepliesCount + pendingStudentLeaveCount}
+                  </span>
+                )}
+              </button>
+
+              {/* Profile & Avatar Upload */}
+              <div className="flex items-center gap-2.5 pl-1">
+                <div className="relative">
+                  <div className="w-9 h-9 rounded-full overflow-hidden bg-emerald-100 dark:bg-emerald-950 border border-emerald-300 dark:border-emerald-700 flex items-center justify-center">
+                    {teacherPhoto ? (
+                      <img src={teacherPhoto} alt="" className="w-full h-full object-cover" />
+                    ) : (
+                      <UserIcon className="w-4 h-4 text-emerald-700 dark:text-emerald-300" />
+                    )}
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => avatarInputRef.current?.click()}
+                    title={lang === 'bn' ? 'ছবি পরিবর্তন করুন' : 'Upload Photo'}
+                    className="absolute -bottom-1 -right-1 w-5 h-5 rounded-full bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 shadow flex items-center justify-center text-emerald-700 dark:text-emerald-400"
+                  >
+                    <Camera className="w-3 h-3" />
+                  </button>
+                  <input ref={avatarInputRef} type="file" accept="image/*" onChange={handleTeacherAvatarUpload} className="hidden" />
+                </div>
+                <div className="hidden sm:block text-left leading-tight">
+                  <p className="text-xs font-extrabold text-slate-900 dark:text-white max-w-[140px] truncate">
+                    {t(resolvedTeacherCardProfile.name)}
+                  </p>
+                  <p className="text-[10px] font-bold text-emerald-700 dark:text-emerald-400 tabular-nums">
+                    {teacherDisplayCode}
+                  </p>
+                </div>
+              </div>
+
+              <button
+                type="button"
+                onClick={logout}
+                className="px-3 py-2 rounded-xl bg-red-500 hover:bg-red-600 text-white text-xs font-bold inline-flex items-center gap-1.5 whitespace-nowrap"
+              >
+                <LogOut className="w-3.5 h-3.5" />
+                <span className="hidden sm:inline">{lang === 'bn' ? 'লগআউট' : 'Logout'}</span>
+              </button>
+            </div>
+          </div>
+        </header>
+
+        {/* Main Scrollable Canvas */}
+        <main className="flex-1 p-4 sm:p-6 max-w-7xl w-full mx-auto space-y-6">
+          {!isHeadTeacher && !hasAnyAssignedClass ? unassignedNoticeContent : teacherBodyContent}
+        </main>
+      </div>
+
+      {renderModals()}
     </div>
   );
 };

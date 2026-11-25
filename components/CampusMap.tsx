@@ -60,6 +60,56 @@ const SchoolMarkerPin: React.FC<{
   );
 };
 
+const ENV_MAPS_KEY =
+  (import.meta as unknown as { env?: Record<string, string> }).env?.VITE_GOOGLE_MAPS_API_KEY || '';
+const MAPS_LIBRARIES: ['marker'] = ['marker'];
+const MAPS_REGION = 'BD';
+const MAPS_ATTRIBUTION_IDS = ['gmp_mcp_codeassist_v1_aistudio'];
+
+interface LockedMapsLoaderConfig {
+  apiKey: string;
+  language: 'bn' | 'en';
+}
+
+const getLockedMapsConfig = (): LockedMapsLoaderConfig | null => {
+  const win = typeof window !== 'undefined' ? (window as unknown as { __rbmbMapsLoaderConfig?: LockedMapsLoaderConfig }) : null;
+  return win?.__rbmbMapsLoaderConfig ?? null;
+};
+
+const setLockedMapsConfig = (config: LockedMapsLoaderConfig): LockedMapsLoaderConfig => {
+  const win = typeof window !== 'undefined' ? (window as unknown as { __rbmbMapsLoaderConfig?: LockedMapsLoaderConfig }) : null;
+  if (win) {
+    if (!win.__rbmbMapsLoaderConfig) {
+      win.__rbmbMapsLoaderConfig = config;
+    }
+    return win.__rbmbMapsLoaderConfig;
+  }
+  return config;
+};
+
+let cachedMapsApiKey: string = ENV_MAPS_KEY;
+let pendingMapsKeyPromise: Promise<string> | null = null;
+
+const fetchMapsApiKey = (): Promise<string> => {
+  if (cachedMapsApiKey) return Promise.resolve(cachedMapsApiKey);
+  if (!pendingMapsKeyPromise) {
+    pendingMapsKeyPromise = fetch('/api/config/maps')
+      .then((res) => (res.ok ? res.json() : null))
+      .then((data) => {
+        if (data?.apiKey) {
+          cachedMapsApiKey = data.apiKey;
+          return cachedMapsApiKey;
+        }
+        return '';
+      })
+      .catch(() => '')
+      .finally(() => {
+        pendingMapsKeyPromise = null;
+      });
+  }
+  return pendingMapsKeyPromise;
+};
+
 const MapInner: React.FC<{
   position: { lat: number; lng: number };
   schoolName: string;
@@ -92,7 +142,7 @@ const MapInner: React.FC<{
     <div className={`${heightClass} w-full rounded-2xl overflow-hidden border border-slate-200 dark:border-slate-700`}>
       <GoogleMap
         mapId="DEMO_MAP_ID"
-        internalUsageAttributionIds={['gmp_mcp_codeassist_v1_aistudio']}
+        internalUsageAttributionIds={MAPS_ATTRIBUTION_IDS}
         defaultCenter={position}
         defaultZoom={15}
         gestureHandling="cooperative"
@@ -112,8 +162,7 @@ export const CampusMap: React.FC<CampusMapProps> = ({
   lang,
   heightClass = 'h-[340px]',
 }) => {
-  const envKey = (import.meta as unknown as { env?: Record<string, string> }).env?.VITE_GOOGLE_MAPS_API_KEY || '';
-  const [apiKey, setApiKey] = React.useState<string>(envKey);
+  const [apiKey, setApiKey] = React.useState<string>(() => getLockedMapsConfig()?.apiKey || cachedMapsApiKey);
   const [quotaReached, setQuotaReached] = React.useState(false);
 
   React.useEffect(() => {
@@ -123,22 +172,17 @@ export const CampusMap: React.FC<CampusMapProps> = ({
   }, []);
 
   React.useEffect(() => {
-    if (envKey) return;
+    if (apiKey) return;
     let active = true;
-    fetch('/api/config/maps')
-      .then((res) => (res.ok ? res.json() : null))
-      .then((data) => {
-        if (active && data?.apiKey) {
-          setApiKey(data.apiKey);
-        }
-      })
-      .catch(() => {
-        // Fallback card renders cleanly offline / standalone Capacitor
-      });
+    fetchMapsApiKey().then((key) => {
+      if (active && key) {
+        setApiKey(key);
+      }
+    });
     return () => {
       active = false;
     };
-  }, [envKey]);
+  }, [apiKey]);
 
   const position = { lat, lng };
 
@@ -168,8 +212,20 @@ export const CampusMap: React.FC<CampusMapProps> = ({
     );
   }
 
+  // Lock APIProvider parameters to the initial mount values because Google Maps JS API
+  // can only be initialized once per page load with a single language/region/libraries config.
+  const loaderConfig = getLockedMapsConfig() || setLockedMapsConfig({
+    apiKey,
+    language: lang === 'bn' ? 'bn' : 'en',
+  });
+
   return (
-    <APIProvider apiKey={apiKey} libraries={['marker']} language={lang === 'bn' ? 'bn' : 'en'} region="BD">
+    <APIProvider
+      apiKey={loaderConfig.apiKey}
+      libraries={MAPS_LIBRARIES}
+      language={loaderConfig.language}
+      region={MAPS_REGION}
+    >
       <MapInner position={position} schoolName={schoolName} address={address} lang={lang} heightClass={heightClass} />
     </APIProvider>
   );

@@ -2,6 +2,7 @@ import * as React from 'react';
 import * as RouterDom from 'react-router-dom';
 import Navbar from './components/Navbar';
 import NoticeTicker from './components/NoticeTicker';
+import AdMobBannerBar from './components/AdMobBannerBar';
 import Home from './pages/Home';
 import NoticeBoard from './pages/NoticeBoard';
 import Teachers from './pages/Teachers';
@@ -94,6 +95,7 @@ import {
   PaymentMethod,
   PortalNotification,
 } from './types';
+import { sanitizeAdmissionScheduleConfig } from './utils/admissionSchedule';
 import { OfflineIndicator } from './components/OfflineIndicator';
 import {
   auth,
@@ -138,6 +140,7 @@ import {
   phonesMatch,
   buildStudentRegistrationNo,
 } from './utils/security';
+import { inferSubjectStudyGroup } from './utils/teacherRole';
 import {
   safeLocalGet,
   safeLocalSet,
@@ -457,6 +460,7 @@ interface AppContextType {
   subjects: SchoolSubject[];
   addSubject: (sub: SchoolSubject) => void;
   deleteSubject: (id: string) => void;
+  syncNctbSubjects: () => void;
   parentMessages: ParentMessage[];
   sendParentMessage: (msg: ParentMessage) => void;
   replyParentMessage: (id: string, reply: string, repliedBy: string) => void;
@@ -530,12 +534,15 @@ const LEGACY_SCHOOL_NAME_BN = [
 const LEGACY_SCHOOL_NAME_EN = [
   'Rani Bazar Model High School',
   'Ranir Bazar Model High School',
+  'Ranir Bazar Secondary High School',
+  'Rani Bazar Secondary High School',
 ];
 
 const normalizeSchoolSettings = (raw?: Partial<SchoolSettings> | null): SchoolSettings => {
   const base = { ...INITIAL_SETTINGS, ...(raw || {}) };
   const rawBn = (base.name?.bn || '').trim();
   const rawEn = (base.name?.en || '').trim();
+  const rawShort = (base.shortName || '').trim();
   const nextBn =
     !rawBn || LEGACY_SCHOOL_NAME_BN.some((legacy) => rawBn.includes(legacy) || rawBn.includes('মডেল উচ্চ') || rawBn.includes('মডেল হাই'))
       ? SCHOOL_NAME.bn
@@ -544,12 +551,21 @@ const normalizeSchoolSettings = (raw?: Partial<SchoolSettings> | null): SchoolSe
     !rawEn || LEGACY_SCHOOL_NAME_EN.some((legacy) => rawEn.toLowerCase().includes(legacy.toLowerCase()) || rawEn.toLowerCase().includes('model high'))
       ? SCHOOL_NAME.en
       : rawEn;
+  const nextShort =
+    !rawShort ||
+    rawShort === 'RBMB Digital Campus' ||
+    LEGACY_SCHOOL_NAME_EN.some((legacy) => rawShort.toLowerCase().includes(legacy.toLowerCase()))
+      ? INITIAL_SETTINGS.shortName
+      : rawShort;
 
   const headMsgBn = (base.headTeacherMessage?.bn || '').replace(/রাণীর বাজার মডেল উচ্চ বিদ্যালয়/g, SCHOOL_NAME.bn);
-  const headMsgEn = (base.headTeacherMessage?.en || '').replace(/Rani Bazar Model High School/gi, SCHOOL_NAME.en);
+  const headMsgEn = (base.headTeacherMessage?.en || '')
+    .replace(/Rani Bazar Model High School/gi, SCHOOL_NAME.en)
+    .replace(/Ranir Bazar Secondary High School/gi, SCHOOL_NAME.en);
 
   return {
     ...base,
+    shortName: nextShort,
     name: { bn: nextBn, en: nextEn },
     headTeacherMessage: base.headTeacherMessage
       ? { bn: headMsgBn, en: headMsgEn }
@@ -562,7 +578,34 @@ const normalizeSchoolSettings = (raw?: Partial<SchoolSettings> | null): SchoolSe
       base.headTeacherPhoto && !base.headTeacherPhoto.includes('unsplash.com') && !base.headTeacherPhoto.includes('picsum.photos')
         ? base.headTeacherPhoto
         : INITIAL_SETTINGS.headTeacherPhoto,
+    admissionSchedule: sanitizeAdmissionScheduleConfig(base.admissionSchedule || INITIAL_SETTINGS.admissionSchedule),
   };
+};
+
+const normalizeNctbSubjectsList = (rawList: SchoolSubject[] | undefined | null): SchoolSubject[] => {
+  const list = Array.isArray(rawList) ? rawList : [];
+  const enriched: SchoolSubject[] = list.map((s) => ({
+    ...s,
+    group: inferSubjectStudyGroup(s.classId, s.code, s.name?.en, s.group),
+  }));
+  const hasUnifiedCatalog = enriched.some((s) => /^sub-(6|7|8|9|10)-1$/.test(s.id));
+  if (enriched.length === 0 || (!hasUnifiedCatalog && enriched.length <= 10)) {
+    const existingKeys = new Set(
+      enriched.map(
+        (s) => `${s.classId}__${(s.code || '').trim()}__${(s.name?.en || '').trim().toLowerCase()}`
+      )
+    );
+    const merged: SchoolSubject[] = [...enriched];
+    INITIAL_SUBJECTS.forEach((def) => {
+      const key = `${def.classId}__${(def.code || '').trim()}__${(def.name?.en || '').trim().toLowerCase()}`;
+      if (!existingKeys.has(key)) {
+        existingKeys.add(key);
+        merged.push(def);
+      }
+    });
+    return merged;
+  }
+  return enriched;
 };
 
 // Global Quick Search Modal rendered inside Router context
@@ -820,6 +863,7 @@ const App: React.FC = () => {
   const [largeText, setLargeText] = useState<boolean>(() => safeLocalGet<boolean>('school_large_text', false));
   const [searchOpen, setSearchOpen] = useState<boolean>(false);
   const [mapsQuotaExceeded, setMapsQuotaExceeded] = useState<boolean>(false);
+  const [adBannerHeight, setAdBannerHeight] = useState<number>(0);
 
   const [user, setUser] = useState<AuthUser | null>(null);
   const [firebaseUser, setFirebaseUser] = useState<FirebaseUser | null>(null);
@@ -859,7 +903,9 @@ const App: React.FC = () => {
   const [examAttempts, setExamAttempts] = useState<ExamAttempt[]>(() => safeLocalGet('db_exam_attempts', []));
   const [examRoutines, setExamRoutines] = useState<ExamRoutineItem[]>(() => safeLocalGet('db_exam_routines', INITIAL_EXAM_ROUTINES));
   const [classRoutines, setClassRoutines] = useState<ClassRoutine[]>(() => safeLocalGet('db_class_routines', CLASS_ROUTINES));
-  const [subjects, setSubjects] = useState<SchoolSubject[]>(() => safeLocalGet('db_subjects', INITIAL_SUBJECTS));
+  const [subjects, setSubjects] = useState<SchoolSubject[]>(() =>
+    normalizeNctbSubjectsList(safeLocalGet('db_subjects', INITIAL_SUBJECTS))
+  );
   const [parentMessages, setParentMessages] = useState<ParentMessage[]>(() => safeLocalGet('db_parent_messages', []));
   const [parentLinks, setParentLinks] = useState<ParentStudentLink[]>(() => safeLocalGet('db_parent_links', []));
   const [alumni, setAlumni] = useState<AlumniProfile[]>(() => safeLocalGet('db_alumni', INITIAL_ALUMNI));
@@ -1087,7 +1133,7 @@ const App: React.FC = () => {
       if (Array.isArray(idbData.db_exam_attempts)) setExamAttempts(idbData.db_exam_attempts as ExamAttempt[]);
       if (Array.isArray(idbData.db_exam_routines)) setExamRoutines(idbData.db_exam_routines as ExamRoutineItem[]);
       if (Array.isArray(idbData.db_class_routines)) setClassRoutines(idbData.db_class_routines as ClassRoutine[]);
-      if (Array.isArray(idbData.db_subjects)) setSubjects(idbData.db_subjects as SchoolSubject[]);
+      if (Array.isArray(idbData.db_subjects)) setSubjects(normalizeNctbSubjectsList(idbData.db_subjects as SchoolSubject[]));
       if (Array.isArray(idbData.db_parent_messages)) setParentMessages(idbData.db_parent_messages as ParentMessage[]);
       if (Array.isArray(idbData.db_parent_links)) setParentLinks(idbData.db_parent_links as ParentStudentLink[]);
       if (Array.isArray(idbData.db_alumni)) setAlumni(idbData.db_alumni as AlumniProfile[]);
@@ -1301,7 +1347,7 @@ const App: React.FC = () => {
           const hPhoto = clampImageString(cur.settings.headTeacherPhoto);
           await setDoc(settingsRef, {
             name: safeLoc(cur.settings.name, SCHOOL_NAME.bn, SCHOOL_NAME.en, 200),
-            shortName: (cur.settings.shortName || INITIAL_SETTINGS.shortName || 'RBMB Digital Campus').slice(0, 100),
+            shortName: (cur.settings.shortName || INITIAL_SETTINGS.shortName || 'রাণীর বাজার মাধ্যমিক বিদ্যালয়').slice(0, 100),
             tagline: safeLoc(cur.settings.tagline, CAMPUS_TAGLINE.bn, CAMPUS_TAGLINE.en, 300),
             eiin: (cur.settings.eiin || INITIAL_SETTINGS.eiin).slice(0, 32),
             phone: (cur.settings.phone || INITIAL_SETTINGS.phone).slice(0, 40),
@@ -1313,6 +1359,7 @@ const App: React.FC = () => {
             ...(hPhoto ? { headTeacherPhoto: hPhoto } : {}),
             latitude: cur.settings.latitude ?? INITIAL_SETTINGS.latitude,
             longitude: cur.settings.longitude ?? INITIAL_SETTINGS.longitude,
+            admissionSchedule: sanitizeAdmissionScheduleConfig(cur.settings.admissionSchedule),
             updatedAt: serverTimestamp(),
           });
         }
@@ -1717,6 +1764,7 @@ const App: React.FC = () => {
             headTeacherPhoto: d.headTeacherPhoto || INITIAL_SETTINGS.headTeacherPhoto,
             latitude: typeof d.latitude === 'number' ? d.latitude : INITIAL_SETTINGS.latitude,
             longitude: typeof d.longitude === 'number' ? d.longitude : INITIAL_SETTINGS.longitude,
+            admissionSchedule: d.admissionSchedule ? sanitizeAdmissionScheduleConfig(d.admissionSchedule) : INITIAL_SETTINGS.admissionSchedule,
           });
           setSettings(nextSettings);
           safeLocalSet('school_settings', nextSettings);
@@ -1855,7 +1903,7 @@ const App: React.FC = () => {
       query(collection(db, 'subjects'), where('isPublic', '==', true)),
       (snap) => {
         if (!snap.empty && !shouldDeferSnapshotToLocal('db_subjects')) {
-          const items = snap.docs.map((d) => d.data() as SchoolSubject);
+          const items = normalizeNctbSubjectsList(snap.docs.map((d) => d.data() as SchoolSubject));
           setSubjects(items);
           safeLocalSet('db_subjects', items);
         }
@@ -4079,6 +4127,9 @@ const App: React.FC = () => {
   const updateSettings = async (newSettings: SchoolSettings): Promise<boolean> => {
     const sPhoto = clampImageString(newSettings.schoolPhoto) || INITIAL_SETTINGS.schoolPhoto;
     const hPhoto = clampImageString(newSettings.headTeacherPhoto) || INITIAL_SETTINGS.headTeacherPhoto;
+    const nextSchedule = sanitizeAdmissionScheduleConfig(
+      newSettings.admissionSchedule ?? settings.admissionSchedule ?? INITIAL_SETTINGS.admissionSchedule
+    );
     const cleaned: SchoolSettings = {
       ...newSettings,
       name: safeLoc(newSettings.name, SCHOOL_NAME.bn, SCHOOL_NAME.en, 200),
@@ -4088,6 +4139,7 @@ const App: React.FC = () => {
       location: safeLoc(newSettings.location, INITIAL_SETTINGS.location.bn, INITIAL_SETTINGS.location.en, 300),
       schoolPhoto: sPhoto,
       headTeacherPhoto: hPhoto,
+      admissionSchedule: nextSchedule,
       ...(newSettings.headTeacherName
         ? { headTeacherName: safeLoc(newSettings.headTeacherName, 'প্রধান শিক্ষক', 'Head Teacher', 200) }
         : {}),
@@ -4114,6 +4166,7 @@ const App: React.FC = () => {
           ...(cleaned.headTeacherPhoto ? { headTeacherPhoto: cleaned.headTeacherPhoto } : {}),
           ...(typeof cleaned.latitude === 'number' ? { latitude: cleaned.latitude } : {}),
           ...(typeof cleaned.longitude === 'number' ? { longitude: cleaned.longitude } : {}),
+          admissionSchedule: nextSchedule,
           updatedAt: serverTimestamp(),
         });
         clearDirtyKey('school_settings');
@@ -5284,7 +5337,12 @@ const App: React.FC = () => {
   // Subjects
   const addSubject = (sub: SchoolSubject) => {
     const id = sanitizeFirestoreId(sub.id);
-    const clean: SchoolSubject = { ...sub, id, isPublic: true };
+    const clean: SchoolSubject = {
+      ...sub,
+      id,
+      group: inferSubjectStudyGroup(sub.classId, sub.code, sub.name?.en, sub.group),
+      isPublic: true,
+    };
     const updated = [...subjects, clean];
     setSubjects(updated);
     persistLocal('db_subjects', updated);
@@ -5309,6 +5367,40 @@ const App: React.FC = () => {
     setSubjects(updated);
     persistLocal('db_subjects', updated);
     void syncDocDelete('subjects', sanitizeFirestoreId(id));
+  };
+
+  const syncNctbSubjects = () => {
+    const existingKeys = new Set(
+      subjects.map(
+        (s) => `${s.classId}__${(s.code || '').trim()}__${(s.name?.en || '').trim().toLowerCase()}`
+      )
+    );
+    const missing = INITIAL_SUBJECTS.filter((def) => {
+      const key = `${def.classId}__${(def.code || '').trim()}__${(def.name?.en || '').trim().toLowerCase()}`;
+      return !existingKeys.has(key);
+    });
+    const updated = [...subjects.map((s) => ({ ...s, group: inferSubjectStudyGroup(s.classId, s.code, s.name?.en, s.group) })), ...missing];
+    setSubjects(updated);
+    persistLocal('db_subjects', updated);
+    if (isCloudAdmin && missing.length > 0) {
+      missing.forEach((clean) => {
+        const id = sanitizeFirestoreId(clean.id);
+        void syncDocUpsert(
+          'subjects',
+          id,
+          {
+            id,
+            code: (clean.code || '101').slice(0, 16),
+            name: safeLoc(clean.name, 'বিষয়', 'Subject', 200),
+            classId: clean.classId,
+            totalMarks: clean.totalMarks,
+            ...(clean.teacherName ? { teacherName: clean.teacherName.slice(0, 150) } : {}),
+            isPublic: true,
+          },
+          false
+        );
+      });
+    }
   };
 
   // Parent-Teacher Messages & Verified Parent-Student Link Workflow
@@ -6474,6 +6566,7 @@ Available Features: Online Admission (/admission), Online MCQ Exams (/exams), Di
         subjects,
         addSubject,
         deleteSubject,
+        syncNctbSubjects,
         parentMessages,
         sendParentMessage,
         replyParentMessage,
@@ -6577,7 +6670,7 @@ Available Features: Online Admission (/admission), Online MCQ Exams (/exams), Di
           <footer className="bg-white dark:bg-slate-900 border-t border-slate-200 dark:border-slate-800 py-12 px-4 text-center no-print">
             <div className="max-w-5xl mx-auto">
               <p className="text-[11px] font-bold uppercase tracking-widest text-emerald-700 dark:text-emerald-400 mb-1">
-                {t(CAMPUS_BRAND)}
+                {settings.eiin ? `EIIN: ${settings.eiin} · EST. 1958` : 'EST. 1958'}
               </p>
               <h3 className="text-xl font-black text-slate-900 dark:text-white mb-1">{t(settings.name)}</h3>
               <p className="text-xs font-medium text-slate-500 dark:text-slate-400 mb-2">
@@ -6618,7 +6711,7 @@ Available Features: Online Admission (/admission), Online MCQ Exams (/exams), Di
               </div>
 
               <p className="text-xs text-slate-400 dark:text-slate-500 font-semibold mb-4">
-                © 2026 {t(CAMPUS_BRAND)} · {t(settings.name)}। {lang === 'bn' ? 'সর্বস্বত্ব সংরক্ষিত।' : 'All rights reserved.'}
+                © 2026 {t(settings.name)}। {lang === 'bn' ? 'সর্বস্বত্ব সংরক্ষিত।' : 'All rights reserved.'}
               </p>
 
               <div className="inline-block border-t border-slate-100 dark:border-slate-800 pt-4 px-6">
@@ -6633,18 +6726,24 @@ Available Features: Online Admission (/admission), Online MCQ Exams (/exams), Di
             </div>
           </footer>
 
+          <AdMobBannerBar onHeightChange={setAdBannerHeight} />
+
           <OfflineIndicator />
 
           <button
             onClick={() => setShowChat(!showChat)}
             aria-label={lang === 'bn' ? 'এআই স্কুল অ্যাসিস্ট্যান্ট' : 'AI School Assistant'}
-            className="fixed bottom-6 right-6 bg-emerald-700 hover:bg-emerald-800 text-white p-4 rounded-2xl shadow-2xl z-50 transition-all hover:scale-105 active:scale-95 no-print"
+            style={{ bottom: `${24 + adBannerHeight}px` }}
+            className="fixed right-6 bg-emerald-700 hover:bg-emerald-800 text-white p-4 rounded-2xl shadow-2xl z-50 transition-all hover:scale-105 active:scale-95 no-print"
           >
             {showChat ? <X className="w-6 h-6" /> : <Bot className="w-6 h-6" />}
           </button>
 
           {showChat && (
-            <div className="fixed bottom-24 right-6 w-[calc(100vw-3rem)] md:w-[26rem] h-[34rem] bg-white dark:bg-slate-900 rounded-3xl shadow-2xl z-50 border border-slate-200 dark:border-slate-800 flex flex-col no-print">
+            <div
+              style={{ bottom: `${96 + adBannerHeight}px` }}
+              className="fixed right-6 w-[calc(100vw-3rem)] md:w-[26rem] h-[34rem] bg-white dark:bg-slate-900 rounded-3xl shadow-2xl z-50 border border-slate-200 dark:border-slate-800 flex flex-col no-print"
+            >
               <div className="bg-emerald-700 p-5 text-white flex justify-between items-center rounded-t-3xl">
                 <div className="flex items-center gap-3">
                   <div className="bg-white/20 p-2 rounded-xl">

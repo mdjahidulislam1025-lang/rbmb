@@ -10,6 +10,23 @@
       },
       "required": ["bn", "en"]
     },
+    "AdmissionSchedule": {
+      "title": "AdmissionSchedule",
+      "description": "Annual online admission portal schedule and admin override configuration.",
+      "type": "object",
+      "properties": {
+        "mode": { "type": "string", "enum": ["auto", "open", "closed"] },
+        "startDate": { "type": "string", "maxLength": 32 },
+        "deadlineDate": { "type": "string", "maxLength": 32 },
+        "examDate": { "type": "string", "maxLength": 32 },
+        "resultDate": { "type": "string", "maxLength": 32 },
+        "feeAmount": { "type": "number" },
+        "sessionYear": { "type": "string", "maxLength": 16 },
+        "autoRollYearly": { "type": "boolean" },
+        "noticeNote": { "type": "string", "maxLength": 300 }
+      },
+      "required": ["mode", "startDate", "deadlineDate", "examDate", "resultDate", "feeAmount"]
+    },
     "SchoolSettings": {
       "title": "SchoolSettings",
       "description": "Global school configuration and branding details.",
@@ -28,6 +45,7 @@
         "headTeacherPhoto": { "type": "string", "maxLength": 600000 },
         "latitude": { "type": "number" },
         "longitude": { "type": "number" },
+        "admissionSchedule": { "$ref": "#/entities/AdmissionSchedule" },
         "updatedAt": { "type": "string", "format": "date-time" }
       },
       "required": ["name", "eiin", "phone", "email", "location", "updatedAt"]

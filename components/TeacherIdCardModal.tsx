@@ -223,11 +223,11 @@ const ExecutivePortraitFrame: React.FC<{
 
 function getSchoolMeta(settings: SchoolSettings, cardLang: 'en' | 'bn') {
   const rawBn = settings.name?.bn || 'রাণীর বাজার মাধ্যমিক বিদ্যালয়';
-  const rawEn = settings.name?.en || 'Ranir Bazar Secondary High School';
+  const rawEn = settings.name?.en || 'রাণীর বাজার মাধ্যমিক বিদ্যালয়';
   const schoolName =
     cardLang === 'bn'
-      ? rawBn.includes('আরবিএমবি') ? rawBn : `${rawBn} (আরবিএমবি)`
-      : rawEn.includes('RBMB') ? rawEn : `${rawEn} (RBMB)`;
+      ? rawBn
+      : rawEn;
   const locationText =
     cardLang === 'bn'
       ? settings.location?.bn || 'রাণীর বাজার, চৌদ্দগ্রাম, কুমিল্লা'

@@ -3,12 +3,21 @@ import * as RouterDom from 'react-router-dom';
 import { Bell } from 'lucide-react';
 import { TRANSLATIONS } from '../constants';
 import { useApp } from '../App';
+import { formatAdmissionDate, resolveAdmissionSchedule, toBengaliDigits } from '../utils/admissionSchedule';
 
 const { Link } = RouterDom;
 
 const NoticeTicker: React.FC = () => {
-  const { t, notices, settings } = useApp();
+  const { lang, t, notices, settings } = useApp();
   const latestNotice = notices && notices.length > 0 ? notices[0] : null;
+  const schedule = resolveAdmissionSchedule(settings.admissionSchedule);
+  const admissionTickerText = schedule.isOpen
+    ? lang === 'bn'
+      ? `${toBengaliDigits(schedule.sessionYear)} শিক্ষাবর্ষে অনলাইন ভর্তি চলছে (শেষ তারিখ: ${formatAdmissionDate(schedule.deadlineDate, 'bn')})...`
+      : `Online Admission Open for Session ${schedule.sessionYear} (Deadline: ${formatAdmissionDate(schedule.deadlineDate, 'en')})...`
+    : lang === 'bn'
+    ? `${toBengaliDigits(schedule.sessionYear)} শিক্ষাবর্ষে অনলাইন ভর্তি শুরু: ${formatAdmissionDate(schedule.startDate, 'bn')}`
+    : `Session ${schedule.sessionYear} Online Admission Opens: ${formatAdmissionDate(schedule.startDate, 'en')}`;
 
   return (
     <div className="bg-emerald-700 dark:bg-emerald-900 text-white py-2 overflow-hidden flex items-center h-10 border-b border-emerald-800/40 no-print">
@@ -31,7 +40,7 @@ const NoticeTicker: React.FC = () => {
           ) : (
             <>
               <span className="mx-8 font-bold">{t(settings.name)}{t(TRANSLATIONS.ui.welcome)}</span>
-              <span className="mx-8 font-bold">২০২৬ শিক্ষাবর্ষে ভর্তি চলছে...</span>
+              <span className="mx-8 font-bold">{admissionTickerText}</span>
             </>
           )}
         </Link>

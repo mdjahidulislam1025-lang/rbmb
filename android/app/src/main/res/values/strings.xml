@@ -4,4 +4,5 @@
     <string name="title_activity_main">RBHS School App</string>
     <string name="package_name">edu.rbhs.schoolapp</string>
     <string name="custom_url_scheme">edu.rbhs.schoolapp</string>
+    <string name="admob_app_id">ca-app-pub-3940256099942544~3347511713</string>
 </resources>

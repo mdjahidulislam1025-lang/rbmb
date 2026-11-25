@@ -25,15 +25,22 @@ import {
   computerLabImg,
   sportsEventImg,
 } from './src/assets/media';
+import {
+  NCTB_JUNIOR_SUBJECTS,
+  NCTB_SECONDARY_COMMON_SUBJECTS,
+  NCTB_SECONDARY_GROUP_SUBJECTS,
+  getNctbSubjectIdsForClass,
+} from './utils/teacherRole';
+import { getDefaultYearlyAdmissionCycle } from './utils/admissionSchedule';
 
 export const CAMPUS_BRAND = {
-  bn: 'আরবিএমবি ডিজিটাল ক্যাম্পাস',
-  en: 'RBMB Digital Campus',
+  bn: 'রাণীর বাজার মাধ্যমিক বিদ্যালয়',
+  en: 'রাণীর বাজার মাধ্যমিক বিদ্যালয়',
 };
 
 export const SCHOOL_NAME = {
   bn: 'রাণীর বাজার মাধ্যমিক বিদ্যালয়',
-  en: 'Ranir Bazar Secondary High School',
+  en: 'রাণীর বাজার মাধ্যমিক বিদ্যালয়',
 };
 
 export const CAMPUS_TAGLINE = {
@@ -43,7 +50,7 @@ export const CAMPUS_TAGLINE = {
 
 export const INITIAL_SETTINGS: SchoolSettings = {
   name: SCHOOL_NAME,
-  shortName: 'RBMB Digital Campus',
+  shortName: 'রাণীর বাজার মাধ্যমিক বিদ্যালয়',
   tagline: CAMPUS_TAGLINE,
   eiin: '105842',
   phone: '+880 1711-000000',
@@ -58,12 +65,13 @@ export const INITIAL_SETTINGS: SchoolSettings = {
     en: 'Md. Abdul Karim',
   },
   headTeacherMessage: {
-    bn: 'সুপ্রিয় শিক্ষার্থী, অভিভাবক ও প্রাক্তন শিক্ষার্থীবৃন্দ — আরবিএমবি ডিজিটাল ক্যাম্পাসে (রাণীর বাজার মাধ্যমিক বিদ্যালয়) আপনাদের স্বাগতম। ১৯৫৮ সাল থেকে আমাদের প্রতিষ্ঠান নৈতিক শিক্ষা, বিজ্ঞানমনস্কতা ও সহশিক্ষা কার্যক্রমে অগ্রণী ভূমিকা পালন করে আসছে। ডিজিটাল ক্লাসরুম, অনলাইন পরীক্ষা ও সমন্বিত পোর্টালের মাধ্যমে প্রতিটি শিক্ষার্থীকে যোগ্য বিশ্বনাগরিক হিসেবে গড়ে তোলাই আমাদের লক্ষ্য।',
-    en: 'Dear Students, Guardians, and Alumni — welcome to RBMB Digital Campus (Ranir Bazar Secondary High School). Since 1958, our institution has championed moral values, scientific curiosity, and co-curricular excellence. Through smart classrooms, online assessments, and unified portals, we empower every learner for tomorrow.',
+    bn: 'সুপ্রিয় শিক্ষার্থী, অভিভাবক ও প্রাক্তন শিক্ষার্থীবৃন্দ — রাণীর বাজার মাধ্যমিক বিদ্যালয়ে আপনাদের স্বাগতম। ১৯৫৮ সাল থেকে আমাদের প্রতিষ্ঠান নৈতিক শিক্ষা, বিজ্ঞানমনস্কতা ও সহশিক্ষা কার্যক্রমে অগ্রণী ভূমিকা পালন করে আসছে। ডিজিটাল ক্লাসরুম, অনলাইন পরীক্ষা ও সমন্বিত পোর্টালের মাধ্যমে প্রতিটি শিক্ষার্থীকে যোগ্য বিশ্বনাগরিক হিসেবে গড়ে তোলাই আমাদের লক্ষ্য।',
+    en: 'Dear Students, Guardians, and Alumni — welcome to রাণীর বাজার মাধ্যমিক বিদ্যালয়. Since 1958, our institution has championed moral values, scientific curiosity, and co-curricular excellence. Through smart classrooms, online assessments, and unified portals, we empower every learner for tomorrow.',
   },
   headTeacherPhoto: headTeacherImg,
   latitude: 23.2248,
   longitude: 91.3185,
+  admissionSchedule: getDefaultYearlyAdmissionCycle(),
 };
 
 export const DEVELOPER_CREDIT = {
@@ -242,16 +250,16 @@ export const INITIAL_NEWS: NewsArticle[] = [
   {
     id: 'news-2026-1',
     title: {
-      bn: 'আরবিএমবি ডিজিটাল ক্যাম্পাস স্মার্ট পোর্টাল ২০২৬ উদ্বোধন',
-      en: 'Launch of RBMB Digital Campus Smart Education Portal 2026',
+      bn: 'রাণীর বাজার মাধ্যমিক বিদ্যালয় স্মার্ট পোর্টাল ২০২৬ উদ্বোধন',
+      en: 'Launch of রাণীর বাজার মাধ্যমিক বিদ্যালয় Smart Education Portal 2026',
     },
     summary: {
       bn: 'শিক্ষার্থী, শিক্ষক ও অভিভাবকদের জন্য সমন্বিত ডিজিটাল লার্নিং, অনলাইন পরীক্ষা ও ফলাফল পোর্টাল চালু করা হয়েছে।',
       en: 'Integrated student, teacher, and parent portals alongside online MCQ assessments and digital library resources are now live.',
     },
     content: {
-      bn: 'রাণীর বাজার মাধ্যমিক বিদ্যালয়ের একাডেমিক কার্যক্রম আরও গতিশীল ও স্বচ্ছ করতে আরবিএমবি ডিজিটাল ক্যাম্পাস চালু করা হয়েছে। শিক্ষার্থীরা এখন থেকে ঘরে বসেই পাঠ্যবই, নোট, অনলাইন পরীক্ষা ও ফলাফল দেখতে পারবে।',
-      en: 'To modernize classroom administration and self-paced learning, Ranir Bazar Secondary High School has rolled out RBMB Digital Campus. Learners can access textbooks, chapter notes, timed MCQ exams, and attendance updates from any device.',
+      bn: 'রাণীর বাজার মাধ্যমিক বিদ্যালয়ের একাডেমিক কার্যক্রম আরও গতিশীল ও স্বচ্ছ করতে স্মার্ট ডিজিটাল ক্যাম্পাস চালু করা হয়েছে। শিক্ষার্থীরা এখন থেকে ঘরে বসেই পাঠ্যবই, নোট, অনলাইন পরীক্ষা ও ফলাফল দেখতে পারবে।',
+      en: 'To modernize classroom administration and self-paced learning, রাণীর বাজার মাধ্যমিক বিদ্যালয় has rolled out its Smart Digital Campus. Learners can access textbooks, chapter notes, timed MCQ exams, and attendance updates from any device.',
     },
     category: 'Academic',
     date: '2026-06-10',
@@ -538,75 +546,107 @@ export const INITIAL_EXAM_ROUTINES: ExamRoutineItem[] = [
   { id: 'er-25', examTerm: 'Half-Yearly Exam 2026', classId: '6', subject: 'ICT', date: '2026-06-22', time: '10:00 AM - 12:00 PM', room: 'ICT Lab', isPublic: true },
 ];
 
+const mapJuniorSyllabus = () =>
+  NCTB_JUNIOR_SUBJECTS.map((s) => ({
+    name: { bn: s.bn, en: s.en },
+    code: s.code,
+    group: 'Common' as const,
+    pdfUrl: '#',
+  }));
+
+const mapSecondarySyllabus = () => {
+  const seen = new Set<string>();
+  const list: { name: { bn: string; en: string }; code: string; group: 'Common' | 'Science' | 'Humanities' | 'Business Studies'; pdfUrl: string }[] = [];
+  const pushUnique = (s: (typeof NCTB_JUNIOR_SUBJECTS)[number], groupOverride?: 'Common' | 'Science' | 'Humanities' | 'Business Studies') => {
+    const key = `${s.id}__${groupOverride || s.group}`;
+    if (seen.has(key)) return;
+    seen.add(key);
+    list.push({
+      name: { bn: s.bn, en: s.en },
+      code: s.code,
+      group: groupOverride || s.group,
+      pdfUrl: '#',
+    });
+  };
+  NCTB_SECONDARY_COMMON_SUBJECTS.forEach((s) => pushUnique(s, 'Common'));
+  NCTB_SECONDARY_GROUP_SUBJECTS.Science.forEach((s) => pushUnique(s, 'Science'));
+  NCTB_SECONDARY_GROUP_SUBJECTS.Humanities.forEach((s) => pushUnique(s, 'Humanities'));
+  NCTB_SECONDARY_GROUP_SUBJECTS['Business Studies'].forEach((s) => pushUnique(s, 'Business Studies'));
+  return list;
+};
+
 export const SYLLABUS_2026: SyllabusItem[] = [
   {
     classId: '6',
     className: { bn: '৬ষ্ঠ শ্রেণী', en: 'Class 6' },
-    subjects: [
-      { name: { bn: 'বাংলা', en: 'Bangla' }, code: '101', pdfUrl: '#' },
-      { name: { bn: 'ইংরেজি', en: 'English' }, code: '107', pdfUrl: '#' },
-      { name: { bn: 'গণিত', en: 'Mathematics' }, code: '109', pdfUrl: '#' },
-      { name: { bn: 'বিজ্ঞান', en: 'Science' }, code: '127', pdfUrl: '#' },
-      { name: { bn: 'ইতিহাস ও সামাজিক বিজ্ঞান', en: 'History & Social Science' }, code: '150', pdfUrl: '#' },
-      { name: { bn: 'ডিজিটাল প্রযুক্তি', en: 'Digital Technology' }, code: '154', pdfUrl: '#' },
-    ],
+    subjects: mapJuniorSyllabus(),
   },
   {
     classId: '7',
     className: { bn: '৭ম শ্রেণী', en: 'Class 7' },
-    subjects: [
-      { name: { bn: 'বাংলা', en: 'Bangla' }, code: '101', pdfUrl: '#' },
-      { name: { bn: 'ইংরেজি', en: 'English' }, code: '107', pdfUrl: '#' },
-      { name: { bn: 'গণিত', en: 'Mathematics' }, code: '109', pdfUrl: '#' },
-      { name: { bn: 'বিজ্ঞান', en: 'Science' }, code: '127', pdfUrl: '#' },
-      { name: { bn: 'ডিজিটাল প্রযুক্তি', en: 'Digital Technology' }, code: '154', pdfUrl: '#' },
-    ],
+    subjects: mapJuniorSyllabus(),
   },
   {
     classId: '8',
     className: { bn: '৮ম শ্রেণী', en: 'Class 8' },
-    subjects: [
-      { name: { bn: 'বাংলা', en: 'Bangla' }, code: '101', pdfUrl: '#' },
-      { name: { bn: 'ইংরেজি', en: 'English' }, code: '107', pdfUrl: '#' },
-      { name: { bn: 'গণিত', en: 'Mathematics' }, code: '109', pdfUrl: '#' },
-      { name: { bn: 'বিজ্ঞান', en: 'Science' }, code: '127', pdfUrl: '#' },
-      { name: { bn: 'ডিজিটাল প্রযুক্তি', en: 'Digital Technology' }, code: '154', pdfUrl: '#' },
-    ],
+    subjects: mapJuniorSyllabus(),
   },
   {
     classId: '9',
     className: { bn: '৯ম শ্রেণী', en: 'Class 9' },
-    subjects: [
-      { name: { bn: 'বাংলা', en: 'Bangla' }, code: '101', pdfUrl: '#' },
-      { name: { bn: 'ইংরেজি', en: 'English' }, code: '107', pdfUrl: '#' },
-      { name: { bn: 'গণিত', en: 'Mathematics' }, code: '109', pdfUrl: '#' },
-      { name: { bn: 'পদার্থবিজ্ঞান', en: 'Physics' }, code: '136', pdfUrl: '#' },
-      { name: { bn: 'রসায়ন', en: 'Chemistry' }, code: '137', pdfUrl: '#' },
-      { name: { bn: 'তথ্য ও যোগাযোগ প্রযুক্তি', en: 'ICT' }, code: '154', pdfUrl: '#' },
-    ],
+    subjects: mapSecondarySyllabus(),
   },
   {
     classId: '10',
     className: { bn: '১০ম শ্রেণী', en: 'Class 10' },
-    subjects: [
-      { name: { bn: 'বাংলা', en: 'Bangla' }, code: '101', pdfUrl: '#' },
-      { name: { bn: 'ইংরেজি', en: 'English' }, code: '107', pdfUrl: '#' },
-      { name: { bn: 'সাধারণ গণিত', en: 'General Mathematics' }, code: '109', pdfUrl: '#' },
-      { name: { bn: 'জীববিজ্ঞান', en: 'Biology' }, code: '138', pdfUrl: '#' },
-      { name: { bn: 'তথ্য ও যোগাযোগ প্রযুক্তি', en: 'ICT' }, code: '154', pdfUrl: '#' },
-    ],
+    subjects: mapSecondarySyllabus(),
   },
 ];
 
-export const INITIAL_SUBJECTS: SchoolSubject[] = [
-  { id: 'sub-1', code: '101', name: { bn: 'বাংলা', en: 'Bangla' }, classId: '9', totalMarks: 100, teacherName: 'Mst. Fatema Begum', isPublic: true },
-  { id: 'sub-2', code: '107', name: { bn: 'ইংরেজি', en: 'English' }, classId: '9', totalMarks: 100, teacherName: 'Md. Nazrul Islam', isPublic: true },
-  { id: 'sub-3', code: '109', name: { bn: 'গণিত', en: 'Mathematics' }, classId: '9', totalMarks: 100, teacherName: 'Subrata Das', isPublic: true },
-  { id: 'sub-4', code: '136', name: { bn: 'পদার্থবিজ্ঞান', en: 'Physics' }, classId: '9', totalMarks: 100, teacherName: 'Md. Rafiqul Islam', isPublic: true },
-  { id: 'sub-5', code: '154', name: { bn: 'তথ্য ও যোগাযোগ প্রযুক্তি', en: 'ICT' }, classId: '9', totalMarks: 50, teacherName: 'Jannatul Ferdous', isPublic: true },
-  { id: 'sub-6', code: '109', name: { bn: 'গণিত', en: 'Mathematics' }, classId: '10', totalMarks: 100, teacherName: 'Subrata Das', isPublic: true },
-  { id: 'sub-7', code: '101', name: { bn: 'বাংলা', en: 'Bangla' }, classId: '6', totalMarks: 100, teacherName: 'Mst. Fatema Begum', isPublic: true },
-];
+const buildInitialNctbSubjects = (): SchoolSubject[] => {
+  const result: SchoolSubject[] = [];
+  (['6', '7', '8'] as const).forEach((cid) => {
+    NCTB_JUNIOR_SUBJECTS.forEach((s, idx) => {
+      result.push({
+        id: `sub-${cid}-${idx + 1}`,
+        code: s.code,
+        name: { bn: s.bn, en: s.en },
+        classId: cid,
+        group: 'Common',
+        totalMarks: s.totalMarks,
+        isPublic: true,
+      });
+    });
+  });
+  (['9', '10'] as const).forEach((cid) => {
+    const entries = [
+      ...NCTB_SECONDARY_COMMON_SUBJECTS,
+      ...NCTB_SECONDARY_GROUP_SUBJECTS.Science,
+      ...NCTB_SECONDARY_GROUP_SUBJECTS.Humanities,
+      ...NCTB_SECONDARY_GROUP_SUBJECTS['Business Studies'],
+    ];
+    const seen = new Set<string>();
+    let count = 0;
+    entries.forEach((s) => {
+      const key = `${s.id}__${s.group}`;
+      if (seen.has(key)) return;
+      seen.add(key);
+      count += 1;
+      result.push({
+        id: `sub-${cid}-${count}`,
+        code: s.code,
+        name: { bn: s.bn, en: s.en },
+        classId: cid,
+        group: s.group,
+        totalMarks: s.totalMarks,
+        isPublic: true,
+      });
+    });
+  });
+  return result;
+};
+
+export const INITIAL_SUBJECTS: SchoolSubject[] = buildInitialNctbSubjects();
 
 export const INITIAL_EBOOKS: EBook[] = [
   {
@@ -725,7 +765,7 @@ export const INITIAL_GALLERY: GalleryItem[] = [
     url: heroCampusImg,
     mediaType: 'image',
     category: 'Campus',
-    caption: { bn: 'রাণীর বাজার মাধ্যমিক বিদ্যালয়ের মনোরম একাডেমিক ভবন ও প্রাঙ্গণ', en: 'Ranir Bazar Secondary High School Main Campus & Courtyard' },
+    caption: { bn: 'রাণীর বাজার মাধ্যমিক বিদ্যালয়ের মনোরম একাডেমিক ভবন ও প্রাঙ্গণ', en: 'রাণীর বাজার মাধ্যমিক বিদ্যালয় Main Campus & Courtyard' },
     isPublic: true,
   },
   {
@@ -770,7 +810,7 @@ export const INITIAL_STUDENTS: SchoolStudent[] = [
   { id: 'st-8-1', roll: '01', name: 'মাহফুজ রহমান (Mahfuz Rahman)', classId: '8', section: 'A', guardianMobile: '01611-556677', session: '2026', registrationNo: 'RBMB-REG-2026-0801' },
   { id: 'st-9-1', roll: '01', name: 'আরিয়ান করিম (Aryan Karim)', classId: '9', section: 'Science', guardianName: 'মোঃ করিম উদ্দিন', guardianMobile: '01712-667788', session: '2026', registrationNo: 'RBMB-REG-2026-0901' },
   { id: 'st-9-2', roll: '02', name: 'নুসরাত জাহান (Nusrat Jahan)', classId: '9', section: 'Science', guardianMobile: '01715-778899', session: '2026', registrationNo: 'RBMB-REG-2026-0902' },
-  { id: 'st-9-3', roll: '03', name: 'তামিম ইকবাল (Tamim Iqbal)', classId: '9', section: 'Commerce', guardianMobile: '01815-889900', session: '2026', registrationNo: 'RBMB-REG-2026-0903' },
+  { id: 'st-9-3', roll: '03', name: 'তামিম ইকবাল (Tamim Iqbal)', classId: '9', section: 'Business Studies', guardianMobile: '01815-889900', session: '2026', registrationNo: 'RBMB-REG-2026-0903' },
   { id: 'st-10-1', roll: '01', name: 'জাহিদুল ইসলাম (Jahidul Islam)', classId: '10', section: 'Science', guardianMobile: '01700-112233', session: '2026', registrationNo: 'RBMB-REG-2026-1001' },
   { id: 'st-10-2', roll: '02', name: 'সুমাইয়া আক্তার (Sumaiya Akter)', classId: '10', section: 'Science', guardianMobile: '01700-445566', session: '2026', registrationNo: 'RBMB-REG-2026-1002' },
 ];
@@ -812,11 +852,11 @@ export const INITIAL_HOMEWORK: HomeworkItem[] = [
 ];
 
 export const CLASS_SUBJECTS: Record<string, string[]> = {
-  '6': ['Bangla', 'English', 'Mathematics', 'Science', 'ICT'],
-  '7': ['Bangla', 'English', 'Mathematics', 'Science', 'ICT'],
-  '8': ['Bangla', 'English', 'Mathematics', 'Science', 'ICT'],
-  '9': ['Bangla', 'English', 'Mathematics', 'Physics', 'Chemistry', 'ICT'],
-  '10': ['Bangla', 'English', 'General Math', 'Biology', 'Physics', 'ICT'],
+  '6': getNctbSubjectIdsForClass('6'),
+  '7': getNctbSubjectIdsForClass('7'),
+  '8': getNctbSubjectIdsForClass('8'),
+  '9': getNctbSubjectIdsForClass('9'),
+  '10': getNctbSubjectIdsForClass('10'),
 };
 
 export const INITIAL_ONLINE_EXAMS: OnlineExam[] = [
@@ -984,7 +1024,7 @@ export const INITIAL_ALUMNI: AlumniProfile[] = [
     currentRole: 'Software Engineer & Researcher',
     organization: 'IIT, University of Dhaka',
     city: 'Dhaka',
-    message: 'Proud alumnus of Ranir Bazar Secondary High School. Wishing our younger students limitless curiosity and excellence.',
+    message: 'Proud alumnus of রাণীর বাজার মাধ্যমিক বিদ্যালয়. Wishing our younger students limitless curiosity and excellence.',
     status: 'approved',
     isPublic: true,
   },

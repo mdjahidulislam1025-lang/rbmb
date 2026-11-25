@@ -87,7 +87,7 @@ define(['./workbox-afac4cd2'], (function (workbox) { 'use strict';
     "revision": "8a954c8ff0db5bc904702eaac9aab1d6"
   }, {
     "url": "index.html",
-    "revision": "338ad64d53c29a725fefcdd40574f82c"
+    "revision": "d648098c03f049f3bd7d2b8e284d71dc"
   }, {
     "url": "icon.svg",
     "revision": "be800af3fadedac6906f21ebda15b6b5"
@@ -101,7 +101,7 @@ define(['./workbox-afac4cd2'], (function (workbox) { 'use strict';
     "url": "apple-touch-icon.png",
     "revision": "7ec8e7b5b89a89bd1fdbb31c2fafee42"
   }, {
-    "url": "assets/workbox-window.prod.es5-BBnX5xw4.js",
+    "url": "assets/web-CDbM7J3K.js",
     "revision": null
   }, {
     "url": "assets/school_sports_event_1795249139851-HA8hA32k.jpg",
@@ -113,13 +113,13 @@ define(['./workbox-afac4cd2'], (function (workbox) { 'use strict';
     "url": "assets/school_computer_lab_1795249139475-CS-dtUbv.jpg",
     "revision": null
   }, {
-    "url": "assets/react-BBcbjK4e.js",
+    "url": "assets/react-RJ5L4koL.js",
     "revision": null
   }, {
-    "url": "assets/index-C_CrRLWb.js",
+    "url": "assets/index-CvuPyrNr.css",
     "revision": null
   }, {
-    "url": "assets/index-CPgMBujZ.css",
+    "url": "assets/index-CNFd2t5E.js",
     "revision": null
   }, {
     "url": "assets/hero_school_campus_1795249139717-ZseLXjk7.jpg",
@@ -128,10 +128,46 @@ define(['./workbox-afac4cd2'], (function (workbox) { 'use strict';
     "url": "assets/head_teacher_portrait_1795249139021-CsKhgLlK.jpg",
     "revision": null
   }, {
-    "url": "assets/firebase-3MFbwfca.js",
+    "url": "assets/firebase-OaCt-tdW.js",
+    "revision": null
+  }, {
+    "url": "assets/aistudio/Screenshot_2026-11-25_143214_de23817f.png",
+    "revision": null
+  }, {
+    "url": "assets/aistudio/Screenshot_2026-11-23_231952_6407f1c7.png",
+    "revision": null
+  }, {
+    "url": "assets/aistudio/Screenshot_2026-11-23_214649_f03d9152.png",
+    "revision": null
+  }, {
+    "url": "assets/aistudio/Screenshot_2026-11-23_170317_c1779c87.png",
+    "revision": null
+  }, {
+    "url": "assets/aistudio/Screenshot_2026-11-23_162815_2011dd8d.png",
+    "revision": null
+  }, {
+    "url": "assets/aistudio/Screenshot_2026-11-22_223733_c79c1602.png",
+    "revision": null
+  }, {
+    "url": "assets/aistudio/Screenshot_2026-11-22_223726_c67ceb56.png",
+    "revision": null
+  }, {
+    "url": "assets/aistudio/Screenshot_2026-11-22_155855_dd3b5497.png",
+    "revision": null
+  }, {
+    "url": "assets/aistudio/Screenshot_2026-11-22_004316_28a0a22b.png",
+    "revision": null
+  }, {
+    "url": "assets/aistudio/Screenshot_2026-11-22_004301_91c6aaff.png",
+    "revision": null
+  }, {
+    "url": "assets/aistudio/Screenshot_2026-11-22_004226_fbb107a8.png",
     "revision": null
   }, {
     "url": "assets/aistudio/Screenshot_2026-11-14_232651_e2dfdac2.png",
+    "revision": null
+  }, {
+    "url": "assets/aistudio/RBMB_Digital_Campus_Dashboard_6b1da2d3.png",
     "revision": null
   }, {
     "url": "apple-touch-icon.png",
@@ -153,7 +189,7 @@ define(['./workbox-afac4cd2'], (function (workbox) { 'use strict';
     "revision": "a97ba18f10bbd101ab44257a4503c178"
   }, {
     "url": "manifest.webmanifest",
-    "revision": "b60d5757d3cc9da6251cd22b76fc40cc"
+    "revision": "e36d49d0193ca24428c4bf825185a7ee"
   }], {});
   workbox.cleanupOutdatedCaches();
   workbox.registerRoute(new workbox.NavigationRoute(workbox.createHandlerBoundToURL("index.html")));

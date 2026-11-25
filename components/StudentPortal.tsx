@@ -40,7 +40,12 @@ import {
   User as UserIcon,
 } from 'lucide-react';
 import { useApp } from '../App';
-import { CLASS_SUBJECTS } from '../constants';
+import {
+  CLASS_9_10_GROUPS,
+  Class910GroupId,
+  getNctbSubjectsForClass,
+  normalizeClassGroup,
+} from '../utils/teacherRole';
 import { FeeRecord, ExamQuestion, Holiday } from '../types';
 import { calculateOverallGpa, isSafeHttpUrl, buildStudentRegistrationNo } from '../utils/security';
 import { exportCsv } from '../utils/exportUtils';
@@ -134,7 +139,8 @@ export const StudentPortal: React.FC = () => {
 
   // AI Study Lab state
   const [studyMode, setStudyMode] = useState<'explain' | 'generate_mcq'>('explain');
-  const [studySubject, setStudySubject] = useState<string>(CLASS_SUBJECTS[selectedClassId]?.[0] || 'Mathematics');
+  const [studyGroup, setStudyGroup] = useState<'all' | Class910GroupId>('all');
+  const [studySubject, setStudySubject] = useState<string>('Mathematics');
   const [studyTopic, setStudyTopic] = useState('');
   const [studyQuestion, setStudyQuestion] = useState('');
   const [studyLoading, setStudyLoading] = useState(false);
@@ -144,12 +150,21 @@ export const StudentPortal: React.FC = () => {
   const [practiceAnswers, setPracticeAnswers] = useState<Record<string, number>>({});
   const [practiceSubmitted, setPracticeSubmitted] = useState(false);
 
+  const studySubjectOptions = useMemo(
+    () =>
+      getNctbSubjectsForClass(
+        selectedClassId,
+        selectedClassId === '9' || selectedClassId === '10' ? studyGroup : 'all'
+      ),
+    [selectedClassId, studyGroup]
+  );
+
   useEffect(() => {
-    const subs = CLASS_SUBJECTS[selectedClassId] || ['Mathematics'];
-    if (!subs.includes(studySubject)) {
+    const subs = studySubjectOptions.map((s) => s.id);
+    if (subs.length > 0 && !subs.includes(studySubject)) {
       setStudySubject(subs[0]);
     }
-  }, [selectedClassId, studySubject]);
+  }, [studySubjectOptions, studySubject]);
 
   useEffect(() => {
     if (user?.linkedChildClass) setSelectedClassId(user.linkedChildClass);
@@ -185,7 +200,13 @@ export const StudentPortal: React.FC = () => {
     if (matchedStudent?.roll && matchedStudent.roll !== selectedRoll) {
       setSelectedRoll(matchedStudent.roll);
     }
-  }, [matchedStudent?.roll]);
+    const detected = normalizeClassGroup(matchedStudent?.section || user?.section);
+    if ((selectedClassId === '9' || selectedClassId === '10') && detected) {
+      setStudyGroup(detected);
+    } else if (selectedClassId !== '9' && selectedClassId !== '10') {
+      setStudyGroup('all');
+    }
+  }, [matchedStudent?.roll, matchedStudent?.section, user?.section, selectedClassId]);
 
   const studentRegNo =
     user?.registrationNo ||
@@ -698,7 +719,7 @@ export const StudentPortal: React.FC = () => {
             </nav>
             <div className="p-4 m-3 rounded-2xl bg-emerald-900/60 border border-emerald-800/80 text-center space-y-1">
               <GraduationCap className="w-6 h-6 text-yellow-300 mx-auto" />
-              <p className="text-xs font-black text-white">RBMB Digital Campus</p>
+              <p className="text-xs font-black text-white">{t(settings.name)}</p>
               <p className="text-[10px] text-emerald-200/80">Smart Education · Brighter Future</p>
             </div>
           </aside>
@@ -756,7 +777,7 @@ export const StudentPortal: React.FC = () => {
 
         <div className="p-4 m-3 rounded-2xl bg-emerald-900/60 border border-emerald-800/70 text-center space-y-1.5">
           <GraduationCap className="w-7 h-7 text-yellow-300 mx-auto" />
-          <p className="text-xs font-black text-white">RBMB Digital Campus</p>
+          <p className="text-xs font-black text-white">{t(settings.name)}</p>
           <p className="text-[10px] text-emerald-200/80">
             {lang === 'bn' ? 'স্মার্ট শিক্ষা, উজ্জ্বল ভবিষ্যৎ' : 'Smart Education · Brighter Future'}
           </p>
@@ -955,7 +976,7 @@ export const StudentPortal: React.FC = () => {
                     <h1 className="text-2xl sm:text-3xl font-black tracking-tight">
                       {lang === 'bn'
                         ? `${t(settings.name)} — ডিজিটাল ক্যাম্পাস`
-                        : 'Welcome to RBMB Digital Campus'}
+                        : `Welcome to ${t(settings.name)}`}
                     </h1>
                     <p className="text-xs sm:text-sm text-emerald-100/90 font-semibold">
                       {lang === 'bn'
@@ -1822,22 +1843,40 @@ export const StudentPortal: React.FC = () => {
                   </button>
                 </div>
 
+                {(selectedClassId === '9' || selectedClassId === '10') && (
+                  <div>
+                    <label className="block text-[11px] font-bold uppercase text-slate-400 mb-1">
+                      {lang === 'bn' ? 'বিভাগ (Group)' : 'Group'}
+                    </label>
+                    <select
+                      value={studyGroup}
+                      onChange={(e) => setStudyGroup(e.target.value as 'all' | Class910GroupId)}
+                      className="w-full px-3.5 py-2.5 rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-sm font-bold"
+                    >
+                      <option value="all">{lang === 'bn' ? 'সকল বিভাগ (NCTB)' : 'All Groups (NCTB)'}</option>
+                      {CLASS_9_10_GROUPS.map((g) => (
+                        <option key={g.id} value={g.id}>
+                          {lang === 'bn' ? g.bn : g.en}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                )}
+
                 <div>
                   <label className="block text-[11px] font-bold uppercase text-slate-400 mb-1">
-                    {lang === 'bn' ? 'বিষয়' : 'Subject'}
+                    {lang === 'bn' ? 'বিষয় (NCTB)' : 'Subject (NCTB)'}
                   </label>
                   <select
                     value={studySubject}
                     onChange={(e) => setStudySubject(e.target.value)}
                     className="w-full px-3.5 py-2.5 rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-sm font-bold"
                   >
-                    {(CLASS_SUBJECTS[selectedClassId] || ['Bangla', 'English', 'Mathematics', 'Science', 'ICT']).map(
-                      (sub) => (
-                        <option key={sub} value={sub}>
-                          {sub}
-                        </option>
-                      )
-                    )}
+                    {studySubjectOptions.map((sub) => (
+                      <option key={`${sub.id}-${sub.group}`} value={sub.id}>
+                        [{sub.code}] {lang === 'bn' ? sub.bn : sub.en}
+                      </option>
+                    ))}
                   </select>
                 </div>
 

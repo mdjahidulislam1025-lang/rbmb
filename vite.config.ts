@@ -18,9 +18,9 @@ export default defineConfig(() => ({
       includeAssets: ['favicon.ico', 'apple-touch-icon.png', 'icon.svg'],
       manifest: {
         id: '/',
-        name: 'RBMB Digital Campus — Ranir Bazar Secondary High School',
-        short_name: 'RBMB',
-        description: 'RBMB Digital Campus for Ranir Bazar Secondary High School — notices, student & teacher portals, online exams, digital library & admissions.',
+        name: 'রাণীর বাজার মাধ্যমিক বিদ্যালয়',
+        short_name: 'রাণীর বাজার মাধ্যমিক বিদ্যালয়',
+        description: 'রাণীর বাজার মাধ্যমিক বিদ্যালয় — notices, student & teacher portals, online exams, digital library & admissions.',
         theme_color: '#15803d',
         background_color: '#ffffff',
         display: 'standalone',

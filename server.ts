@@ -40,8 +40,8 @@ async function startServer() {
         error: 'AI assistant key is not configured on the server.',
         fallback:
           lang === 'bn'
-            ? 'RBMB Digital Campus (রাণীর বাজার মাধ্যমিক বিদ্যালয়)-এর ভর্তি, রুটিন, নোটিশ বা পোর্টাল সম্পর্কে জানতে সরাসরি +880 1711-000000 নম্বরে যোগাযোগ করুন অথবা আমাদের নোটিশ বোর্ড ও ডিজিটাল লাইব্রেরি দেখুন।'
-            : 'For assistance with RBMB Digital Campus (Ranir Bazar Secondary High School) admissions, routines, notices, or portal accounts, please call +880 1711-000000 or visit our Notice Board & Digital Library.',
+            ? 'রাণীর বাজার মাধ্যমিক বিদ্যালয়ের ভর্তি, রুটিন, নোটিশ বা পোর্টাল সম্পর্কে জানতে সরাসরি +880 1711-000000 নম্বরে যোগাযোগ করুন অথবা আমাদের নোটিশ বোর্ড ও ডিজিটাল লাইব্রেরি দেখুন।'
+            : 'For assistance with রাণীর বাজার মাধ্যমিক বিদ্যালয় admissions, routines, notices, or portal accounts, please call +880 1711-000000 or visit our Notice Board & Digital Library.',
       });
       return;
     }
@@ -56,7 +56,7 @@ async function startServer() {
         },
       });
 
-      const systemInstruction = `You are the official School Helpdesk & Study Assistant for RBMB Digital Campus — Ranir Bazar Secondary High School (রাণীর বাজার মাধ্যমিক বিদ্যালয়), established 1958, EIIN 105842, Rani Bazar, Chauddagram, Cumilla-3550, Bangladesh.
+      const systemInstruction = `You are the official School Helpdesk & Study Assistant for রাণীর বাজার মাধ্যমিক বিদ্যালয়, established 1958, EIIN 105842, Rani Bazar, Chauddagram, Cumilla-3550, Bangladesh.
 Answer clearly, politely, and concisely in ${lang === 'bn' ? 'Bangla (বাংলা)' : 'English'}.
 School Portal Context:
 ${contextSummary}
@@ -121,7 +121,7 @@ Only answer questions relevant to school info, admissions, class routines, exams
       });
 
       if (mode === 'generate_mcq') {
-        const systemInstruction = `You are a senior secondary school teacher creating NCTB (Bangladesh Secondary Curriculum) Class ${classId} MCQ questions for Ranir Bazar Secondary High School.
+        const systemInstruction = `You are a senior secondary school teacher creating NCTB (Bangladesh Secondary Curriculum) Class ${classId} MCQ questions for রাণীর বাজার মাধ্যমিক বিদ্যালয়.
 Write all questions, 4 options, and short explanations in ${lang === 'bn' ? 'Bangla (বাংলা)' : 'English'} (use clear terminology appropriate for Bangladeshi Class ${classId} students).
 Each question must have exactly 4 distinct options and 1 clear correctIndex (0, 1, 2, or 3).`;
 
@@ -178,7 +178,7 @@ Each question must have exactly 4 distinct options and 1 clear correctIndex (0, 
         return;
       }
 
-      const systemInstruction = `You are a patient, encouraging high school academic tutor at Ranir Bazar Secondary High School (EIIN 105842), Bangladesh.
+      const systemInstruction = `You are a patient, encouraging high school academic tutor at রাণীর বাজার মাধ্যমিক বিদ্যালয় (EIIN 105842), Bangladesh.
 Teach according to the Bangladesh NCTB Class ${classId} curriculum for Subject "${subject}".
 Respond in ${lang === 'bn' ? 'clear Bangla (বাংলা) with standard technical terms' : 'clear, structured English'}.
 Structure your lesson explanation cleanly into:
@@ -283,7 +283,7 @@ self.addEventListener('activate', function (event) {
   }
 
   app.listen(PORT, '0.0.0.0', () => {
-    console.log(`RBMB Digital Campus running on http://0.0.0.0:${PORT}`);
+    console.log(`রাণীর বাজার মাধ্যমিক বিদ্যালয় running on http://0.0.0.0:${PORT}`);
   });
 }
 

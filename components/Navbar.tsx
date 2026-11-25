@@ -205,8 +205,8 @@ const Navbar: React.FC = () => {
               <div className="bg-emerald-700 p-2 rounded-lg text-white shrink-0">
                 <GraduationCap className="w-5 h-5" />
               </div>
-              <span className="text-sm sm:text-base font-extrabold text-slate-900 dark:text-white tracking-tight whitespace-nowrap">
-                {settings.shortName || t(CAMPUS_BRAND)}
+              <span className="text-sm sm:text-base font-extrabold text-slate-900 dark:text-white tracking-tight whitespace-nowrap truncate max-w-[210px] sm:max-w-none">
+                {t(settings.name)}
               </span>
             </Link>
           </div>
