@@ -49,6 +49,7 @@ import {
 } from '../utils/teacherRole';
 import { buildNctbClassSyllabus } from '../utils/nctbSyllabus';
 import { downloadSyllabusPdf } from '../utils/syllabusPdf';
+import { generateLocalStudyLesson, generateLocalMcqQuestions } from '../utils/localSchoolAi';
 import { FeeRecord, ExamQuestion, Holiday, StudyGroup } from '../types';
 import { calculateOverallGpa, isSafeHttpUrl, buildStudentRegistrationNo, normalizeStudentRegistrationNo } from '../utils/security';
 import { exportCsv } from '../utils/exportUtils';
@@ -108,6 +109,7 @@ export const StudentPortal: React.FC = () => {
     feeRecords,
     portalNotifications,
     subjects,
+    onlineExams,
     updateStudent,
     updateUser,
   } = useApp();
@@ -497,6 +499,31 @@ export const StudentPortal: React.FC = () => {
       setPracticeSubmitted(false);
     }
 
+    const applyLocalFallback = () => {
+      if (studyMode === 'explain') {
+        setStudyExplanation(
+          generateLocalStudyLesson({
+            classId: selectedClassId,
+            subject: studySubject,
+            topic: studyTopic.trim(),
+            question: studyQuestion.trim(),
+            lang,
+          })
+        );
+      } else {
+        setPracticeQuestions(
+          generateLocalMcqQuestions({
+            classId: selectedClassId,
+            subject: studySubject,
+            topic: studyTopic.trim(),
+            lang,
+            count: 4,
+            existingExams: onlineExams,
+          })
+        );
+      }
+    };
+
     try {
       const res = await fetch('/api/ai-study-helper', {
         method: 'POST',
@@ -513,25 +540,22 @@ export const StudentPortal: React.FC = () => {
       });
       const data = await res.json();
       if (!res.ok) {
-        setStudyError(
-          data?.error ||
-            (lang === 'bn'
-              ? 'AI Study Lab থেকে উত্তর পাওয়া যায়নি।'
-              : 'Unable to fetch AI Study Lab response.')
-        );
+        applyLocalFallback();
         return;
       }
       if (studyMode === 'explain') {
-        setStudyExplanation(data?.reply || '');
-      } else if (Array.isArray(data?.questions)) {
+        if (typeof data?.reply === 'string' && data.reply.trim()) {
+          setStudyExplanation(data.reply);
+        } else {
+          applyLocalFallback();
+        }
+      } else if (Array.isArray(data?.questions) && data.questions.length > 0) {
         setPracticeQuestions(data.questions);
+      } else {
+        applyLocalFallback();
       }
     } catch {
-      setStudyError(
-        lang === 'bn'
-          ? 'সার্ভারের সাথে সংযোগ করতে সমস্যা হয়েছে। পরে আবার চেষ্টা করুন।'
-          : 'Could not reach the study assistant server. Please try again.'
-      );
+      applyLocalFallback();
     } finally {
       setStudyLoading(false);
     }

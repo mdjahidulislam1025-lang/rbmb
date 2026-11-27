@@ -61,6 +61,7 @@ import { calculateGrade, isSafeHttpUrl } from '../utils/security';
 import { getDhakaTodayISO, getDhakaNoticeStamp, formatDhakaClock } from '../utils/dhakaTime';
 import { exportCsv } from '../utils/exportUtils';
 import { compressImageFile } from '../utils/imageUtils';
+import { generateLocalMcqQuestions } from '../utils/localSchoolAi';
 import { FeeReceiptModal } from './FeeReceiptModal';
 import { StudentIdAdmitCard, CardMode } from './StudentIdAdmitCard';
 import { StudentCertificateModal } from './StudentCertificateModal';
@@ -772,6 +773,23 @@ export const TeacherPortal: React.FC<TeacherPortalProps> = ({ embedded = false }
   const handleGenerateAiMcqs = async () => {
     setAiGeneratingMcq(true);
     setAiMcqError(null);
+    const applyLocalMcqFallback = () => {
+      const generated = generateLocalMcqQuestions({
+        classId: mcqForm.classId,
+        subject: mcqForm.subject.trim() || 'General Science',
+        topic: mcqForm.chapter.trim(),
+        lang,
+        count: 4,
+        existingExams: onlineExams,
+      });
+      setDraftMcqQuestions((prev) => [...prev, ...generated]);
+      notify(
+        lang === 'bn'
+          ? `${generated.length}টি NCTB প্রশ্ন ড্রাফটে যুক্ত হয়েছে!`
+          : `Added ${generated.length} local NCTB questions to quiz draft!`
+      );
+    };
+
     try {
       const res = await fetch('/api/ai-study-helper', {
         method: 'POST',
@@ -786,23 +804,18 @@ export const TeacherPortal: React.FC<TeacherPortalProps> = ({ embedded = false }
         }),
       });
       const data = await res.json();
-      if (!res.ok) {
-        setAiMcqError(
-          data?.error ||
-            (lang === 'bn' ? 'AI প্রশ্ন তৈরি করতে ব্যর্থ হয়েছে।' : 'Failed to generate AI MCQ draft.')
-        );
+      if (!res.ok || !Array.isArray(data?.questions) || data.questions.length === 0) {
+        applyLocalMcqFallback();
         return;
       }
-      if (Array.isArray(data?.questions)) {
-        setDraftMcqQuestions((prev) => [...prev, ...data.questions]);
-        notify(
-          lang === 'bn'
-            ? `${data.questions.length}টি MCQ প্রশ্ন ড্রাফটে যুক্ত হয়েছে!`
-            : `Added ${data.questions.length} AI questions to quiz draft!`
-        );
-      }
+      setDraftMcqQuestions((prev) => [...prev, ...data.questions]);
+      notify(
+        lang === 'bn'
+          ? `${data.questions.length}টি MCQ প্রশ্ন ড্রাফটে যুক্ত হয়েছে!`
+          : `Added ${data.questions.length} AI questions to quiz draft!`
+      );
     } catch {
-      setAiMcqError(lang === 'bn' ? 'সার্ভারে সংযোগ করা যায়নি।' : 'Could not reach AI generator service.');
+      applyLocalMcqFallback();
     } finally {
       setAiGeneratingMcq(false);
     }

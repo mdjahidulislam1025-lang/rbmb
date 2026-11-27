@@ -172,6 +172,7 @@ import {
   isYearFinalExamTerm,
   MeritRankEntry,
 } from './utils/meritRoll';
+import { generateLocalSchoolAssistantReply } from './utils/localSchoolAi';
 
 const { useState, createContext, useContext, useEffect, useRef, useMemo } = React;
 const { HashRouter: Router, Routes, Route, Link, useNavigate } = RouterDom;
@@ -6685,56 +6686,32 @@ const App: React.FC = () => {
     return rec[lang] || rec['bn'] || rec['en'] || '';
   };
 
-  // Server-side AI School Assistant call
-  const handleSendMessage = async () => {
-    if (!chatInput.trim() || isTyping) return;
-    const msg = chatInput.trim();
-    setChatInput('');
+  // Built-in Local AI School Assistant (answers directly from live website data)
+  const handleSendMessage = async (overrideMsg?: string) => {
+    const rawMsg = typeof overrideMsg === 'string' ? overrideMsg : chatInput;
+    if (!rawMsg.trim() || isTyping) return;
+    const msg = rawMsg.trim();
+    if (typeof overrideMsg !== 'string') setChatInput('');
     setChatMessages((p) => [...p, { role: 'user', text: msg }]);
     setIsTyping(true);
 
     try {
-      const noticeSummaries = notices
-        .slice(0, 5)
-        .map((n) => `- ${t(n.title)} (${n.date}): ${t(n.description)}`)
-        .join('\n');
-      const context = `School: ${t(settings.name)}, EIIN: ${settings.eiin}, Address: ${t(settings.location)}, Phone: ${settings.phone}, Email: ${settings.email}.
-Recent Notices:\n${noticeSummaries}
-Available Features: Online Admission (/admission), Online MCQ Exams (/exams), Digital Library (/ebooks), Class & Exam Routine (/routine), Alumni (/alumni), Student/Teacher/Parent Portals (/login/student).`;
-
-      const res = await fetch('/api/ai-assistant', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ message: msg, lang, context }),
+      const reply = generateLocalSchoolAssistantReply({
+        query: msg,
+        lang,
+        settings,
+        notices,
+        newsList,
+        eventsList,
+        examRoutines,
+        classRoutines,
+        subjects,
+        teachers,
+        ebooks,
+        holidays: effectiveHolidays,
+        onlineExams,
       });
-
-      const data = await res.json();
-      if (res.ok && data?.reply) {
-        setChatMessages((p) => [...p, { role: 'model', text: data.reply }]);
-      } else {
-        setChatMessages((p) => [
-          ...p,
-          {
-            role: 'model',
-            text:
-              data?.fallback ||
-              (lang === 'bn'
-                ? `${t(settings.name)} হেল্পডেস্ক: ভর্তি, রুটিন, নোটিশ বা পরীক্ষা সংক্রান্ত তথ্যের জন্য ${settings.phone} নম্বরে কল করুন অথবা সংশ্লিষ্ট মেনু দেখুন।`
-                : `${t(settings.name)} Helpdesk: For admissions, routines, or exam help, call ${settings.phone} or check the Notice Board.`),
-          },
-        ]);
-      }
-    } catch {
-      setChatMessages((p) => [
-        ...p,
-        {
-          role: 'model',
-          text:
-            lang === 'bn'
-              ? `সার্ভারের সাথে সংযোগ করতে সমস্যা হয়েছে। জরুরি তথ্যের জন্য কল করুন: ${settings.phone}।`
-              : `Unable to reach the AI helpdesk right now. Please contact ${settings.phone}.`,
-        },
-      ]);
+      setChatMessages((p) => [...p, { role: 'model', text: reply }]);
     } finally {
       setIsTyping(false);
     }
@@ -7069,12 +7046,15 @@ Available Features: Online Admission (/admission), Online MCQ Exams (/exams), Di
                     </p>
                     <div className="mt-4 flex flex-wrap justify-center gap-1.5">
                       {[
-                        lang === 'bn' ? 'ভর্তির তথ্য ও সময়সূচি?' : 'How to apply for admission?',
+                        lang === 'bn' ? 'ভর্তির তথ্য ও সময়সূচি?' : 'Admission dates & fee?',
                         lang === 'bn' ? 'আসন্ন পরীক্ষার রুটিন কবে?' : 'Upcoming exam dates?',
+                        lang === 'bn' ? '৯ম শ্রেণীর সিলেবাস' : 'Class 9 syllabus',
+                        lang === 'bn' ? 'সরকারি ছুটির তালিকা' : 'Holiday list',
                       ].map((q) => (
                         <button
                           key={q}
-                          onClick={() => setChatInput(q)}
+                          type="button"
+                          onClick={() => void handleSendMessage(q)}
                           className="text-[11px] font-semibold px-3 py-1.5 rounded-xl bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-200 hover:border-emerald-500"
                         >
                           {q}
@@ -7086,7 +7066,7 @@ Available Features: Online Admission (/admission), Online MCQ Exams (/exams), Di
                 {chatMessages.map((msg, i) => (
                   <div key={i} className={`flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}>
                     <div
-                      className={`max-w-[85%] px-4 py-3 rounded-2xl text-sm leading-relaxed ${
+                      className={`max-w-[85%] px-4 py-3 rounded-2xl text-sm leading-relaxed whitespace-pre-line ${
                         msg.role === 'user'
                           ? 'bg-emerald-700 text-white shadow-md'
                           : 'bg-white dark:bg-slate-800 text-slate-800 dark:text-slate-100 border border-slate-100 dark:border-slate-700 shadow-sm'
@@ -7113,12 +7093,12 @@ Available Features: Online Admission (/admission), Online MCQ Exams (/exams), Di
                   type="text"
                   value={chatInput}
                   onChange={(e) => setChatInput(e.target.value)}
-                  onKeyDown={(e) => e.key === 'Enter' && handleSendMessage()}
+                  onKeyDown={(e) => e.key === 'Enter' && void handleSendMessage()}
                   className="flex-grow bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl px-4 py-3 text-sm outline-none focus:ring-2 focus:ring-emerald-500 font-medium text-slate-900 dark:text-white"
                   placeholder={lang === 'bn' ? 'যেকোনো প্রশ্ন লিখুন...' : 'Ask anything...'}
                 />
                 <button
-                  onClick={handleSendMessage}
+                  onClick={() => void handleSendMessage()}
                   disabled={!chatInput.trim() || isTyping}
                   className={`bg-emerald-700 text-white p-3.5 rounded-xl shadow-md transition-all active:scale-95 ${
                     !chatInput.trim() || isTyping ? 'opacity-50' : 'hover:bg-emerald-800'
