@@ -805,6 +805,9 @@ export const TeacherPortal: React.FC<TeacherPortalProps> = ({ embedded = false }
       });
       const data = await res.json();
       if (!res.ok || !Array.isArray(data?.questions) || data.questions.length === 0) {
+        if ((res.status === 403 || res.status === 400 || res.status === 429) && typeof data?.error === 'string') {
+          setAiMcqError(data.error);
+        }
         applyLocalMcqFallback();
         return;
       }

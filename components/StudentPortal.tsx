@@ -540,6 +540,9 @@ export const StudentPortal: React.FC = () => {
       });
       const data = await res.json();
       if (!res.ok) {
+        if ((res.status === 403 || res.status === 400 || res.status === 429) && typeof data?.error === 'string') {
+          setStudyError(data.error);
+        }
         applyLocalFallback();
         return;
       }

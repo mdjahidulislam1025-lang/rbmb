@@ -23,11 +23,61 @@ async function startServer() {
     res.json({ apiKey });
   });
 
+  const extractGeminiErrorResponse = (err: unknown, lang: 'bn' | 'en') => {
+    const raw = err instanceof Error ? err.message : String(err || 'AI request failed');
+    const upper = raw.toUpperCase();
+    if (upper.includes('403') || upper.includes('PERMISSION_DENIED') || upper.includes('LEAKED')) {
+      return {
+        status: 403,
+        code: 'PERMISSION_DENIED',
+        error:
+          lang === 'bn'
+            ? 'সার্ভারের GEMINI_API_KEY বাতিল বা অনিরাপদ (403 PERMISSION_DENIED) হিসেবে চিহ্নিত হয়েছে। অনুগ্রহ করে Settings > Secrets থেকে নতুন একটি বৈধ API Key বসান।'
+            : 'The configured GEMINI_API_KEY was rejected (403 PERMISSION_DENIED). Please update it with a valid API key in Settings > Secrets.',
+      };
+    }
+    if (upper.includes('400') || upper.includes('API_KEY_INVALID') || upper.includes('INVALID_ARGUMENT')) {
+      return {
+        status: 400,
+        code: 'API_KEY_INVALID',
+        error:
+          lang === 'bn'
+            ? 'GEMINI_API_KEY সঠিক নয়। অনুগ্রহ করে Settings > Secrets প্যানেলে গিয়ে সঠিক API Key যাচাই করুন।'
+            : 'Invalid GEMINI_API_KEY. Please check your API key in Settings > Secrets.',
+      };
+    }
+    if (upper.includes('429') || upper.includes('RESOURCE_EXHAUSTED')) {
+      return {
+        status: 429,
+        code: 'RESOURCE_EXHAUSTED',
+        error:
+          lang === 'bn'
+            ? 'Gemini API-এর কোটা পূর্ণ হয়েছে (429)। অনুগ্রহ করে Settings > Secrets থেকে আপনার API Key-এর কোটা বা বিলিং পরীক্ষা করুন।'
+            : 'Gemini API quota exceeded (429). Please check your API key tier/billing in Settings > Secrets.',
+      };
+    }
+    if (upper.includes('404') || upper.includes('NOT_FOUND')) {
+      return {
+        status: 404,
+        code: 'NOT_FOUND',
+        error:
+          lang === 'bn'
+            ? 'নির্ধারিত AI মডেলটি পাওয়া যায়নি।'
+            : 'Requested AI model was not found.',
+      };
+    }
+    return {
+      status: 500,
+      code: 'INTERNAL_ERROR',
+      error: raw,
+    };
+  };
+
   // Server-side Gemini AI Assistant endpoint
   app.post('/api/ai-assistant', async (req, res) => {
     const message = typeof req.body?.message === 'string' ? req.body.message.trim().slice(0, 1200) : '';
     const lang = req.body?.lang === 'en' ? 'en' : 'bn';
-    const contextSummary = typeof req.body?.context === 'string' ? req.body.context.slice(0, 2000) : '';
+    const contextSummary = typeof req.body?.context === 'string' ? req.body.context.slice(0, 4000) : '';
 
     if (!message) {
       res.status(400).json({ error: 'Message is required.' });
@@ -40,8 +90,8 @@ async function startServer() {
         error: 'AI assistant key is not configured on the server.',
         fallback:
           lang === 'bn'
-            ? 'রাণীর বাজার মাধ্যমিক বিদ্যালয়ের ভর্তি, রুটিন, নোটিশ বা পোর্টাল সম্পর্কে জানতে সরাসরি +880 1711-000000 নম্বরে যোগাযোগ করুন অথবা আমাদের নোটিশ বোর্ড ও ডিজিটাল লাইব্রেরি দেখুন।'
-            : 'For assistance with RANIR BAZAR MAIDYAMIK BIDYALAY admissions, routines, notices, or portal accounts, please call +880 1711-000000 or visit our Notice Board & Digital Library.',
+            ? 'রাণীর বাজার মাধ্যমিক বিদ্যালয়ের ভর্তি, রুটিন, নোটিশ বা পোর্টাল সম্পর্কে জানতে সরাসরি +880 1516528497 নম্বরে যোগাযোগ করুন অথবা আমাদের নোটিশ বোর্ড ও ডিজিটাল লাইব্রেরি দেখুন।'
+            : 'For assistance with RANIR BAZAR MAIDYAMIK BIDYALAY admissions, routines, notices, or portal accounts, please call +880 1516528497 or visit our Notice Board & Digital Library.',
       });
       return;
     }
@@ -72,9 +122,9 @@ Only answer questions relevant to school info, admissions, class routines, exams
 
       res.json({ reply: response.text || '' });
     } catch (err: unknown) {
-      const errMsg = err instanceof Error ? err.message : 'Failed to generate AI response.';
-      console.error('Server AI assistant error:', errMsg);
-      res.status(500).json({ error: errMsg });
+      const parsedErr = extractGeminiErrorResponse(err, lang);
+      console.warn(`AI assistant upstream response (${parsedErr.status} ${parsedErr.code})`);
+      res.status(parsedErr.status).json({ error: parsedErr.error, code: parsedErr.code });
     }
   });
 
@@ -199,9 +249,9 @@ Student question / request: ${question || `Explain "${topic}" clearly with an ex
 
       res.json({ reply: response.text || '' });
     } catch (err: unknown) {
-      const errMsg = err instanceof Error ? err.message : 'Failed to process AI study request.';
-      console.error('Server AI study helper error:', errMsg);
-      res.status(500).json({ error: errMsg });
+      const parsedErr = extractGeminiErrorResponse(err, lang);
+      console.warn(`AI study helper upstream response (${parsedErr.status} ${parsedErr.code})`);
+      res.status(parsedErr.status).json({ error: parsedErr.error, code: parsedErr.code });
     }
   });
 

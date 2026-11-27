@@ -56,6 +56,51 @@ const extractClassId = (text: string): string | null => {
 const hasAny = (text: string, patterns: RegExp[]): boolean =>
   patterns.some((rx) => rx.test(text));
 
+export function buildLocalSchoolContextSummary(input: Omit<LocalAssistantInput, 'query'>): string {
+  const {
+    lang,
+    settings,
+    notices,
+    examRoutines,
+    classRoutines,
+    teachers,
+    ebooks,
+    holidays,
+    onlineExams,
+  } = input;
+
+  const schoolName = loc(settings.name, lang) || 'রাণীর বাজার মাধ্যমিক বিদ্যালয় (RANIR BAZAR MAIDYAMIK BIDYALAY)';
+  const sched = resolveAdmissionSchedule(settings.admissionSchedule);
+  const examLines = [...examRoutines]
+    .sort((a, b) => (a.date || '').localeCompare(b.date || ''))
+    .slice(0, 10)
+    .map((r) => `Class ${r.classId} ${r.subject}: ${r.date} ${r.time}${r.examTerm ? ` (${r.examTerm})` : ''}`)
+    .join('; ');
+  const noticeLines = notices
+    .slice(0, 5)
+    .map((n) => `[${n.date}] ${loc(n.title, lang)}`)
+    .join('; ');
+  const holidayLines = holidays
+    .slice(0, 5)
+    .map((h) => `${h.date} ${loc(h.title, lang)}`)
+    .join('; ');
+  const classTeacherLines = teachers
+    .filter((tc) => tc.assignedClass)
+    .sort((a, b) => Number(a.assignedClass) - Number(b.assignedClass))
+    .map((tc) => `Class ${tc.assignedClass}: ${loc(tc.name, lang)}`)
+    .join('; ');
+
+  return [
+    `School: ${schoolName} | Est: 1958 | EIIN: ${settings.eiin} | Address: ${loc(settings.location, lang)} | Phone: ${settings.phone} | Email: ${settings.email} | Head Teacher: ${loc(settings.headTeacherName, lang)}`,
+    `Admission (${sched.sessionYear}): Status=${sched.isOpen ? 'OPEN' : 'Scheduled for December'}, Start=${sched.startDate}, Deadline=${sched.deadlineDate}, Exam=${sched.examDate}, Result=${sched.resultDate}, Fee=${sched.feeAmount} BDT`,
+    `Exam Dates (${examRoutines.length} routines, ${onlineExams.length} online MCQ exams): ${examLines || 'None scheduled'}`,
+    `Class Routines: ${classRoutines.length} classes (6-10) | Teachers: ${teachers.length} (${classTeacherLines || 'assigned per class'}) | Digital Library E-Books: ${ebooks.length}`,
+    `Latest Notices: ${noticeLines || 'None'}`,
+    `Upcoming Holidays: ${holidayLines || 'None'}`,
+    `Portals: /admission, /routine, /syllabus (NCTB Class 6-10 with PDF download), /exams, /ebooks, /notices, /holidays, /teachers, /login/student, /login/teacher, /login/parent`,
+  ].join('\n');
+}
+
 export function generateLocalSchoolAssistantReply(input: LocalAssistantInput): string {
   const {
     query,

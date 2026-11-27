@@ -172,7 +172,10 @@ import {
   isYearFinalExamTerm,
   MeritRankEntry,
 } from './utils/meritRoll';
-import { generateLocalSchoolAssistantReply } from './utils/localSchoolAi';
+import {
+  buildLocalSchoolContextSummary,
+  generateLocalSchoolAssistantReply,
+} from './utils/localSchoolAi';
 
 const { useState, createContext, useContext, useEffect, useRef, useMemo } = React;
 const { HashRouter: Router, Routes, Route, Link, useNavigate } = RouterDom;
@@ -6686,7 +6689,8 @@ const App: React.FC = () => {
     return rec[lang] || rec['bn'] || rec['en'] || '';
   };
 
-  // Built-in Local AI School Assistant (answers directly from live website data)
+  // Hybrid AI School Assistant: uses server-side Gemini API when GEMINI_API_KEY is configured,
+  // with instant Local AI fallback powered by live website data.
   const handleSendMessage = async (overrideMsg?: string) => {
     const rawMsg = typeof overrideMsg === 'string' ? overrideMsg : chatInput;
     if (!rawMsg.trim() || isTyping) return;
@@ -6695,23 +6699,46 @@ const App: React.FC = () => {
     setChatMessages((p) => [...p, { role: 'user', text: msg }]);
     setIsTyping(true);
 
+    const localInput = {
+      query: msg,
+      lang,
+      settings,
+      notices,
+      newsList,
+      eventsList,
+      examRoutines,
+      classRoutines,
+      subjects,
+      teachers,
+      ebooks,
+      holidays: effectiveHolidays,
+      onlineExams,
+    };
+
     try {
-      const reply = generateLocalSchoolAssistantReply({
-        query: msg,
-        lang,
-        settings,
-        notices,
-        newsList,
-        eventsList,
-        examRoutines,
-        classRoutines,
-        subjects,
-        teachers,
-        ebooks,
-        holidays: effectiveHolidays,
-        onlineExams,
+      const res = await fetch('/api/ai-assistant', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          message: msg,
+          lang,
+          context: buildLocalSchoolContextSummary(localInput),
+        }),
       });
-      setChatMessages((p) => [...p, { role: 'model', text: reply }]);
+      const data = await res.json();
+      if (res.ok && typeof data?.reply === 'string' && data.reply.trim()) {
+        setChatMessages((p) => [...p, { role: 'model', text: data.reply.trim() }]);
+        return;
+      }
+      const localReply = generateLocalSchoolAssistantReply(localInput);
+      const apiNotice =
+        (res.status === 403 || res.status === 400 || res.status === 429) && typeof data?.error === 'string'
+          ? `⚠️ ${data.error}\n\n`
+          : '';
+      setChatMessages((p) => [...p, { role: 'model', text: `${apiNotice}${localReply}` }]);
+    } catch {
+      const localReply = generateLocalSchoolAssistantReply(localInput);
+      setChatMessages((p) => [...p, { role: 'model', text: localReply }]);
     } finally {
       setIsTyping(false);
     }
