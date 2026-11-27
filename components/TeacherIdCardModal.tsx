@@ -223,7 +223,7 @@ const ExecutivePortraitFrame: React.FC<{
 
 function getSchoolMeta(settings: SchoolSettings, cardLang: 'en' | 'bn') {
   const rawBn = settings.name?.bn || 'রাণীর বাজার মাধ্যমিক বিদ্যালয়';
-  const rawEn = settings.name?.en || 'রাণীর বাজার মাধ্যমিক বিদ্যালয়';
+  const rawEn = settings.name?.en || 'RANIR BAZAR MAIDYAMIK BIDYALAY';
   const schoolName =
     cardLang === 'bn'
       ? rawBn

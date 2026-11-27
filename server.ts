@@ -41,7 +41,7 @@ async function startServer() {
         fallback:
           lang === 'bn'
             ? 'রাণীর বাজার মাধ্যমিক বিদ্যালয়ের ভর্তি, রুটিন, নোটিশ বা পোর্টাল সম্পর্কে জানতে সরাসরি +880 1711-000000 নম্বরে যোগাযোগ করুন অথবা আমাদের নোটিশ বোর্ড ও ডিজিটাল লাইব্রেরি দেখুন।'
-            : 'For assistance with রাণীর বাজার মাধ্যমিক বিদ্যালয় admissions, routines, notices, or portal accounts, please call +880 1711-000000 or visit our Notice Board & Digital Library.',
+            : 'For assistance with RANIR BAZAR MAIDYAMIK BIDYALAY admissions, routines, notices, or portal accounts, please call +880 1711-000000 or visit our Notice Board & Digital Library.',
       });
       return;
     }

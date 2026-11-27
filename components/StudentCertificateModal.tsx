@@ -133,7 +133,7 @@ export const StudentCertificateModal: React.FC<StudentCertificateModalProps> = (
                 <GraduationCap className="w-6 h-6" />
               </div>
               <p className="text-[11px] font-bold uppercase tracking-widest text-emerald-700 dark:text-emerald-400">
-                {settings.shortName || 'রাণীর বাজার মাধ্যমিক বিদ্যালয়'} · Est. 1958
+                {lang === 'bn' ? (settings.shortName || 'রাণীর বাজার মাধ্যমিক বিদ্যালয়') : 'RANIR BAZAR MAIDYAMIK BIDYALAY'} · Est. 1958
               </p>
               <h2 className="text-2xl font-black tracking-tight">{t(settings.name)}</h2>
               <p className="text-xs text-slate-600 dark:text-slate-400 tabular-nums">

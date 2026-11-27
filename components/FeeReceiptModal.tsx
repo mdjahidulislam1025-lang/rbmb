@@ -52,7 +52,7 @@ export const FeeReceiptModal: React.FC<FeeReceiptModalProps> = ({ fee, onClose }
           {/* Header */}
           <div className="text-center border-b-2 border-slate-900 dark:border-slate-700 pb-4 space-y-1">
             <p className="text-[11px] font-bold uppercase tracking-widest text-emerald-700 dark:text-emerald-400">
-              {settings.shortName || 'রাণীর বাজার মাধ্যমিক বিদ্যালয়'}
+              {lang === 'bn' ? (settings.shortName || 'রাণীর বাজার মাধ্যমিক বিদ্যালয়') : 'RANIR BAZAR MAIDYAMIK BIDYALAY'}
             </p>
             <h2 className="text-xl font-black">{t(settings.name)}</h2>
             <p className="text-xs text-slate-500 dark:text-slate-400 tabular-nums">

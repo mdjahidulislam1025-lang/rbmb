@@ -294,7 +294,7 @@ const About: React.FC = () => {
             <p className="text-slate-600 dark:text-slate-300 text-base leading-relaxed font-medium">
               {lang === 'bn'
                 ? 'প্রযুক্তি ও মেধার সমন্বয়ে একটি আদর্শ আধুনিক ডিজিটাল শিক্ষা প্রতিষ্ঠান হিসেবে নিজেদের প্রতিষ্ঠিত করা।'
-                : 'To establish রাণীর বাজার মাধ্যমিক বিদ্যালয় as a model center of academic excellence and smart school governance.'}
+                : 'To establish RANIR BAZAR MAIDYAMIK BIDYALAY as a model center of academic excellence and smart school governance.'}
             </p>
           </div>
         </section>

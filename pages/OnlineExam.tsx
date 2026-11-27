@@ -55,13 +55,20 @@ const OnlineExam: React.FC = () => {
     });
   }, [onlineExams, classFilter, subjectFilter, modeFilter]);
 
+  const answersRef = React.useRef(answers);
+  const elapsedSecondsRef = React.useRef(elapsedSeconds);
+  answersRef.current = answers;
+  elapsedSecondsRef.current = elapsedSeconds;
+
   const handleFinishExam = React.useCallback(() => {
     if (!activeExam) return;
+    const examQuestions = Array.isArray(activeExam.questions) ? activeExam.questions : [];
+    const currentAnswers = answersRef.current;
     let score = 0;
-    activeExam.questions.forEach((q) => {
-      if (answers[q.id] === q.correctIndex) score += 1;
+    examQuestions.forEach((q) => {
+      if (currentAnswers[q.id] === q.correctIndex) score += 1;
     });
-    const totalQuestions = activeExam.questions.length;
+    const totalQuestions = examQuestions.length;
     const percentage = totalQuestions > 0 ? Math.round((score / totalQuestions) * 100) : 0;
 
     const attempt: ExamAttempt = {
@@ -76,14 +83,14 @@ const OnlineExam: React.FC = () => {
       score,
       totalQuestions,
       percentage,
-      answers,
-      timeSpentSeconds: elapsedSeconds,
+      answers: { ...currentAnswers },
+      timeSpentSeconds: elapsedSecondsRef.current,
       submittedAt: new Date().toLocaleString(),
     };
     submitExamAttempt(attempt);
     setLatestResult(attempt);
     setViewMode('result');
-  }, [activeExam, answers, elapsedSeconds, lang, submitExamAttempt, t, user]);
+  }, [activeExam, lang, submitExamAttempt, t, user]);
 
   useEffect(() => {
     if (viewMode !== 'taking' || !activeExam) return;
@@ -107,7 +114,7 @@ const OnlineExam: React.FC = () => {
     setActiveExam(exam);
     setRunAsPractice(practice);
     setAnswers({});
-    setSecondsLeft(exam.durationMinutes * 60);
+    setSecondsLeft((Number(exam.durationMinutes) || 10) * 60);
     setElapsedSeconds(0);
     setViewMode('taking');
   };
@@ -263,7 +270,7 @@ const OnlineExam: React.FC = () => {
                     <h3 className="text-xl font-bold text-slate-900 dark:text-white leading-snug">{t(exam.title)}</h3>
                     <p className="text-xs font-medium text-slate-500 dark:text-slate-400">{exam.chapter}</p>
                     <div className="pt-2 flex items-center justify-between text-xs text-slate-500 dark:text-slate-400 border-t border-slate-100 dark:border-slate-800">
-                      <span>{exam.questions.length} MCQs</span>
+                      <span>{Array.isArray(exam.questions) ? exam.questions.length : 0} MCQs</span>
                       <span>{exam.createdBy}</span>
                     </div>
                   </div>
@@ -296,7 +303,7 @@ const OnlineExam: React.FC = () => {
             <div>
               <h2 className="text-lg font-bold text-slate-900 dark:text-white">{t(activeExam.title)}</h2>
               <p className="text-xs text-slate-500 dark:text-slate-400">
-                {runAsPractice ? (lang === 'bn' ? 'ফ্রি প্র্যাকটিস মোড' : 'Untimed Practice Mode') : (lang === 'bn' ? 'নির্ধারিত সময়ের পরীক্ষা' : 'Timed Exam Mode')} • {Object.keys(answers).length}/{activeExam.questions.length} {lang === 'bn' ? 'উত্তরিত' : 'answered'}
+                {runAsPractice ? (lang === 'bn' ? 'ফ্রি প্র্যাকটিস মোড' : 'Untimed Practice Mode') : (lang === 'bn' ? 'নির্ধারিত সময়ের পরীক্ষা' : 'Timed Exam Mode')} • {Object.keys(answers).length}/{Array.isArray(activeExam.questions) ? activeExam.questions.length : 0} {lang === 'bn' ? 'উত্তরিত' : 'answered'}
               </p>
             </div>
             <div className="flex items-center gap-3">
@@ -316,7 +323,7 @@ const OnlineExam: React.FC = () => {
           </div>
 
           <div className="space-y-5">
-            {activeExam.questions.map((q, idx) => (
+            {(Array.isArray(activeExam.questions) ? activeExam.questions : []).map((q, idx) => (
               <div
                 key={q.id}
                 className="bg-white dark:bg-slate-900 p-6 rounded-3xl border border-slate-200 dark:border-slate-800 space-y-4"
@@ -328,7 +335,7 @@ const OnlineExam: React.FC = () => {
                   <h3 className="text-base md:text-lg font-bold text-slate-900 dark:text-white pt-0.5">{q.question}</h3>
                 </div>
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pl-0 sm:pl-11">
-                  {q.options.map((opt, optIdx) => {
+                  {(Array.isArray(q.options) ? q.options : []).map((opt, optIdx) => {
                     const selected = answers[q.id] === optIdx;
                     return (
                       <button
@@ -412,7 +419,8 @@ const OnlineExam: React.FC = () => {
             <h3 className="text-xl font-bold text-slate-900 dark:text-white">
               {lang === 'bn' ? 'ভুল ও সঠিক উত্তরের বিস্তারিত বিশ্লেষণ' : 'Detailed Answer Review & Explanations'}
             </h3>
-            {activeExam.questions.map((q, idx) => {
+            {(Array.isArray(activeExam.questions) ? activeExam.questions : []).map((q, idx) => {
+              const opts = Array.isArray(q.options) ? q.options : [];
               const userAns = latestResult.answers[q.id];
               const isCorrect = userAns === q.correctIndex;
               return (
@@ -436,12 +444,12 @@ const OnlineExam: React.FC = () => {
                     <div className="p-3 rounded-xl bg-slate-50 dark:bg-slate-800">
                       <span className="text-xs font-bold text-slate-500 block">{lang === 'bn' ? 'আপনার উত্তর:' : 'Your Answer:'}</span>
                       <span className={isCorrect ? 'font-bold text-emerald-700 dark:text-emerald-400' : 'font-bold text-red-600 dark:text-red-400'}>
-                        {userAns !== undefined ? q.options[userAns] : (lang === 'bn' ? 'উত্তর দেওয়া হয়নি' : 'Not answered')}
+                        {userAns !== undefined ? (opts[userAns] ?? '—') : (lang === 'bn' ? 'উত্তর দেওয়া হয়নি' : 'Not answered')}
                       </span>
                     </div>
                     <div className="p-3 rounded-xl bg-emerald-50 dark:bg-emerald-950/50">
                       <span className="text-xs font-bold text-emerald-700 dark:text-emerald-400 block">{lang === 'bn' ? 'সঠিক উত্তর:' : 'Correct Answer:'}</span>
-                      <span className="font-bold text-emerald-900 dark:text-emerald-200">{q.options[q.correctIndex]}</span>
+                      <span className="font-bold text-emerald-900 dark:text-emerald-200">{opts[q.correctIndex] ?? '—'}</span>
                     </div>
                   </div>
                   {q.explanation && (

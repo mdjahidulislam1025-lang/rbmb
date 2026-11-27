@@ -48,9 +48,9 @@ const Home: React.FC = () => {
     list.push({
       url: settings.schoolPhoto || heroCampusImg,
       captionBn: 'রাণীর বাজার মাধ্যমিক বিদ্যালয় · স্মার্ট ডিজিটাল শিক্ষা ও আধুনিক ক্যাম্পাস',
-      captionEn: 'রাণীর বাজার মাধ্যমিক বিদ্যালয় · Smart Digital Education & Connected Campus',
+      captionEn: 'RANIR BAZAR MAIDYAMIK BIDYALAY · Smart Digital Education & Connected Campus',
       eyebrowBn: 'রাণীর বাজার মাধ্যমিক বিদ্যালয় · স্থাপিত ১৯৫৮',
-      eyebrowEn: 'রাণীর বাজার মাধ্যমিক বিদ্যালয় · EST. 1958',
+      eyebrowEn: 'RANIR BAZAR MAIDYAMIK BIDYALAY · EST. 1958',
     });
 
     if (gallery && gallery.length > 0) {

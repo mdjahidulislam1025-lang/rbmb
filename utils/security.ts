@@ -131,7 +131,28 @@ export function buildStudentRegistrationNo(classId: string, roll: string, sessio
   const cleanSession = (session || '2026').replace(/[^0-9]/g, '').slice(0, 4) || '2026';
   const cleanClassDigits = String(classId || '6').replace(/[^0-9]/g, '').padStart(2, '0');
   const numericRoll = String(roll || '01').replace(/[^0-9]/g, '');
-  const serialRoll = numericRoll ? numericRoll.padStart(2, '0') : String(roll || '01').trim().toUpperCase();
-  return `RBMB-REG-${cleanSession}-${cleanClassDigits}${serialRoll}`;
+  const serialRoll = (numericRoll || '01').padStart(2, '0');
+  return `${cleanSession}${cleanClassDigits}${serialRoll}`;
+}
+
+export function normalizeStudentRegistrationNo(
+  rawReg?: string | null,
+  classId?: string,
+  roll?: string,
+  session = '2026'
+): string {
+  const trimmed = String(rawReg || '').trim();
+  if (!trimmed) {
+    return classId && roll ? buildStudentRegistrationNo(classId, roll, session) : '';
+  }
+  const legacyMatch = /^RBMB-REG-(.+)$/i.exec(trimmed);
+  if (legacyMatch) {
+    const digits = legacyMatch[1].replace(/\D/g, '');
+    if (digits) return digits;
+  }
+  if (/^\d{4}-\d{4,}$/.test(trimmed)) {
+    return trimmed.replace(/\D/g, '');
+  }
+  return trimmed;
 }
 

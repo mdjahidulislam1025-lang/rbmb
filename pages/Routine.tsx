@@ -135,7 +135,9 @@ const Routine: React.FC = () => {
       {/* Content */}
       {routineTab === 'class' && selectedRoutine && (
         <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-6">
-          {selectedRoutine.schedule.map((dayData, idx) => (
+          {(Array.isArray(selectedRoutine.schedule) ? selectedRoutine.schedule : []).map((dayData, idx) => {
+            const periods = Array.isArray(dayData.periods) ? dayData.periods : [];
+            return (
             <div
               key={idx}
               className="bg-white dark:bg-slate-900 rounded-3xl shadow-sm border border-slate-100 dark:border-slate-800 overflow-hidden flex flex-col"
@@ -148,12 +150,12 @@ const Routine: React.FC = () => {
                   <h3 className="font-black text-slate-900 dark:text-white text-lg">{t(dayData.day)}</h3>
                 </div>
                 <span className="text-[11px] font-black text-slate-500 dark:text-slate-300 bg-white dark:bg-slate-900 px-3 py-1 rounded-full border border-slate-200 dark:border-slate-700">
-                  {dayData.periods.length} Classes
+                  {periods.length} Classes
                 </span>
               </div>
 
               <div className="p-5 space-y-3 flex-grow">
-                {dayData.periods.map((period, pIdx) => (
+                {periods.map((period, pIdx) => (
                   <div
                     key={pIdx}
                     className="flex items-center gap-4 p-3.5 rounded-2xl border border-slate-100 dark:border-slate-800 hover:border-green-200 dark:hover:border-green-700 transition-colors"
@@ -179,7 +181,8 @@ const Routine: React.FC = () => {
                 ))}
               </div>
             </div>
-          ))}
+            );
+          })}
         </div>
       )}
 

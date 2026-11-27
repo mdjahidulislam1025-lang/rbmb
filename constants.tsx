@@ -35,12 +35,12 @@ import { getDefaultYearlyAdmissionCycle } from './utils/admissionSchedule';
 
 export const CAMPUS_BRAND = {
   bn: 'রাণীর বাজার মাধ্যমিক বিদ্যালয়',
-  en: 'রাণীর বাজার মাধ্যমিক বিদ্যালয়',
+  en: 'RANIR BAZAR MAIDYAMIK BIDYALAY',
 };
 
 export const SCHOOL_NAME = {
   bn: 'রাণীর বাজার মাধ্যমিক বিদ্যালয়',
-  en: 'রাণীর বাজার মাধ্যমিক বিদ্যালয়',
+  en: 'RANIR BAZAR MAIDYAMIK BIDYALAY',
 };
 
 export const CAMPUS_TAGLINE = {
@@ -66,7 +66,7 @@ export const INITIAL_SETTINGS: SchoolSettings = {
   },
   headTeacherMessage: {
     bn: 'সুপ্রিয় শিক্ষার্থী, অভিভাবক ও প্রাক্তন শিক্ষার্থীবৃন্দ — রাণীর বাজার মাধ্যমিক বিদ্যালয়ে আপনাদের স্বাগতম। ১৯৫৮ সাল থেকে আমাদের প্রতিষ্ঠান নৈতিক শিক্ষা, বিজ্ঞানমনস্কতা ও সহশিক্ষা কার্যক্রমে অগ্রণী ভূমিকা পালন করে আসছে। ডিজিটাল ক্লাসরুম, অনলাইন পরীক্ষা ও সমন্বিত পোর্টালের মাধ্যমে প্রতিটি শিক্ষার্থীকে যোগ্য বিশ্বনাগরিক হিসেবে গড়ে তোলাই আমাদের লক্ষ্য।',
-    en: 'Dear Students, Guardians, and Alumni — welcome to রাণীর বাজার মাধ্যমিক বিদ্যালয়. Since 1958, our institution has championed moral values, scientific curiosity, and co-curricular excellence. Through smart classrooms, online assessments, and unified portals, we empower every learner for tomorrow.',
+    en: 'Dear Students, Guardians, and Alumni — welcome to RANIR BAZAR MAIDYAMIK BIDYALAY. Since 1958, our institution has championed moral values, scientific curiosity, and co-curricular excellence. Through smart classrooms, online assessments, and unified portals, we empower every learner for tomorrow.',
   },
   headTeacherPhoto: headTeacherImg,
   latitude: 23.2248,
@@ -251,7 +251,7 @@ export const INITIAL_NEWS: NewsArticle[] = [
     id: 'news-2026-1',
     title: {
       bn: 'রাণীর বাজার মাধ্যমিক বিদ্যালয় স্মার্ট পোর্টাল ২০২৬ উদ্বোধন',
-      en: 'Launch of রাণীর বাজার মাধ্যমিক বিদ্যালয় Smart Education Portal 2026',
+      en: 'Launch of RANIR BAZAR MAIDYAMIK BIDYALAY Smart Education Portal 2026',
     },
     summary: {
       bn: 'শিক্ষার্থী, শিক্ষক ও অভিভাবকদের জন্য সমন্বিত ডিজিটাল লার্নিং, অনলাইন পরীক্ষা ও ফলাফল পোর্টাল চালু করা হয়েছে।',
@@ -259,7 +259,7 @@ export const INITIAL_NEWS: NewsArticle[] = [
     },
     content: {
       bn: 'রাণীর বাজার মাধ্যমিক বিদ্যালয়ের একাডেমিক কার্যক্রম আরও গতিশীল ও স্বচ্ছ করতে স্মার্ট ডিজিটাল ক্যাম্পাস চালু করা হয়েছে। শিক্ষার্থীরা এখন থেকে ঘরে বসেই পাঠ্যবই, নোট, অনলাইন পরীক্ষা ও ফলাফল দেখতে পারবে।',
-      en: 'To modernize classroom administration and self-paced learning, রাণীর বাজার মাধ্যমিক বিদ্যালয় has rolled out its Smart Digital Campus. Learners can access textbooks, chapter notes, timed MCQ exams, and attendance updates from any device.',
+      en: 'To modernize classroom administration and self-paced learning, RANIR BAZAR MAIDYAMIK BIDYALAY has rolled out its Smart Digital Campus. Learners can access textbooks, chapter notes, timed MCQ exams, and attendance updates from any device.',
     },
     category: 'Academic',
     date: '2026-06-10',
@@ -765,7 +765,7 @@ export const INITIAL_GALLERY: GalleryItem[] = [
     url: heroCampusImg,
     mediaType: 'image',
     category: 'Campus',
-    caption: { bn: 'রাণীর বাজার মাধ্যমিক বিদ্যালয়ের মনোরম একাডেমিক ভবন ও প্রাঙ্গণ', en: 'রাণীর বাজার মাধ্যমিক বিদ্যালয় Main Campus & Courtyard' },
+    caption: { bn: 'রাণীর বাজার মাধ্যমিক বিদ্যালয়ের মনোরম একাডেমিক ভবন ও প্রাঙ্গণ', en: 'RANIR BAZAR MAIDYAMIK BIDYALAY Main Campus & Courtyard' },
     isPublic: true,
   },
   {
@@ -804,15 +804,15 @@ export const HOLIDAYS_2026: Holiday[] = [
 ];
 
 export const INITIAL_STUDENTS: SchoolStudent[] = [
-  { id: 'st-6-1', roll: '01', name: 'সাদিয়া আফরিন (Sadia Afrin)', classId: '6', section: 'A', guardianMobile: '01711-223344', session: '2026', registrationNo: 'RBMB-REG-2026-0601' },
-  { id: 'st-6-2', roll: '02', name: 'রাফি আহমেদ (Rafi Ahmed)', classId: '6', section: 'A', guardianMobile: '01811-334455', session: '2026', registrationNo: 'RBMB-REG-2026-0602' },
-  { id: 'st-7-1', roll: '01', name: 'তাসনিম তাবাসসুম (Tasnim Tabassum)', classId: '7', section: 'A', guardianMobile: '01911-445566', session: '2026', registrationNo: 'RBMB-REG-2026-0701' },
-  { id: 'st-8-1', roll: '01', name: 'মাহফুজ রহমান (Mahfuz Rahman)', classId: '8', section: 'A', guardianMobile: '01611-556677', session: '2026', registrationNo: 'RBMB-REG-2026-0801' },
-  { id: 'st-9-1', roll: '01', name: 'আরিয়ান করিম (Aryan Karim)', classId: '9', section: 'Science', guardianName: 'মোঃ করিম উদ্দিন', guardianMobile: '01712-667788', session: '2026', registrationNo: 'RBMB-REG-2026-0901' },
-  { id: 'st-9-2', roll: '02', name: 'নুসরাত জাহান (Nusrat Jahan)', classId: '9', section: 'Science', guardianMobile: '01715-778899', session: '2026', registrationNo: 'RBMB-REG-2026-0902' },
-  { id: 'st-9-3', roll: '03', name: 'তামিম ইকবাল (Tamim Iqbal)', classId: '9', section: 'Business Studies', guardianMobile: '01815-889900', session: '2026', registrationNo: 'RBMB-REG-2026-0903' },
-  { id: 'st-10-1', roll: '01', name: 'জাহিদুল ইসলাম (Jahidul Islam)', classId: '10', section: 'Science', guardianMobile: '01700-112233', session: '2026', registrationNo: 'RBMB-REG-2026-1001' },
-  { id: 'st-10-2', roll: '02', name: 'সুমাইয়া আক্তার (Sumaiya Akter)', classId: '10', section: 'Science', guardianMobile: '01700-445566', session: '2026', registrationNo: 'RBMB-REG-2026-1002' },
+  { id: 'st-6-1', roll: '01', name: 'সাদিয়া আফরিন (Sadia Afrin)', classId: '6', section: 'A', guardianMobile: '01711-223344', session: '2026', registrationNo: '20260601' },
+  { id: 'st-6-2', roll: '02', name: 'রাফি আহমেদ (Rafi Ahmed)', classId: '6', section: 'A', guardianMobile: '01811-334455', session: '2026', registrationNo: '20260602' },
+  { id: 'st-7-1', roll: '01', name: 'তাসনিম তাবাসসুম (Tasnim Tabassum)', classId: '7', section: 'A', guardianMobile: '01911-445566', session: '2026', registrationNo: '20260701' },
+  { id: 'st-8-1', roll: '01', name: 'মাহফুজ রহমান (Mahfuz Rahman)', classId: '8', section: 'A', guardianMobile: '01611-556677', session: '2026', registrationNo: '20260801' },
+  { id: 'st-9-1', roll: '01', name: 'আরিয়ান করিম (Aryan Karim)', classId: '9', section: 'Science', guardianName: 'মোঃ করিম উদ্দিন', guardianMobile: '01712-667788', session: '2026', registrationNo: '20260901' },
+  { id: 'st-9-2', roll: '02', name: 'নুসরাত জাহান (Nusrat Jahan)', classId: '9', section: 'Science', guardianMobile: '01715-778899', session: '2026', registrationNo: '20260902' },
+  { id: 'st-9-3', roll: '03', name: 'তামিম ইকবাল (Tamim Iqbal)', classId: '9', section: 'Business Studies', guardianMobile: '01815-889900', session: '2026', registrationNo: '20260903' },
+  { id: 'st-10-1', roll: '01', name: 'জাহিদুল ইসলাম (Jahidul Islam)', classId: '10', section: 'Science', guardianMobile: '01700-112233', session: '2026', registrationNo: '20261001' },
+  { id: 'st-10-2', roll: '02', name: 'সুমাইয়া আক্তার (Sumaiya Akter)', classId: '10', section: 'Science', guardianMobile: '01700-445566', session: '2026', registrationNo: '20261002' },
 ];
 
 export const INITIAL_HOMEWORK: HomeworkItem[] = [
@@ -1024,7 +1024,7 @@ export const INITIAL_ALUMNI: AlumniProfile[] = [
     currentRole: 'Software Engineer & Researcher',
     organization: 'IIT, University of Dhaka',
     city: 'Dhaka',
-    message: 'Proud alumnus of রাণীর বাজার মাধ্যমিক বিদ্যালয়. Wishing our younger students limitless curiosity and excellence.',
+    message: 'Proud alumnus of RANIR BAZAR MAIDYAMIK BIDYALAY. Wishing our younger students limitless curiosity and excellence.',
     status: 'approved',
     isPublic: true,
   },

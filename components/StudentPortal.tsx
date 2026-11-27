@@ -50,7 +50,7 @@ import {
 import { buildNctbClassSyllabus } from '../utils/nctbSyllabus';
 import { downloadSyllabusPdf } from '../utils/syllabusPdf';
 import { FeeRecord, ExamQuestion, Holiday, StudyGroup } from '../types';
-import { calculateOverallGpa, isSafeHttpUrl, buildStudentRegistrationNo } from '../utils/security';
+import { calculateOverallGpa, isSafeHttpUrl, buildStudentRegistrationNo, normalizeStudentRegistrationNo } from '../utils/security';
 import { exportCsv } from '../utils/exportUtils';
 import { compressImageFile } from '../utils/imageUtils';
 import {
@@ -216,10 +216,12 @@ export const StudentPortal: React.FC = () => {
     }
   }, [matchedStudent?.roll, matchedStudent?.section, user?.section, selectedClassId]);
 
-  const studentRegNo =
-    user?.registrationNo ||
-    matchedStudent?.registrationNo ||
-    buildStudentRegistrationNo(selectedClassId, selectedRoll, matchedStudent?.session || String(activeYear));
+  const studentRegNo = normalizeStudentRegistrationNo(
+    user?.registrationNo || matchedStudent?.registrationNo,
+    selectedClassId,
+    selectedRoll,
+    matchedStudent?.session || String(activeYear)
+  ) || buildStudentRegistrationNo(selectedClassId, selectedRoll, matchedStudent?.session || String(activeYear));
 
   const studentPhoto = matchedStudent?.photo || user?.photo || '';
 
@@ -287,7 +289,7 @@ export const StudentPortal: React.FC = () => {
     attendanceRecords
       .filter((r) => r.classId === selectedClassId)
       .forEach((sheet) => {
-        const st = matchedStudent ? sheet.records[matchedStudent.id] : undefined;
+        const st = matchedStudent ? sheet.records?.[matchedStudent.id] : undefined;
         if (st && !byDate.has(sheet.date)) {
           byDate.set(sheet.date, {
             id: sheet.id,

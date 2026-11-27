@@ -90,7 +90,7 @@ export function getStudentCardCodes(classId: string, roll: string, session = '20
 
   return {
     studentId: `RBMB-${cleanSession}-${serialCode}`,
-    registrationNo: `RBMB-REG-${cleanSession}-${serialCode}`,
+    registrationNo: `${cleanSession}${serialCode}`,
     admitCardNo: `AC-${cleanSession}-${serialCode}`,
     paddedRollDisplay,
   };
@@ -287,7 +287,7 @@ const QrBadge: React.FC<{
 };
 
 function getSchoolHeaderInfo(settings: SchoolSettings, cardLang: 'en' | 'bn') {
-  const rawName = (cardLang === 'bn' ? settings.name?.bn : settings.name?.en) || 'রাণীর বাজার মাধ্যমিক বিদ্যালয়';
+  const rawName = (cardLang === 'bn' ? settings.name?.bn : settings.name?.en) || (cardLang === 'bn' ? 'রাণীর বাজার মাধ্যমিক বিদ্যালয়' : 'RANIR BAZAR MAIDYAMIK BIDYALAY');
   const schoolName = rawName;
   const locationText = cardLang === 'bn' ? settings.location.bn : settings.location.en;
   const headTeacherTitle = cardLang === 'bn' ? 'প্রধান শিক্ষক' : 'Head Teacher';

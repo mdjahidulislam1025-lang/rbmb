@@ -23,7 +23,7 @@ import {
 } from 'lucide-react';
 import { useApp } from '../App';
 import { FeeRecord, SchoolStudent } from '../types';
-import { calculateOverallGpa, phonesMatch, buildStudentRegistrationNo } from '../utils/security';
+import { calculateOverallGpa, phonesMatch, buildStudentRegistrationNo, normalizeStudentRegistrationNo } from '../utils/security';
 import { getDhakaTodayISO, getDhakaYear, formatDhakaClock } from '../utils/dhakaTime';
 import { exportCsv } from '../utils/exportUtils';
 import { AcademicReportCard } from './AcademicReportCard';
@@ -138,7 +138,14 @@ export const ParentPortal: React.FC = () => {
 
   const childRegNo = useMemo(() => {
     if (!hasBoundStudent) return '';
-    return matchedChild?.registrationNo || buildStudentRegistrationNo(childClass, childRoll, matchedChild?.session || '2026');
+    return (
+      normalizeStudentRegistrationNo(
+        matchedChild?.registrationNo,
+        childClass,
+        childRoll,
+        matchedChild?.session || '2026'
+      ) || buildStudentRegistrationNo(childClass, childRoll, matchedChild?.session || '2026')
+    );
   }, [hasBoundStudent, matchedChild, childClass, childRoll]);
 
   const currentLinkRequest = useMemo(() => {
@@ -245,7 +252,7 @@ export const ParentPortal: React.FC = () => {
     attendanceRecords
       .filter((r) => r.classId === childClass)
       .forEach((sheet) => {
-        const st = matchedChild ? sheet.records[matchedChild.id] : undefined;
+        const st = matchedChild ? sheet.records?.[matchedChild.id] : undefined;
         if (st && !byDate.has(sheet.date)) {
           byDate.set(sheet.date, {
             id: sheet.id,

@@ -82,7 +82,18 @@ export function safeLocalGet<T>(key: string, fallback: T): T {
   try {
     const saved = localStorage.getItem(key);
     if (!saved) return fallback;
-    return JSON.parse(saved) as T;
+    const parsed: unknown = JSON.parse(saved);
+    if (parsed === null || parsed === undefined) return fallback;
+    if (Array.isArray(fallback)) {
+      return (Array.isArray(parsed) ? parsed : fallback) as T;
+    }
+    if (fallback !== null && typeof fallback === 'object') {
+      return (typeof parsed === 'object' && !Array.isArray(parsed) ? parsed : fallback) as T;
+    }
+    if (typeof fallback === 'string' || typeof fallback === 'number' || typeof fallback === 'boolean') {
+      return (typeof parsed === typeof fallback ? parsed : fallback) as T;
+    }
+    return parsed as T;
   } catch {
     return fallback;
   }

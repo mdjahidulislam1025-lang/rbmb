@@ -108,7 +108,7 @@ const Alumni: React.FC = () => {
           <p className="text-slate-300 text-sm md:text-base leading-relaxed">
             {lang === 'bn'
               ? 'দেশ-বিদেশে কর্মরত রাণীর বাজার মাধ্যমিক বিদ্যালয়ের প্রাক্তন শিক্ষার্থীদের তথ্য, অভিজ্ঞতা ও পুনর্মিলনী বার্তা।'
-              : 'Connecting graduates of রাণীর বাজার মাধ্যমিক বিদ্যালয় across universities, medicine, engineering, and public service.'}
+              : 'Connecting graduates of RANIR BAZAR MAIDYAMIK BIDYALAY across universities, medicine, engineering, and public service.'}
           </p>
         </div>
 

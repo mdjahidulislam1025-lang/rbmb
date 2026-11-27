@@ -962,7 +962,7 @@ const NoticeBoard: React.FC<NoticeBoardProps> = ({ initialTab = 'notices' }) => 
                   <GraduationCap className="w-5 h-5" />
                 </div>
                 <p className="text-[11px] font-bold uppercase tracking-widest text-emerald-700 dark:text-emerald-400">
-                  {settings.shortName || 'রাণীর বাজার মাধ্যমিক বিদ্যালয়'} · Est. 1958
+                  {lang === 'bn' ? (settings.shortName || 'রাণীর বাজার মাধ্যমিক বিদ্যালয়') : 'RANIR BAZAR MAIDYAMIK BIDYALAY'} · Est. 1958
                 </p>
                 <h2 className="text-2xl font-black">{t(settings.name)}</h2>
                 <p className="text-xs text-slate-500 dark:text-slate-400 tabular-nums">
@@ -995,7 +995,7 @@ const NoticeBoard: React.FC<NoticeBoardProps> = ({ initialTab = 'notices' }) => 
                     {t(settings.headTeacherName) || (lang === 'bn' ? 'প্রধান শিক্ষক' : 'Head Teacher')}
                   </p>
                   <p className="text-slate-500 font-semibold">
-                    {lang === 'bn' ? 'প্রধান শিক্ষক, রাণীর বাজার মাধ্যমিক বিদ্যালয়' : 'Head Teacher, রাণীর বাজার মাধ্যমিক বিদ্যালয়'}
+                    {lang === 'bn' ? 'প্রধান শিক্ষক, রাণীর বাজার মাধ্যমিক বিদ্যালয়' : 'Head Teacher, RANIR BAZAR MAIDYAMIK BIDYALAY'}
                   </p>
                 </div>
               </div>

@@ -4,21 +4,21 @@ import Navbar from './components/Navbar';
 import NoticeTicker from './components/NoticeTicker';
 import AdMobBannerBar from './components/AdMobBannerBar';
 import Home from './pages/Home';
-import NoticeBoard from './pages/NoticeBoard';
-import Teachers from './pages/Teachers';
-import Admission from './pages/Admission';
-import Login from './pages/Login';
-import Register from './pages/Register';
-import Holidays from './pages/Holidays';
-import Syllabus from './pages/Syllabus';
-import Routine from './pages/Routine';
-import EBookLibrary from './pages/EBookLibrary';
-import About from './pages/About';
-import Gallery from './pages/Gallery';
-import Contact from './pages/Contact';
-import AcademicCalendar from './pages/AcademicCalendar';
-import OnlineExam from './pages/OnlineExam';
-import Alumni from './pages/Alumni';
+const NoticeBoard = React.lazy(() => import('./pages/NoticeBoard'));
+const Teachers = React.lazy(() => import('./pages/Teachers'));
+const Admission = React.lazy(() => import('./pages/Admission'));
+const Login = React.lazy(() => import('./pages/Login'));
+const Register = React.lazy(() => import('./pages/Register'));
+const Holidays = React.lazy(() => import('./pages/Holidays'));
+const Syllabus = React.lazy(() => import('./pages/Syllabus'));
+const Routine = React.lazy(() => import('./pages/Routine'));
+const EBookLibrary = React.lazy(() => import('./pages/EBookLibrary'));
+const About = React.lazy(() => import('./pages/About'));
+const Gallery = React.lazy(() => import('./pages/Gallery'));
+const Contact = React.lazy(() => import('./pages/Contact'));
+const AcademicCalendar = React.lazy(() => import('./pages/AcademicCalendar'));
+const OnlineExam = React.lazy(() => import('./pages/OnlineExam'));
+const Alumni = React.lazy(() => import('./pages/Alumni'));
 import {
   X,
   Send,
@@ -131,6 +131,8 @@ import {
   where,
   serverTimestamp,
   writeBatch,
+  UpdateData,
+  DocumentData,
 } from 'firebase/firestore';
 import { sanitizeFirestoreId, clampImageString } from './utils/imageUtils';
 import {
@@ -139,6 +141,7 @@ import {
   normalizePhoneDigits,
   phonesMatch,
   buildStudentRegistrationNo,
+  normalizeStudentRegistrationNo,
 } from './utils/security';
 import { inferSubjectStudyGroup } from './utils/teacherRole';
 import {
@@ -274,7 +277,7 @@ const SEEDED_USER_TEMPLATES: Omit<AuthUser, 'passwordHash'>[] = [
     role: 'student',
     email: 'student01@rbhs.edu',
     phone: '01712-667788',
-    registrationNo: 'RBMB-REG-2026-0901',
+    registrationNo: '20260901',
     section: 'Science',
     session: '2026',
     guardianName: 'মোঃ করিম উদ্দিন',
@@ -296,6 +299,38 @@ const SEEDED_USER_TEMPLATES: Omit<AuthUser, 'passwordHash'>[] = [
     linkedChildName: 'আরিয়ান করিম (Aryan Karim)',
   },
 ];
+
+const normalizeStudentRecord = (st: SchoolStudent): SchoolStudent => ({
+  ...st,
+  registrationNo: normalizeStudentRegistrationNo(
+    st.registrationNo,
+    st.classId,
+    st.roll,
+    st.session || '2026'
+  ),
+});
+
+const normalizeAuthUserRecord = (u: AuthUser): AuthUser => {
+  if (!u) return u;
+  const shouldNormalizeReg = u.role === 'student' || Boolean(u.registrationNo);
+  const normalizedReg = shouldNormalizeReg
+    ? normalizeStudentRegistrationNo(
+        u.registrationNo,
+        u.linkedChildClass,
+        u.linkedChildRoll,
+        u.session || '2026'
+      )
+    : u.registrationNo;
+  const nextUserId =
+    u.role === 'student' && /^RBMB-REG-/i.test(u.userId.trim()) && normalizedReg
+      ? normalizedReg
+      : u.userId;
+  return {
+    ...u,
+    userId: nextUserId,
+    ...(normalizedReg ? { registrationNo: normalizedReg } : {}),
+  };
+};
 
 const BOOTSTRAPPED_ADMIN_EMAIL = 'mdjahidulislam1025@gmail.com';
 
@@ -531,38 +566,60 @@ const LEGACY_SCHOOL_NAME_BN = [
   'রাণীর বাজার মডেল উচ্চ বিদ্যালয়',
   'রাণীর বাজার মডেল উচ্চ বিদ্যালয়',
   'রাণীর বাজার মডেল হাই স্কুল',
+  'রাণীর বাজার উচ্চ বিদ্যালয়',
+  'রাণীর বাজার উচ্চ বিদ্যালয়',
+  'রাণীর বাজার হাই স্কুল',
 ];
 const LEGACY_SCHOOL_NAME_EN = [
+  'Rani Bazar High School',
+  'Ranir Bazar High School',
   'Rani Bazar Model High School',
   'Ranir Bazar Model High School',
   'Ranir Bazar Secondary High School',
   'Rani Bazar Secondary High School',
+  'Ranir Bazar Secondary School',
+  'Rani Bazar Secondary School',
 ];
+
+const isLegacySchoolNameBn = (val: string) =>
+  LEGACY_SCHOOL_NAME_BN.some((legacy) => val.includes(legacy)) ||
+  val.includes('মডেল উচ্চ') ||
+  val.includes('মডেল হাই') ||
+  val.includes('হাই স্কুল');
+
+const isLegacySchoolNameEn = (val: string) => {
+  const lower = val.toLowerCase();
+  return (
+    LEGACY_SCHOOL_NAME_EN.some((legacy) => lower.includes(legacy.toLowerCase())) ||
+    lower.includes('model high') ||
+    /rani(r)?\s+bazar\s+(secondary\s+)?high\s+school/i.test(val) ||
+    val === 'রাণীর বাজার মাধ্যমিক বিদ্যালয়' ||
+    val === 'রাণীর বাজার মাধ্যমিক বিদ্যালয়'
+  );
+};
 
 const normalizeSchoolSettings = (raw?: Partial<SchoolSettings> | null): SchoolSettings => {
   const base = { ...INITIAL_SETTINGS, ...(raw || {}) };
   const rawBn = (base.name?.bn || '').trim();
   const rawEn = (base.name?.en || '').trim();
   const rawShort = (base.shortName || '').trim();
-  const nextBn =
-    !rawBn || LEGACY_SCHOOL_NAME_BN.some((legacy) => rawBn.includes(legacy) || rawBn.includes('মডেল উচ্চ') || rawBn.includes('মডেল হাই'))
-      ? SCHOOL_NAME.bn
-      : rawBn;
-  const nextEn =
-    !rawEn || LEGACY_SCHOOL_NAME_EN.some((legacy) => rawEn.toLowerCase().includes(legacy.toLowerCase()) || rawEn.toLowerCase().includes('model high'))
-      ? SCHOOL_NAME.en
-      : rawEn;
+  const nextBn = !rawBn || isLegacySchoolNameBn(rawBn) ? SCHOOL_NAME.bn : rawBn;
+  const nextEn = !rawEn || isLegacySchoolNameEn(rawEn) ? SCHOOL_NAME.en : rawEn;
   const nextShort =
     !rawShort ||
     rawShort === 'RBMB Digital Campus' ||
-    LEGACY_SCHOOL_NAME_EN.some((legacy) => rawShort.toLowerCase().includes(legacy.toLowerCase()))
+    isLegacySchoolNameEn(rawShort) ||
+    isLegacySchoolNameBn(rawShort)
       ? INITIAL_SETTINGS.shortName
       : rawShort;
 
-  const headMsgBn = (base.headTeacherMessage?.bn || '').replace(/রাণীর বাজার মডেল উচ্চ বিদ্যালয়/g, SCHOOL_NAME.bn);
+  const headMsgBn = (base.headTeacherMessage?.bn || '').replace(
+    /রাণীর বাজার\s*(মডেল\s*)?(উচ্চ বিদ্যাল[য়য়]|হাই স্কুল)/g,
+    SCHOOL_NAME.bn
+  );
   const headMsgEn = (base.headTeacherMessage?.en || '')
-    .replace(/Rani Bazar Model High School/gi, SCHOOL_NAME.en)
-    .replace(/Ranir Bazar Secondary High School/gi, SCHOOL_NAME.en);
+    .replace(/Rani(r)? Bazar\s*(Model\s*|Secondary\s*)?(High|Secondary)\s*School/gi, SCHOOL_NAME.en)
+    .replace(/রাণীর বাজার মাধ্যমিক বিদ্যাল[য়য়]/g, SCHOOL_NAME.en);
 
   return {
     ...base,
@@ -608,6 +665,29 @@ const normalizeNctbSubjectsList = (rawList: SchoolSubject[] | undefined | null):
   }
   return enriched;
 };
+
+const normalizeClassRoutineRecord = (raw: ClassRoutine): ClassRoutine => ({
+  ...raw,
+  classId: String(raw?.classId || '6'),
+  className: raw?.className || { bn: `শ্রেণী ${raw?.classId || '6'}`, en: `Class ${raw?.classId || '6'}` },
+  schedule: Array.isArray(raw?.schedule)
+    ? raw.schedule.map((d) => ({
+        ...d,
+        day: d?.day || { bn: 'দিন', en: 'Day' },
+        periods: Array.isArray(d?.periods) ? d.periods : [],
+      }))
+    : [],
+});
+
+const normalizeOnlineExamRecord = (raw: OnlineExamType): OnlineExamType => ({
+  ...raw,
+  questions: Array.isArray(raw?.questions)
+    ? raw.questions.map((q) => ({
+        ...q,
+        options: Array.isArray(q?.options) ? q.options : [],
+      }))
+    : [],
+});
 
 // Global Quick Search Modal rendered inside Router context
 const GlobalSearchModal: React.FC<{ open: boolean; onClose: () => void }> = ({ open, onClose }) => {
@@ -894,16 +974,22 @@ const App: React.FC = () => {
   );
   const [admissions, setAdmissions] = useState<AdmissionApplication[]>(() => safeLocalGet('admission_applications', []));
   const [contactMessages, setContactMessages] = useState<ContactMessage[]>(() => safeLocalGet('contact_messages', []));
-  const [students, setStudents] = useState<SchoolStudent[]>(() => safeLocalGet('db_students', INITIAL_STUDENTS));
+  const [students, setStudents] = useState<SchoolStudent[]>(() =>
+    safeLocalGet('db_students', INITIAL_STUDENTS).map(normalizeStudentRecord)
+  );
   const [attendanceRecords, setAttendanceRecords] = useState<AttendanceRecord[]>(() => safeLocalGet('db_attendance', []));
   const [studentAttendance, setStudentAttendance] = useState<StudentAttendanceRecord[]>(() => safeLocalGet('db_student_attendance', []));
   const [homeworkList, setHomeworkList] = useState<HomeworkItem[]>(() => safeLocalGet('db_homework', INITIAL_HOMEWORK));
   const [assignmentSubmissions, setAssignmentSubmissions] = useState<AssignmentSubmission[]>(() => safeLocalGet('db_assignment_submissions', []));
   const [examMarks, setExamMarks] = useState<ExamMark[]>(() => safeLocalGet('db_exam_marks', []));
-  const [onlineExams, setOnlineExams] = useState<OnlineExamType[]>(() => safeLocalGet('db_online_exams', INITIAL_ONLINE_EXAMS));
+  const [onlineExams, setOnlineExams] = useState<OnlineExamType[]>(() =>
+    safeLocalGet('db_online_exams', INITIAL_ONLINE_EXAMS).map(normalizeOnlineExamRecord)
+  );
   const [examAttempts, setExamAttempts] = useState<ExamAttempt[]>(() => safeLocalGet('db_exam_attempts', []));
   const [examRoutines, setExamRoutines] = useState<ExamRoutineItem[]>(() => safeLocalGet('db_exam_routines', INITIAL_EXAM_ROUTINES));
-  const [classRoutines, setClassRoutines] = useState<ClassRoutine[]>(() => safeLocalGet('db_class_routines', CLASS_ROUTINES));
+  const [classRoutines, setClassRoutines] = useState<ClassRoutine[]>(() =>
+    safeLocalGet('db_class_routines', CLASS_ROUTINES).map(normalizeClassRoutineRecord)
+  );
   const [subjects, setSubjects] = useState<SchoolSubject[]>(() =>
     normalizeNctbSubjectsList(safeLocalGet('db_subjects', INITIAL_SUBJECTS))
   );
@@ -918,7 +1004,9 @@ const App: React.FC = () => {
 
   const [registeredUsers, setRegisteredUsers] = useState<AuthUser[]>(() => {
     const saved = safeLocalGet<AuthUser[]>('registered_users', []);
-    return saved.filter((u) => u && u.role !== 'admin' && u.userId !== 'admin').map(stripPlaintextPassword);
+    return saved
+      .filter((u) => u && u.role !== 'admin' && u.userId !== 'admin')
+      .map((u) => normalizeAuthUserRecord(stripPlaintextPassword(u)));
   });
 
   const [settings, setSettings] = useState<SchoolSettings>(() => {
@@ -985,7 +1073,7 @@ const App: React.FC = () => {
           nextHash = await hashPassword(DEFAULT_DEMO_PASSWORDS[u.userId]);
         }
         const tmpl = SEEDED_USER_TEMPLATES.find((tItem) => tItem.userId.toLowerCase() === u.userId.toLowerCase());
-        const mergedSeeded = tmpl ? { ...tmpl, ...u } : u;
+        const mergedSeeded = normalizeAuthUserRecord(tmpl ? { ...tmpl, ...u } : u);
         migrated.push({ ...stripPlaintextPassword(mergedSeeded), ...(nextHash ? { passwordHash: nextHash } : {}) });
       }
       for (const tmpl of SEEDED_USER_TEMPLATES) {
@@ -1124,16 +1212,18 @@ const App: React.FC = () => {
       if (Array.isArray(idbData.db_holidays)) setHolidays(idbData.db_holidays as Holiday[]);
       if (Array.isArray(idbData.admission_applications)) setAdmissions(idbData.admission_applications as AdmissionApplication[]);
       if (Array.isArray(idbData.contact_messages)) setContactMessages(idbData.contact_messages as ContactMessage[]);
-      if (Array.isArray(idbData.db_students)) setStudents(idbData.db_students as SchoolStudent[]);
+      if (Array.isArray(idbData.db_students)) {
+        setStudents((idbData.db_students as SchoolStudent[]).map(normalizeStudentRecord));
+      }
       if (Array.isArray(idbData.db_attendance)) setAttendanceRecords(idbData.db_attendance as AttendanceRecord[]);
       if (Array.isArray(idbData.db_student_attendance)) setStudentAttendance(idbData.db_student_attendance as StudentAttendanceRecord[]);
       if (Array.isArray(idbData.db_homework)) setHomeworkList(idbData.db_homework as HomeworkItem[]);
       if (Array.isArray(idbData.db_assignment_submissions)) setAssignmentSubmissions(idbData.db_assignment_submissions as AssignmentSubmission[]);
       if (Array.isArray(idbData.db_exam_marks)) setExamMarks(idbData.db_exam_marks as ExamMark[]);
-      if (Array.isArray(idbData.db_online_exams)) setOnlineExams(idbData.db_online_exams as OnlineExamType[]);
+      if (Array.isArray(idbData.db_online_exams)) setOnlineExams((idbData.db_online_exams as OnlineExamType[]).map(normalizeOnlineExamRecord));
       if (Array.isArray(idbData.db_exam_attempts)) setExamAttempts(idbData.db_exam_attempts as ExamAttempt[]);
       if (Array.isArray(idbData.db_exam_routines)) setExamRoutines(idbData.db_exam_routines as ExamRoutineItem[]);
-      if (Array.isArray(idbData.db_class_routines)) setClassRoutines(idbData.db_class_routines as ClassRoutine[]);
+      if (Array.isArray(idbData.db_class_routines)) setClassRoutines((idbData.db_class_routines as ClassRoutine[]).map(normalizeClassRoutineRecord));
       if (Array.isArray(idbData.db_subjects)) setSubjects(normalizeNctbSubjectsList(idbData.db_subjects as SchoolSubject[]));
       if (Array.isArray(idbData.db_parent_messages)) setParentMessages(idbData.db_parent_messages as ParentMessage[]);
       if (Array.isArray(idbData.db_parent_links)) setParentLinks(idbData.db_parent_links as ParentStudentLink[]);
@@ -1147,7 +1237,7 @@ const App: React.FC = () => {
         setRegisteredUsers(
           (idbData.registered_users as AuthUser[])
             .filter((u) => u && u.role !== 'admin' && u.userId !== 'admin')
-            .map(stripPlaintextPassword)
+            .map((u) => normalizeAuthUserRecord(stripPlaintextPassword(u)))
         );
       }
     };
@@ -1155,7 +1245,7 @@ const App: React.FC = () => {
 
     const savedUser = safeLocalGet<AuthUser | null>('school_user', null);
     if (savedUser && savedUser.role !== 'admin') {
-      setUser(stripPlaintextPassword(savedUser));
+      setUser(normalizeAuthUserRecord(stripPlaintextPassword(savedUser)));
     } else if (savedUser?.role === 'admin' && !auth.currentUser) {
       localStorage.removeItem('school_user');
     }
@@ -1627,34 +1717,89 @@ const App: React.FC = () => {
           );
         }
 
-        if (!cancelled && (await checkEmpty('students'))) {
-          await commitOpsChunked(
-            cur.students.map((st) => {
-              const id = sanitizeFirestoreId(st.id);
-              const photo = clampImageString(st.photo);
-              return {
-                ref: doc(db, 'students', id),
-                data: {
-                  id,
-                  roll: (st.roll || '01').slice(0, 20),
-                  name: (st.name || 'Student').slice(0, 150),
-                  classId: st.classId,
-                  section: (st.section || 'A').slice(0, 40),
-                  guardianMobile: (st.guardianMobile && st.guardianMobile.length >= 6 ? st.guardianMobile : '01700000000').slice(0, 30),
-                  ...(st.guardianName ? { guardianName: st.guardianName.slice(0, 150) } : {}),
-                  ...(photo ? { photo } : {}),
-                  ...(st.registrationNo ? { registrationNo: st.registrationNo.slice(0, 64) } : {}),
-                  ...(st.registrationDate ? { registrationDate: st.registrationDate.slice(0, 32) } : {}),
-                  ...(st.session ? { session: st.session.slice(0, 16) } : {}),
-                  ...(st.cardIssueDate ? { cardIssueDate: st.cardIssueDate.slice(0, 32) } : {}),
-                  ...(st.cardValidUpto ? { cardValidUpto: st.cardValidUpto.slice(0, 32) } : {}),
-                  ...(st.bloodGroup ? { bloodGroup: st.bloodGroup.slice(0, 16) } : {}),
-                  createdAt: serverTimestamp(),
-                  updatedAt: serverTimestamp(),
-                },
-              };
+        if (!cancelled) {
+          const existingStudentsSnap = await getDocs(collection(db, 'students'));
+          const existingStudentIds = new Set(existingStudentsSnap.docs.map((d) => d.id));
+          const existingClassRollKeys = new Set(
+            existingStudentsSnap.docs.map((d) => {
+              const dt = d.data() as Partial<SchoolStudent>;
+              return `${dt.classId || ''}__${String(dt.roll || '').trim()}`;
             })
           );
+          const deletedSeedIds = safeLocalGet<string[]>('deleted_seed_student_ids', []);
+          const candidateStudents = existingStudentsSnap.empty
+            ? cur.students
+            : [...INITIAL_STUDENTS, ...cur.students].filter((st, idx, arr) => {
+                const id = sanitizeFirestoreId(st.id);
+                if (arr.findIndex((x) => sanitizeFirestoreId(x.id) === id) !== idx) return false;
+                if (deletedSeedIds.includes(st.id) || deletedSeedIds.includes(id)) return false;
+                if (existingStudentIds.has(id)) return false;
+                if (existingClassRollKeys.has(`${st.classId}__${st.roll.trim()}`)) return false;
+                return true;
+              });
+
+          const legacyStudentRegUpdates = existingStudentsSnap.docs
+            .map((d) => {
+              const dt = d.data() as Partial<SchoolStudent>;
+              if (!dt.classId || !dt.roll) return null;
+              const nextReg = normalizeStudentRegistrationNo(
+                dt.registrationNo,
+                dt.classId,
+                dt.roll,
+                dt.session || '2026'
+              );
+              if (nextReg && dt.registrationNo !== nextReg) {
+                return { ref: d.ref, registrationNo: nextReg.slice(0, 64) };
+              }
+              return null;
+            })
+            .filter((x): x is { ref: ReturnType<typeof doc>; registrationNo: string } => Boolean(x));
+
+          for (let i = 0; i < legacyStudentRegUpdates.length; i += 10) {
+            if (cancelled) break;
+            const chunk = legacyStudentRegUpdates.slice(i, i + 10);
+            const b = writeBatch(db);
+            chunk.forEach((item) => {
+              b.update(item.ref, { registrationNo: item.registrationNo, updatedAt: serverTimestamp() });
+            });
+            await b.commit();
+          }
+
+          if (candidateStudents.length > 0) {
+            await commitOpsChunked(
+              candidateStudents.map((st) => {
+                const id = sanitizeFirestoreId(st.id);
+                const photo = clampImageString(st.photo);
+                const normalizedReg = normalizeStudentRegistrationNo(
+                  st.registrationNo,
+                  st.classId,
+                  st.roll,
+                  st.session || '2026'
+                );
+                return {
+                  ref: doc(db, 'students', id),
+                  data: {
+                    id,
+                    roll: (st.roll || '01').slice(0, 20),
+                    name: (st.name || 'Student').slice(0, 150),
+                    classId: st.classId,
+                    section: (st.section || 'A').slice(0, 40),
+                    guardianMobile: (st.guardianMobile && st.guardianMobile.length >= 6 ? st.guardianMobile : '01700000000').slice(0, 30),
+                    ...(st.guardianName ? { guardianName: st.guardianName.slice(0, 150) } : {}),
+                    ...(photo ? { photo } : {}),
+                    ...(normalizedReg ? { registrationNo: normalizedReg.slice(0, 64) } : {}),
+                    ...(st.registrationDate ? { registrationDate: st.registrationDate.slice(0, 32) } : {}),
+                    ...(st.session ? { session: st.session.slice(0, 16) } : {}),
+                    ...(st.cardIssueDate ? { cardIssueDate: st.cardIssueDate.slice(0, 32) } : {}),
+                    ...(st.cardValidUpto ? { cardValidUpto: st.cardValidUpto.slice(0, 32) } : {}),
+                    ...(st.bloodGroup ? { bloodGroup: st.bloodGroup.slice(0, 16) } : {}),
+                    createdAt: serverTimestamp(),
+                    updatedAt: serverTimestamp(),
+                  },
+                };
+              })
+            );
+          }
         }
 
         if (!cancelled && (await checkEmpty('homework'))) {
@@ -1879,7 +2024,7 @@ const App: React.FC = () => {
       query(collection(db, 'onlineExams'), where('isPublic', '==', true)),
       (snap) => {
         if (!snap.empty && !shouldDeferSnapshotToLocal('db_online_exams')) {
-          const items = snap.docs.map((d) => d.data() as OnlineExamType);
+          const items = snap.docs.map((d) => normalizeOnlineExamRecord(d.data() as OnlineExamType));
           setOnlineExams(items);
           safeLocalSet('db_online_exams', items);
         }
@@ -1917,9 +2062,9 @@ const App: React.FC = () => {
       (snap) => {
         if (!snap.empty && !shouldDeferSnapshotToLocal('db_class_routines')) {
           const byId = new Map<string, ClassRoutine>();
-          CLASS_ROUTINES.forEach((cr) => byId.set(cr.classId, cr));
+          CLASS_ROUTINES.forEach((cr) => byId.set(cr.classId, normalizeClassRoutineRecord(cr)));
           snap.docs.forEach((d) => {
-            const cr = d.data() as ClassRoutine;
+            const cr = normalizeClassRoutineRecord(d.data() as ClassRoutine);
             if (cr?.classId) byId.set(cr.classId, cr);
           });
           const merged = Array.from(byId.values()).sort((a, b) => Number(a.classId) - Number(b.classId));
@@ -2051,7 +2196,7 @@ const App: React.FC = () => {
         collection(db, 'students'),
         (snap) => {
           if (!snap.empty) {
-            const items = snap.docs.map((d) => d.data() as SchoolStudent);
+            const items = snap.docs.map((d) => normalizeStudentRecord(d.data() as SchoolStudent));
             setStudents(items);
             safeLocalSet('db_students', items);
           }
@@ -2204,7 +2349,7 @@ const App: React.FC = () => {
     const unsubMyStudents = onSnapshot(
       query(collection(db, 'students'), where('allowedUids', 'array-contains', firebaseUser.uid)),
       (snap) => {
-        const items = snap.docs.map((d) => d.data() as SchoolStudent);
+        const items = snap.docs.map((d) => normalizeStudentRecord(d.data() as SchoolStudent));
         if (items.length > 0) {
           setStudents(items);
         }
@@ -2602,17 +2747,21 @@ const App: React.FC = () => {
     if (role === 'admin') return null;
     const cleanId = identifier.trim().toLowerCase();
     if (!cleanId) return null;
+    const cleanRegLookup = normalizeStudentRegistrationNo(identifier).toLowerCase();
 
     const found = registeredUsers.find((u) => {
       if (u.role !== role) return false;
       if (u.userId.trim().toLowerCase() === cleanId) return true;
       if (u.email && u.email.trim().toLowerCase() === cleanId) return true;
-      if (u.registrationNo && u.registrationNo.trim().toLowerCase() === cleanId) return true;
+      const storedReg = u.registrationNo
+        ? normalizeStudentRegistrationNo(u.registrationNo, u.linkedChildClass, u.linkedChildRoll, u.session || '2026').toLowerCase()
+        : '';
+      if (storedReg && (storedReg === cleanId || storedReg === cleanRegLookup)) return true;
       if (
         role === 'student' &&
         u.linkedChildClass &&
         u.linkedChildRoll &&
-        buildStudentRegistrationNo(u.linkedChildClass, u.linkedChildRoll, u.session || '2026').toLowerCase() === cleanId
+        buildStudentRegistrationNo(u.linkedChildClass, u.linkedChildRoll, u.session || '2026').toLowerCase() === cleanRegLookup
       ) {
         return true;
       }
@@ -2622,10 +2771,64 @@ const App: React.FC = () => {
       return false;
     });
 
-    if (!found) return null;
-    const valid = await verifyPassword(password, found.passwordHash || found.password);
-    if (!valid) return null;
-    return stripPlaintextPassword(found);
+    if (found) {
+      const valid = await verifyPassword(password, found.passwordHash || found.password);
+      if (!valid) return null;
+      return normalizeAuthUserRecord(stripPlaintextPassword(found));
+    }
+
+    if (role === 'student' && password === '123456') {
+      const matchedStudent = students.find((st) => {
+        const reg = normalizeStudentRegistrationNo(
+          st.registrationNo,
+          st.classId,
+          st.roll,
+          st.session || '2026'
+        ).toLowerCase();
+        return reg === cleanRegLookup;
+      });
+      if (matchedStudent) {
+        const alreadyClaimed = registeredUsers.some(
+          (u) =>
+            u.role === 'student' &&
+            (u.linkedStudentId === matchedStudent.id ||
+              (u.linkedChildClass === matchedStudent.classId &&
+                (u.linkedChildRoll || '').trim() === matchedStudent.roll.trim()))
+        );
+        if (!alreadyClaimed) {
+          const regNo = normalizeStudentRegistrationNo(
+            matchedStudent.registrationNo,
+            matchedStudent.classId,
+            matchedStudent.roll,
+            matchedStudent.session || '2026'
+          );
+          const passwordHash = await hashPassword('123456');
+          const autoStudentUser: AuthUser = {
+            userId: regNo,
+            registrationNo: regNo,
+            role: 'student',
+            name: matchedStudent.name,
+            phone: matchedStudent.guardianMobile,
+            photo: matchedStudent.photo,
+            bloodGroup: matchedStudent.bloodGroup,
+            guardianName: matchedStudent.guardianName,
+            section: matchedStudent.section,
+            session: matchedStudent.session || '2026',
+            linkedStudentId: matchedStudent.id,
+            linkedChildClass: matchedStudent.classId,
+            linkedChildRoll: matchedStudent.roll,
+            linkedChildName: matchedStudent.name,
+            passwordHash,
+          };
+          const nextUsers = [...registeredUsers, autoStudentUser];
+          setRegisteredUsers(nextUsers);
+          persistLocal('registered_users', nextUsers);
+          return stripPlaintextPassword(autoStudentUser);
+        }
+      }
+    }
+
+    return null;
   };
 
   const register = async (newUser: AuthUser): Promise<boolean> => {
@@ -2809,8 +3012,8 @@ const App: React.FC = () => {
       const existingTeacher = teachers.find(
         (tc) =>
           (tc.phone && phonesMatch(tc.phone, cleanPhone)) ||
-          tc.name.en.trim().toLowerCase() === cleanName.toLowerCase() ||
-          tc.name.bn.trim().toLowerCase() === cleanNameBn.toLowerCase()
+          (tc.name?.en || '').trim().toLowerCase() === cleanName.toLowerCase() ||
+          (tc.name?.bn || '').trim().toLowerCase() === cleanNameBn.toLowerCase()
       );
       const teacherId =
         existingTeacher?.id || sanitizeFirestoreId(`tc-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 5)}`);
@@ -3040,7 +3243,7 @@ const App: React.FC = () => {
   const logout = () => {
     setUser(null);
     localStorage.removeItem('school_user');
-    const restoredStudents = safeLocalGet<SchoolStudent[]>('db_students', INITIAL_STUDENTS);
+    const restoredStudents = safeLocalGet<SchoolStudent[]>('db_students', INITIAL_STUDENTS).map(normalizeStudentRecord);
     setStudents(restoredStudents.length > 0 ? restoredStudents : INITIAL_STUDENTS);
     if (firebaseUser) {
       logoutGoogle();
@@ -3821,7 +4024,7 @@ const App: React.FC = () => {
           const tRef = doc(db, 'teachers', safeTid);
           const snap = await getDoc(tRef);
           if (snap.exists()) {
-            const htPatch: Record<string, unknown> = { updatedAt: serverTimestamp() };
+            const htPatch: UpdateData<DocumentData> = { updatedAt: serverTimestamp() };
             if (hasAssignedUpdate || clearedTeacherIds.has(tc.id)) htPatch.assignedClass = nextAssigned;
             if (hasClassesUpdate && tc.id === matchedTeacher?.id) htPatch.teachingClasses = tc.teachingClasses || [];
             if (hasSubjectsUpdate && tc.id === matchedTeacher?.id) htPatch.teachingSubjects = tc.teachingSubjects || [];
@@ -3914,7 +4117,7 @@ const App: React.FC = () => {
               role: cu.role,
             }))
         ) {
-          const cloudPatch: Record<string, unknown> = { updatedAt: serverTimestamp() };
+          const cloudPatch: UpdateData<DocumentData> = { updatedAt: serverTimestamp() };
           if (hasAssignedUpdate) cloudPatch.assignedClass = cleanClass;
           if (hasClassesUpdate) cloudPatch.teachingClasses = updatedTargetTc?.teachingClasses ?? nextTeachingClasses ?? [];
           if (hasSubjectsUpdate) cloudPatch.teachingSubjects = updatedTargetTc?.teachingSubjects ?? nextTeachingSubjects ?? [];
@@ -4131,7 +4334,7 @@ const App: React.FC = () => {
     const nextSchedule = sanitizeAdmissionScheduleConfig(
       newSettings.admissionSchedule ?? settings.admissionSchedule ?? INITIAL_SETTINGS.admissionSchedule
     );
-    const cleaned: SchoolSettings = {
+    const cleaned: SchoolSettings = normalizeSchoolSettings({
       ...newSettings,
       name: safeLoc(newSettings.name, SCHOOL_NAME.bn, SCHOOL_NAME.en, 200),
       eiin: (newSettings.eiin || INITIAL_SETTINGS.eiin).trim().slice(0, 32),
@@ -4147,7 +4350,7 @@ const App: React.FC = () => {
       ...(newSettings.headTeacherMessage
         ? { headTeacherMessage: safeLoc(newSettings.headTeacherMessage, 'স্বাগতম।', 'Welcome.', 2500) }
         : {}),
-    };
+    });
     setSettings(cleaned);
     persistLocal('school_settings', cleaned);
     if (isCloudAdmin) {
@@ -4242,6 +4445,50 @@ const App: React.FC = () => {
     const updated = admissions.map((a) => (a.appId === appId ? { ...a, status } : a));
     setAdmissions(updated);
     persistLocal('admission_applications', updated);
+
+    if (status === 'approved' && targetApp) {
+      const classMatch = String(targetApp.targetClass || '').match(/(6|7|8|9|10)/);
+      const normalizedClassId = classMatch ? classMatch[1] : '6';
+      const admStudentId = sanitizeFirestoreId(`st-adm-${cleanId}`);
+      const alreadyEnrolled = students.some(
+        (s) =>
+          s.id === admStudentId ||
+          (s.classId === normalizedClassId &&
+            s.name.trim().toLowerCase() === targetApp.studentName.trim().toLowerCase() &&
+            phonesMatch(s.guardianMobile, targetApp.guardianMobile))
+      );
+      if (!alreadyEnrolled) {
+        const classRolls = students
+          .filter((s) => s.classId === normalizedClassId)
+          .map((s) => Number.parseInt(s.roll, 10))
+          .filter((n) => Number.isFinite(n) && n > 0);
+        const nextRoll = String((classRolls.length > 0 ? Math.max(...classRolls) : 0) + 1).padStart(2, '0');
+        const yearStr = String(getDhakaYear());
+        const todayIso = getDhakaTodayISO();
+        const sectionVal =
+          normalizedClassId === '9' || normalizedClassId === '10'
+            ? targetApp.targetGroup && targetApp.targetGroup !== 'General'
+              ? targetApp.targetGroup
+              : 'Science'
+            : 'A';
+        addStudent({
+          id: admStudentId,
+          roll: nextRoll,
+          name: targetApp.studentName.trim(),
+          classId: normalizedClassId,
+          section: sectionVal,
+          guardianName: targetApp.fatherName?.trim() || undefined,
+          guardianMobile: targetApp.guardianMobile?.trim() || '01700000000',
+          bloodGroup: targetApp.bloodGroup?.trim() || undefined,
+          session: yearStr,
+          registrationDate: todayIso,
+          registrationNo: buildStudentRegistrationNo(normalizedClassId, nextRoll, yearStr),
+          cardIssueDate: todayIso,
+          cardValidUpto: `${yearStr}-12-31`,
+        });
+      }
+    }
+
     if (!isCloudAdmin) return;
     try {
       setDbStatus('syncing');
@@ -4560,13 +4807,13 @@ const App: React.FC = () => {
         : '01700000000';
     const safePhoto = clampImageString(student.photo);
     const allowedUids = resolveAllowedUids(student.classId, student.roll, student);
-    const clean: SchoolStudent = {
+    const clean: SchoolStudent = normalizeStudentRecord({
       ...student,
       id,
       guardianMobile,
       ...(safePhoto ? { photo: safePhoto } : {}),
       ...(allowedUids.length > 0 ? { allowedUids } : {}),
-    };
+    });
     const updated = [...students, clean];
     setStudents(updated);
     persistLocal('db_students', updated);
@@ -4607,13 +4854,13 @@ const App: React.FC = () => {
         : '01700000000';
     const safePhoto = clampImageString(student.photo);
     const allowedUids = resolveAllowedUids(student.classId, student.roll, student);
-    const clean: SchoolStudent = {
+    const clean: SchoolStudent = normalizeStudentRecord({
       ...student,
       id,
       guardianMobile,
       ...(safePhoto ? { photo: safePhoto } : {}),
       ...(allowedUids.length > 0 ? { allowedUids } : {}),
-    };
+    });
     const updated = students.map((s) => (s.id === student.id ? clean : s));
     setStudents(updated);
     persistLocal('db_students', updated);
@@ -4647,10 +4894,15 @@ const App: React.FC = () => {
   };
 
   const deleteStudent = (id: string) => {
+    const cleanId = sanitizeFirestoreId(id);
+    const prevDeleted = safeLocalGet<string[]>('deleted_seed_student_ids', []);
+    if (!prevDeleted.includes(cleanId)) {
+      safeLocalSet('deleted_seed_student_ids', [...prevDeleted, id, cleanId]);
+    }
     const updated = students.filter((s) => s.id !== id);
     setStudents(updated);
     persistLocal('db_students', updated);
-    void syncDocDelete('students', sanitizeFirestoreId(id), true);
+    void syncDocDelete('students', cleanId, true);
   };
 
   // Attendance (Strictly Class Teacher of own class + Admin)
@@ -4983,9 +5235,12 @@ const App: React.FC = () => {
       const updatedSt: SchoolStudent = {
         ...st,
         roll: nextRoll,
-        registrationNo:
-          st.registrationNo ||
-          buildStudentRegistrationNo(st.classId, st.roll, st.session || '2026'),
+        registrationNo: normalizeStudentRegistrationNo(
+          st.registrationNo,
+          st.classId,
+          st.roll,
+          st.session || '2026'
+        ),
       };
       changedStudents.push(updatedSt);
       return updatedSt;
@@ -5033,8 +5288,9 @@ const App: React.FC = () => {
           return {
             ...u,
             registrationNo:
-              u.role === 'student' && !u.registrationNo
-                ? buildStudentRegistrationNo(
+              u.role === 'student'
+                ? normalizeStudentRegistrationNo(
+                    u.registrationNo,
                     u.linkedChildClass || classId,
                     u.linkedChildRoll || updatedRoll,
                     u.session || '2026'
@@ -5422,32 +5678,33 @@ const App: React.FC = () => {
   // Parent-Teacher Messages & Verified Parent-Student Link Workflow
   const sendParentMessage = (msg: ParentMessage) => {
     const id = sanitizeFirestoreId(msg.id);
+    const msgTeacherLower = (msg.teacherName || '').trim().toLowerCase();
     const targetTeacherObj =
       teachers.find((tc) => tc.id === msg.teacherId) ||
       teachers.find(
         (tc) =>
-          tc.name.en.trim().toLowerCase() === msg.teacherName.trim().toLowerCase() ||
-          tc.name.bn.trim().toLowerCase() === msg.teacherName.trim().toLowerCase()
+          (tc.name?.en || '').trim().toLowerCase() === msgTeacherLower ||
+          (tc.name?.bn || '').trim().toLowerCase() === msgTeacherLower
       );
     const matchedCloudTeacher = cloudUsers.find(
       (cu) =>
         cu.role === 'teacher' &&
         ((targetTeacherObj?.phone && cu.phone && phonesMatch(cu.phone, targetTeacherObj.phone)) ||
           (targetTeacherObj &&
-            (cu.name.trim().toLowerCase() === targetTeacherObj.name.en.trim().toLowerCase() ||
-              cu.name.trim().toLowerCase() === targetTeacherObj.name.bn.trim().toLowerCase())) ||
-          cu.name.trim().toLowerCase() === msg.teacherName.trim().toLowerCase())
+            ((cu.name || '').trim().toLowerCase() === (targetTeacherObj.name?.en || '').trim().toLowerCase() ||
+              (cu.name || '').trim().toLowerCase() === (targetTeacherObj.name?.bn || '').trim().toLowerCase())) ||
+          (cu.name || '').trim().toLowerCase() === msgTeacherLower)
     );
     const matchedLocalTeacher = registeredUsers.find(
       (ru) =>
         ru.role === 'teacher' &&
-        ((msg.teacherCode && ru.userId.toLowerCase() === msg.teacherCode.toLowerCase()) ||
-          (targetTeacherObj?.teacherCode && ru.userId.toLowerCase() === targetTeacherObj.teacherCode.toLowerCase()) ||
+        ((msg.teacherCode && (ru.userId || '').toLowerCase() === msg.teacherCode.toLowerCase()) ||
+          (targetTeacherObj?.teacherCode && (ru.userId || '').toLowerCase() === targetTeacherObj.teacherCode.toLowerCase()) ||
           (targetTeacherObj?.phone && ru.phone && phonesMatch(ru.phone, targetTeacherObj.phone)) ||
           (targetTeacherObj &&
-            (ru.name.trim().toLowerCase() === targetTeacherObj.name.en.trim().toLowerCase() ||
-              ru.name.trim().toLowerCase() === targetTeacherObj.name.bn.trim().toLowerCase())) ||
-          ru.name.trim().toLowerCase() === msg.teacherName.trim().toLowerCase())
+            ((ru.name || '').trim().toLowerCase() === (targetTeacherObj.name?.en || '').trim().toLowerCase() ||
+              (ru.name || '').trim().toLowerCase() === (targetTeacherObj.name?.bn || '').trim().toLowerCase())) ||
+          (ru.name || '').trim().toLowerCase() === msgTeacherLower)
     );
     const resolvedRecipientUid =
       msg.recipientUid || matchedCloudTeacher?.uid || matchedLocalTeacher?.userId;
@@ -6295,115 +6552,123 @@ const App: React.FC = () => {
   const importDatabase = (jsonData: string): boolean => {
     try {
       const data = JSON.parse(jsonData);
-      if (data.settings) {
-        setSettings(data.settings);
-        safeLocalSet('school_settings', data.settings);
-        if (isCloudAdmin) updateSettings(data.settings);
+      if (!data || typeof data !== 'object') return false;
+      if (data.settings && typeof data.settings === 'object') {
+        const cleanSettings = normalizeSchoolSettings(data.settings);
+        setSettings(cleanSettings);
+        safeLocalSet('school_settings', cleanSettings);
+        if (isCloudAdmin) updateSettings(cleanSettings);
       }
-      if (data.notices) {
+      if (Array.isArray(data.notices)) {
         setNotices(data.notices);
         safeLocalSet('db_notices', data.notices);
         if (isCloudAdmin) data.notices.forEach((n: Notice) => updateNotice(n));
       }
-      if (data.newsList) {
+      if (Array.isArray(data.newsList)) {
         setNewsList(data.newsList);
         safeLocalSet('db_news', data.newsList);
       }
-      if (data.eventsList) {
+      if (Array.isArray(data.eventsList)) {
         setEventsList(data.eventsList);
         safeLocalSet('db_events', data.eventsList);
       }
-      if (data.teachers) {
+      if (Array.isArray(data.teachers)) {
         setTeachers(data.teachers);
         safeLocalSet('db_teachers', data.teachers);
         if (isCloudAdmin) data.teachers.forEach((teach: Teacher) => updateTeacher(teach));
       }
-      if (data.users && Array.isArray(data.users)) {
-        const cleanUsers = (data.users as AuthUser[]).map(stripPlaintextPassword);
+      if (Array.isArray(data.users)) {
+        const cleanUsers = (data.users as AuthUser[]).map((u) =>
+          normalizeAuthUserRecord(stripPlaintextPassword(u))
+        );
         setRegisteredUsers(cleanUsers);
         safeLocalSet('registered_users', cleanUsers);
       }
-      if (data.ebooks) {
+      if (Array.isArray(data.ebooks)) {
         setEbooks(data.ebooks);
         safeLocalSet('db_ebooks', data.ebooks);
       }
-      if (data.gallery) {
+      if (Array.isArray(data.gallery)) {
         setGallery(data.gallery);
         safeLocalSet('db_gallery', data.gallery);
       }
-      if (data.holidays) {
+      if (Array.isArray(data.holidays)) {
         setHolidays(data.holidays);
         safeLocalSet('db_holidays', data.holidays);
       }
-      if (data.admissions) {
+      if (Array.isArray(data.admissions)) {
         setAdmissions(data.admissions);
         safeLocalSet('admission_applications', data.admissions);
       }
-      if (data.contactMessages) {
+      if (Array.isArray(data.contactMessages)) {
         setContactMessages(data.contactMessages);
         safeLocalSet('contact_messages', data.contactMessages);
       }
-      if (data.students) {
-        setStudents(data.students);
-        safeLocalSet('db_students', data.students);
+      if (Array.isArray(data.students)) {
+        const normalizedStudents = (data.students as SchoolStudent[]).map(normalizeStudentRecord);
+        setStudents(normalizedStudents);
+        safeLocalSet('db_students', normalizedStudents);
       }
-      if (data.attendanceRecords) {
+      if (Array.isArray(data.attendanceRecords)) {
         setAttendanceRecords(data.attendanceRecords);
         safeLocalSet('db_attendance', data.attendanceRecords);
       }
-      if (data.homeworkList) {
+      if (Array.isArray(data.homeworkList)) {
         setHomeworkList(data.homeworkList);
         safeLocalSet('db_homework', data.homeworkList);
       }
-      if (data.assignmentSubmissions) {
+      if (Array.isArray(data.assignmentSubmissions)) {
         setAssignmentSubmissions(data.assignmentSubmissions);
         safeLocalSet('db_assignment_submissions', data.assignmentSubmissions);
       }
-      if (data.examMarks) {
+      if (Array.isArray(data.examMarks)) {
         setExamMarks(data.examMarks);
         safeLocalSet('db_exam_marks', data.examMarks);
       }
-      if (data.onlineExams) {
-        setOnlineExams(data.onlineExams);
-        safeLocalSet('db_online_exams', data.onlineExams);
+      if (Array.isArray(data.onlineExams)) {
+        const normExams = (data.onlineExams as OnlineExamType[]).map(normalizeOnlineExamRecord);
+        setOnlineExams(normExams);
+        safeLocalSet('db_online_exams', normExams);
       }
-      if (data.examAttempts) {
+      if (Array.isArray(data.examAttempts)) {
         setExamAttempts(data.examAttempts);
         safeLocalSet('db_exam_attempts', data.examAttempts);
       }
-      if (data.examRoutines) {
+      if (Array.isArray(data.examRoutines)) {
         setExamRoutines(data.examRoutines);
         safeLocalSet('db_exam_routines', data.examRoutines);
       }
-      if (data.classRoutines) {
-        setClassRoutines(data.classRoutines);
-        safeLocalSet('db_class_routines', data.classRoutines);
+      if (Array.isArray(data.classRoutines)) {
+        const normRoutines = (data.classRoutines as ClassRoutine[]).map(normalizeClassRoutineRecord);
+        setClassRoutines(normRoutines);
+        safeLocalSet('db_class_routines', normRoutines);
       }
-      if (data.subjects) {
-        setSubjects(data.subjects);
-        safeLocalSet('db_subjects', data.subjects);
+      if (Array.isArray(data.subjects)) {
+        const normSubs = normalizeNctbSubjectsList(data.subjects as SchoolSubject[]);
+        setSubjects(normSubs);
+        safeLocalSet('db_subjects', normSubs);
       }
-      if (data.parentMessages) {
+      if (Array.isArray(data.parentMessages)) {
         setParentMessages(data.parentMessages);
         safeLocalSet('db_parent_messages', data.parentMessages);
       }
-      if (data.alumni) {
+      if (Array.isArray(data.alumni)) {
         setAlumni(data.alumni);
         safeLocalSet('db_alumni', data.alumni);
       }
-      if (data.teacherLeaves) {
+      if (Array.isArray(data.teacherLeaves)) {
         setTeacherLeaves(data.teacherLeaves);
         safeLocalSet('db_teacher_leaves', data.teacherLeaves);
       }
-      if (data.studentLeaves) {
+      if (Array.isArray(data.studentLeaves)) {
         setStudentLeaves(data.studentLeaves);
         safeLocalSet('db_student_leaves', data.studentLeaves);
       }
-      if (data.feeRecords) {
+      if (Array.isArray(data.feeRecords)) {
         setFeeRecords(data.feeRecords);
         safeLocalSet('db_fee_records', data.feeRecords);
       }
-      if (data.portalNotifications) {
+      if (Array.isArray(data.portalNotifications)) {
         setPortalNotifications(data.portalNotifications);
         safeLocalSet('db_portal_notifications', data.portalNotifications);
       }
@@ -6658,29 +6923,40 @@ Available Features: Online Admission (/admission), Online MCQ Exams (/exams), Di
           <GlobalSearchModal open={searchOpen} onClose={() => setSearchOpen(false)} />
 
           <main className="flex-grow">
-            <Routes>
-              <Route path="/" element={<Home />} />
-              <Route path="/about" element={<About />} />
-              <Route path="/notices" element={<NoticeBoard />} />
-              <Route path="/news" element={<NoticeBoard initialTab="news" />} />
-              <Route path="/events" element={<NoticeBoard initialTab="events" />} />
-              <Route path="/teachers" element={<Teachers />} />
-              <Route path="/admission" element={<Admission />} />
-              <Route path="/holidays" element={<Holidays />} />
-              <Route path="/syllabus" element={<Syllabus />} />
-              <Route path="/routine" element={<Routine />} />
-              <Route path="/ebooks" element={<EBookLibrary />} />
-              <Route path="/exams" element={<OnlineExam />} />
-              <Route path="/alumni" element={<Alumni />} />
-              <Route path="/gallery" element={<Gallery />} />
-              <Route path="/contact" element={<Contact />} />
-              <Route path="/calendar" element={<AcademicCalendar />} />
-              <Route path="/portals" element={<Login />} />
-              <Route path="/login/*" element={<Login />} />
-              <Route path="/register" element={<Register />} />
-              <Route path="/dashboard" element={<Login />} />
-              <Route path="*" element={<Home />} />
-            </Routes>
+            <React.Suspense
+              fallback={
+                <div className="min-h-[55vh] flex flex-col items-center justify-center gap-3 p-8 text-slate-500 dark:text-slate-400">
+                  <div className="w-9 h-9 rounded-full border-4 border-emerald-600 border-t-transparent animate-spin" />
+                  <p className="text-xs font-bold tracking-wide">
+                    {lang === 'bn' ? 'পোর্টাল লোড হচ্ছে...' : 'Loading page...'}
+                  </p>
+                </div>
+              }
+            >
+              <Routes>
+                <Route path="/" element={<Home />} />
+                <Route path="/about" element={<About />} />
+                <Route path="/notices" element={<NoticeBoard />} />
+                <Route path="/news" element={<NoticeBoard initialTab="news" />} />
+                <Route path="/events" element={<NoticeBoard initialTab="events" />} />
+                <Route path="/teachers" element={<Teachers />} />
+                <Route path="/admission" element={<Admission />} />
+                <Route path="/holidays" element={<Holidays />} />
+                <Route path="/syllabus" element={<Syllabus />} />
+                <Route path="/routine" element={<Routine />} />
+                <Route path="/ebooks" element={<EBookLibrary />} />
+                <Route path="/exams" element={<OnlineExam />} />
+                <Route path="/alumni" element={<Alumni />} />
+                <Route path="/gallery" element={<Gallery />} />
+                <Route path="/contact" element={<Contact />} />
+                <Route path="/calendar" element={<AcademicCalendar />} />
+                <Route path="/portals" element={<Login />} />
+                <Route path="/login/*" element={<Login />} />
+                <Route path="/register" element={<Register />} />
+                <Route path="/dashboard" element={<Login />} />
+                <Route path="*" element={<Home />} />
+              </Routes>
+            </React.Suspense>
           </main>
 
           <footer className="bg-white dark:bg-slate-900 border-t border-slate-200 dark:border-slate-800 py-12 px-4 text-center no-print">

@@ -88,11 +88,16 @@ export default defineConfig(() => ({
     }),
   ],
   build: {
+    chunkSizeWarningLimit: 900,
     rollupOptions: {
       output: {
         manualChunks: {
           firebase: ['firebase/app', 'firebase/auth', 'firebase/firestore'],
           react: ['react', 'react-dom', 'react-router-dom'],
+          lucide: ['lucide-react'],
+          jspdf: ['jspdf'],
+          maps: ['@vis.gl/react-google-maps'],
+          qrcode: ['qrcode'],
         },
       },
     },

@@ -167,6 +167,7 @@ export const TeacherPortal: React.FC<TeacherPortalProps> = ({ embedded = false }
   const [activeTab, setActiveTab] = useState<TeacherTab>(embedded ? 'attendance' : 'overview');
   const [mobileNavOpen, setMobileNavOpen] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
+  const [rosterSearch, setRosterSearch] = useState('');
   const [dhakaClockText, setDhakaClockText] = useState(() => formatDhakaClock(lang));
   const avatarInputRef = useRef<HTMLInputElement>(null);
   const [toast, setToast] = useState<string | null>(null);
@@ -1028,7 +1029,7 @@ export const TeacherPortal: React.FC<TeacherPortalProps> = ({ embedded = false }
   const quickSearchMatches = useMemo(() => {
     const q = searchQuery.trim().toLowerCase();
     if (!q) return [];
-    const results: Array<{ label: string; category: string; tab: TeacherTab }> = [];
+    const results: Array<{ label: string; category: string; tab: TeacherTab; onSelect?: () => void }> = [];
 
     tabs.forEach((tb) => {
       if (tb.label.toLowerCase().includes(q) || tb.id.toLowerCase().includes(q)) {
@@ -1036,11 +1037,27 @@ export const TeacherPortal: React.FC<TeacherPortalProps> = ({ embedded = false }
       }
     });
     visibleStudents.forEach((st) => {
-      if (st.name.toLowerCase().includes(q) || st.roll.toLowerCase().includes(q)) {
+      const reg = (st.registrationNo || '').toLowerCase();
+      const mob = (st.guardianMobile || '').toLowerCase();
+      if (
+        st.name.toLowerCase().includes(q) ||
+        st.roll.toLowerCase().includes(q) ||
+        reg.includes(q) ||
+        mob.includes(q) ||
+        `class ${st.classId}`.includes(q)
+      ) {
         results.push({
           label: `${st.name} (Class ${st.classId} · Roll ${st.roll})`,
           category: lang === 'bn' ? 'শিক্ষার্থী' : 'Student',
           tab: 'classes',
+          onSelect: () => {
+            if (availableClassIds.includes(st.classId as '6' | '7' | '8' | '9' | '10')) {
+              const cid = st.classId as '6' | '7' | '8' | '9' | '10';
+              setClassRosterFilter(cid);
+              setManageClassId(cid);
+            }
+            setRosterSearch(st.name);
+          },
         });
       }
     });
@@ -1051,7 +1068,7 @@ export const TeacherPortal: React.FC<TeacherPortalProps> = ({ embedded = false }
       }
     });
     return results.slice(0, 7);
-  }, [searchQuery, visibleStudents, notices, t, lang, isHeadTeacher]);
+  }, [searchQuery, visibleStudents, notices, t, lang, isHeadTeacher, availableClassIds]);
 
   const teacherAttendanceCount = useMemo(
     () =>
@@ -2551,6 +2568,17 @@ export const TeacherPortal: React.FC<TeacherPortalProps> = ({ embedded = false }
               </div>
             </div>
 
+            <div className="relative">
+              <Search className="w-4 h-4 text-slate-400 absolute left-3.5 top-1/2 -translate-y-1/2" />
+              <input
+                type="text"
+                value={rosterSearch}
+                onChange={(e) => setRosterSearch(e.target.value)}
+                placeholder={lang === 'bn' ? 'শিক্ষার্থীর নাম, রোল, রেজিঃ নং বা মোবাইল দিয়ে খুঁজুন...' : 'Search student by name, roll, reg no or mobile...'}
+                className="w-full pl-9 pr-4 py-2 rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-xs font-bold outline-none focus:ring-2 focus:ring-emerald-600"
+              />
+            </div>
+
             {/* Class-wise quick pills */}
             <div className="flex flex-wrap gap-1.5">
               {availableClassIds.length > 1 && (
@@ -2635,8 +2663,18 @@ export const TeacherPortal: React.FC<TeacherPortalProps> = ({ embedded = false }
                 ? availableClassIds
                 : [classRosterFilter === 'all' ? manageClassId : classRosterFilter]
               ).map((cid) => {
+                const rQuery = rosterSearch.trim().toLowerCase();
                 const classStudents = visibleStudents
                   .filter((s) => s.classId === cid)
+                  .filter((s) => {
+                    if (!rQuery) return true;
+                    return (
+                      s.name.toLowerCase().includes(rQuery) ||
+                      s.roll.toLowerCase().includes(rQuery) ||
+                      (s.registrationNo || '').toLowerCase().includes(rQuery) ||
+                      (s.guardianMobile || '').toLowerCase().includes(rQuery)
+                    );
+                  })
                   .sort((a, b) => a.roll.localeCompare(b.roll, undefined, { numeric: true }));
                 const canEditThisClass = canManageStudentsInClass(cid);
                 return (
@@ -2920,7 +2958,7 @@ export const TeacherPortal: React.FC<TeacherPortalProps> = ({ embedded = false }
                   <div key={dq.id} className="p-2.5 rounded-xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 flex items-start justify-between gap-2 text-xs">
                     <div className="min-w-0">
                       <p className="font-bold truncate">Q{dIdx + 1}. {dq.question}</p>
-                      <p className="text-[11px] text-slate-400 truncate">Ans: {dq.options[dq.correctIndex]}</p>
+                      <p className="text-[11px] text-slate-400 truncate">Ans: {Array.isArray(dq.options) ? dq.options[dq.correctIndex] : ''}</p>
                     </div>
                     <button
                       type="button"
@@ -2973,7 +3011,7 @@ export const TeacherPortal: React.FC<TeacherPortalProps> = ({ embedded = false }
               <div key={ex.id} className="bg-white dark:bg-slate-900 p-4 rounded-2xl border border-slate-200 dark:border-slate-800 flex items-center justify-between gap-3">
                 <div>
                   <span className="text-[10px] font-bold uppercase text-emerald-700 dark:text-emerald-400">
-                    Class {ex.classId} • {ex.subject} • {ex.questions.length} MCQ
+                    Class {ex.classId} • {ex.subject} • {Array.isArray(ex.questions) ? ex.questions.length : 0} MCQ
                   </span>
                   <h5 className="font-bold text-sm mt-0.5">{t(ex.title)}</h5>
                 </div>
@@ -3457,6 +3495,7 @@ export const TeacherPortal: React.FC<TeacherPortalProps> = ({ embedded = false }
                         key={`${item.tab}-${idx}`}
                         type="button"
                         onClick={() => {
+                          item.onSelect?.();
                           setActiveTab(item.tab);
                           setSearchQuery('');
                         }}

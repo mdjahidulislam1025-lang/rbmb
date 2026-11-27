@@ -53,6 +53,7 @@ import { heroCampusImg } from '../src/assets/media';
 import { Notice, Teacher, GalleryItem, EBook, UserRole, FeeCategory, FeeRecord, PaymentMethod, SchoolStudent, AdmissionScheduleConfig } from '../types';
 import { compressImageFile } from '../utils/imageUtils';
 import { exportCsv } from '../utils/exportUtils';
+import { buildStudentRegistrationNo, normalizeStudentRegistrationNo } from '../utils/security';
 import { getDhakaTodayISO, attachDhakaTimeToDate, extractIsoDate, formatDhakaClock } from '../utils/dhakaTime';
 import {
   formatAdmissionDate,
@@ -80,6 +81,7 @@ const { useLocation, Link, useNavigate } = RouterDom;
 type ManagementTab =
   | 'analytics'
   | 'class-teachers'
+  | 'students'
   | 'cards'
   | 'fees'
   | 'broadcasts'
@@ -172,7 +174,9 @@ const Login: React.FC = () => {
     updateTeacherLeaveStatus,
     deleteTeacherLeave,
     students,
+    addStudent,
     updateStudent,
+    deleteStudent,
     attendanceRecords,
     studentAttendance,
     homeworkList,
@@ -238,8 +242,21 @@ const Login: React.FC = () => {
   const [cardSearch, setCardSearch] = useState<string>('');
   const [adminAdmitTerm, setAdminAdmitTerm] = useState<string>(EXAM_TERMS[1]?.id || EXAM_TERMS[0]?.id || 'Half-Yearly Exam 2026');
   const [adminTeacherCard, setAdminTeacherCard] = useState<{ teacher: Teacher; index: number } | null>(null);
-  const [selectedExplorerClass, setSelectedExplorerClass] = useState<'6' | '7' | '8' | '9' | '10'>('6');
+  const [selectedExplorerClass, setSelectedExplorerClass] = useState<'all' | '6' | '7' | '8' | '9' | '10'>('all');
+  const [explorerSearchQuery, setExplorerSearchQuery] = useState<string>('');
   const [explorerSubTab, setExplorerSubTab] = useState<'students' | 'marks' | 'fees' | 'attendance' | 'homework'>('students');
+  const [adminStudentClassFilter, setAdminStudentClassFilter] = useState<string>('all');
+  const [adminStudentSearch, setAdminStudentSearch] = useState<string>('');
+  const [editingAdminStudent, setEditingAdminStudent] = useState<SchoolStudent | null>(null);
+  const [adminStudentForm, setAdminStudentForm] = useState({
+    roll: '',
+    name: '',
+    classId: '10' as '6' | '7' | '8' | '9' | '10',
+    section: 'Science',
+    guardianName: '',
+    guardianMobile: '',
+    photo: '',
+  });
 
   const todayStr = getDhakaTodayISO();
 
@@ -509,7 +526,7 @@ const Login: React.FC = () => {
     setError('');
     setAuthNotice('');
     setNeedsVerification(false);
-    setUserId(role === 'student' ? 'RBMB-REG-2026-0901' : `${role}01`);
+    setUserId(role === 'student' ? '20260901' : `${role}01`);
     setPassword('123456');
   };
 
@@ -567,7 +584,7 @@ const Login: React.FC = () => {
       setError(
         activeTab === 'student'
           ? lang === 'bn'
-            ? 'ভুল রেজিস্ট্রেশন নম্বর বা পাসওয়ার্ড! সঠিক রেজিস্ট্রেশন নম্বর (যেমন: RBMB-REG-2026-0901) ও পাসওয়ার্ড দিন।'
+            ? 'ভুল রেজিস্ট্রেশন নম্বর বা পাসওয়ার্ড! সঠিক রেজিস্ট্রেশন নম্বর (যেমন: 20260901) ও পাসওয়ার্ড দিন।'
             : 'Invalid Registration Number or password for Student Portal.'
           : lang === 'bn'
           ? 'ভুল আইডি/মোবাইল বা পাসওয়ার্ড অথবা ভুল রোল ট্যাব!'
@@ -920,6 +937,11 @@ const Login: React.FC = () => {
     }[] = [
       { id: 'analytics', label: lang === 'bn' ? 'অ্যানালিটিক্স' : 'Analytics', icon: BarChart3 },
       { id: 'class-teachers', label: lang === 'bn' ? 'শ্রেণী শিক্ষক' : 'Class Teachers', icon: ShieldCheck },
+      {
+        id: 'students',
+        label: lang === 'bn' ? `শিক্ষার্থী (${students.length})` : `Students (${students.length})`,
+        icon: GraduationCap,
+      },
       { id: 'cards', label: lang === 'bn' ? 'অ্যাডমিট, রেজি ও আইডি' : 'Student Cards', icon: IdCard },
       { id: 'fees', label: lang === 'bn' ? 'ফি ও হিসাব' : 'Fee Ledger', icon: Receipt },
       { id: 'broadcasts', label: lang === 'bn' ? 'পোর্টাল ঘোষণা' : 'Broadcasts', icon: Megaphone },
@@ -998,14 +1020,26 @@ const Login: React.FC = () => {
         }
       });
       students.forEach((st) => {
-        if (st.name.toLowerCase().includes(qTrim) || st.roll.toLowerCase().includes(qTrim)) {
+        const reg = (st.registrationNo || '').toLowerCase();
+        const mobile = (st.guardianMobile || '').toLowerCase();
+        const stName = st.name || '';
+        const stRoll = st.roll || '';
+        if (
+          stName.toLowerCase().includes(qTrim) ||
+          stRoll.toLowerCase().includes(qTrim) ||
+          reg.includes(qTrim) ||
+          mobile.includes(qTrim) ||
+          `class ${st.classId || ''}`.includes(qTrim)
+        ) {
           adminSearchMatches.push({
-            label: `${st.name} (Class ${st.classId} · Roll ${st.roll})`,
+            label: `${stName || 'Student'} (Class ${st.classId || ''} · Roll ${stRoll})`,
             category: lang === 'bn' ? 'শিক্ষার্থী' : 'Student',
             onSelect: () => {
+              setAdminStudentClassFilter('all');
+              setAdminStudentSearch(stName);
               setCardClassFilter(st.classId);
-              setCardSearch(st.roll);
-              openAdminTab('cards');
+              setCardSearch(stRoll);
+              openAdminTab('students');
               setAdminSearchQuery('');
             },
           });
@@ -1891,27 +1925,43 @@ const Login: React.FC = () => {
                       </div>
                     </div>
 
-                    {/* Interactive Class-Wise Data Explorer (Classes 6-10 Isolated View) */}
+                    {/* Interactive Class-Wise Data Explorer (Classes 6-10 + All Classes Search) */}
                     {(() => {
+                      const expQ = explorerSearchQuery.trim().toLowerCase();
+                      const isAllClasses = selectedExplorerClass === 'all';
                       const clsStudents = students
-                        .filter((s) => s.classId === selectedExplorerClass)
-                        .sort((a, b) => a.roll.localeCompare(b.roll, undefined, { numeric: true }));
-                      const clsMarks = examMarks.filter((m) => m.classId === selectedExplorerClass);
-                      const clsFees = feeRecords.filter((f) => f.classId === selectedExplorerClass);
-                      const clsHomework = homeworkList.filter((h) => h.classId === selectedExplorerClass);
-                      const clsRoutine = classRoutines.find((r) => r.classId === selectedExplorerClass);
+                        .filter((s) => isAllClasses || s.classId === selectedExplorerClass)
+                        .filter((s) => {
+                          if (!expQ) return true;
+                          return (
+                            s.name.toLowerCase().includes(expQ) ||
+                            s.roll.toLowerCase().includes(expQ) ||
+                            (s.registrationNo || '').toLowerCase().includes(expQ) ||
+                            (s.guardianMobile || '').toLowerCase().includes(expQ) ||
+                            `class ${s.classId}`.includes(expQ)
+                          );
+                        })
+                        .sort((a, b) =>
+                          a.classId === b.classId
+                            ? a.roll.localeCompare(b.roll, undefined, { numeric: true })
+                            : a.classId.localeCompare(b.classId, undefined, { numeric: true })
+                        );
+                      const clsMarks = examMarks.filter((m) => isAllClasses || m.classId === selectedExplorerClass);
+                      const clsFees = feeRecords.filter((f) => isAllClasses || f.classId === selectedExplorerClass);
+                      const clsHomework = homeworkList.filter((h) => isAllClasses || h.classId === selectedExplorerClass);
+                      const clsRoutine = isAllClasses ? undefined : classRoutines.find((r) => r.classId === selectedExplorerClass);
                       const clsNormalizedAtt = studentAttendance
-                        .filter((a) => a.classId === selectedExplorerClass)
+                        .filter((a) => isAllClasses || a.classId === selectedExplorerClass)
                         .sort((a, b) => b.date.localeCompare(a.date));
                       const clsLegacyAtt = attendanceRecords
-                        .filter((r) => r.classId === selectedExplorerClass)
+                        .filter((r) => isAllClasses || r.classId === selectedExplorerClass)
                         .sort((a, b) => b.date.localeCompare(a.date));
                       const clsAssignedTeachers = [
                         ...teachers
-                          .filter((tc) => tc.assignedClass === selectedExplorerClass)
+                          .filter((tc) => !isAllClasses && tc.assignedClass === selectedExplorerClass)
                           .map((tc) => t(tc.name)),
                         ...cloudUsers
-                          .filter((cu) => cu.role === 'teacher' && cu.assignedClass === selectedExplorerClass)
+                          .filter((cu) => !isAllClasses && cu.role === 'teacher' && cu.assignedClass === selectedExplorerClass)
                           .map((cu) => cu.name),
                       ].filter((name, idx, arr) => Boolean(name) && arr.indexOf(name) === idx);
 
@@ -1922,7 +1972,7 @@ const Login: React.FC = () => {
 
                       return (
                         <div className="p-5 sm:p-6 rounded-2xl border border-emerald-200 dark:border-emerald-900/70 bg-white dark:bg-slate-900 space-y-5">
-                          <div className="flex flex-col md:flex-row md:items-center justify-between gap-3">
+                          <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-3">
                             <div>
                               <h4 className="font-black text-base text-slate-900 dark:text-white">
                                 {lang === 'bn'
@@ -1930,26 +1980,53 @@ const Login: React.FC = () => {
                                   : 'Class-Wise Data Explorer (Isolated Per Class)'}
                               </h4>
                               <p className="text-xs text-slate-500 dark:text-slate-400">
-                                {lang === 'bn'
+                                {isAllClasses
+                                  ? lang === 'bn'
+                                    ? 'সকল শ্রেণীর (৬ষ্ঠ–১০ম) শিক্ষার্থী, হাজিরা, নম্বর ও বেতন একসাথে দেখুন বা খুঁজুন।'
+                                    : 'Search and inspect students, marks, fees, and attendance across all classes (6–10).'
+                                  : lang === 'bn'
                                   ? `Class ${selectedExplorerClass}-এর শিক্ষার্থী, হাজিরা, নম্বর, বেতন ও হোমওয়ার্ক আলাদাভাবে দেখুন।`
                                   : `Inspect Class ${selectedExplorerClass} students, attendance, exam marks, fees, and homework separately.`}
                               </p>
                             </div>
-                            <div className="flex flex-wrap gap-1.5 bg-slate-100 dark:bg-slate-800 p-1 rounded-xl">
-                              {(['6', '7', '8', '9', '10'] as const).map((cid) => (
+                            <div className="flex flex-wrap items-center gap-2">
+                              <div className="relative">
+                                <Search className="w-3.5 h-3.5 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
+                                <input
+                                  type="text"
+                                  value={explorerSearchQuery}
+                                  onChange={(e) => setExplorerSearchQuery(e.target.value)}
+                                  placeholder={lang === 'bn' ? 'নাম, রোল বা রেজিঃ খুঁজুন...' : 'Search name, roll, reg...'}
+                                  className="pl-8 pr-3 py-1.5 rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-xs font-bold outline-none focus:ring-2 focus:ring-emerald-600 w-48 sm:w-56"
+                                />
+                              </div>
+                              <div className="flex flex-wrap gap-1 bg-slate-100 dark:bg-slate-800 p-1 rounded-xl">
                                 <button
-                                  key={cid}
                                   type="button"
-                                  onClick={() => setSelectedExplorerClass(cid)}
-                                  className={`px-3.5 py-1.5 rounded-lg text-xs font-extrabold transition-colors whitespace-nowrap ${
-                                    selectedExplorerClass === cid
+                                  onClick={() => setSelectedExplorerClass('all')}
+                                  className={`px-3 py-1.5 rounded-lg text-xs font-extrabold transition-colors whitespace-nowrap ${
+                                    isAllClasses
                                       ? 'bg-emerald-700 text-white shadow-sm'
                                       : 'text-slate-600 dark:text-slate-300 hover:bg-white dark:hover:bg-slate-900'
                                   }`}
                                 >
-                                  {lang === 'bn' ? `${cid}ম শ্রেণী` : `Class ${cid}`}
+                                  {lang === 'bn' ? 'সকল শ্রেণী' : 'All'}
                                 </button>
-                              ))}
+                                {(['6', '7', '8', '9', '10'] as const).map((cid) => (
+                                  <button
+                                    key={cid}
+                                    type="button"
+                                    onClick={() => setSelectedExplorerClass(cid)}
+                                    className={`px-3 py-1.5 rounded-lg text-xs font-extrabold transition-colors whitespace-nowrap ${
+                                      selectedExplorerClass === cid
+                                        ? 'bg-emerald-700 text-white shadow-sm'
+                                        : 'text-slate-600 dark:text-slate-300 hover:bg-white dark:hover:bg-slate-900'
+                                    }`}
+                                  >
+                                    {lang === 'bn' ? `${cid}ম` : `Class ${cid}`}
+                                  </button>
+                                ))}
+                              </div>
                             </div>
                           </div>
 
@@ -1960,7 +2037,11 @@ const Login: React.FC = () => {
                                   {lang === 'bn' ? 'শ্রেণী শিক্ষক' : 'Class Teacher'}
                                 </p>
                                 <p className="font-extrabold text-slate-900 dark:text-white mt-0.5 truncate">
-                                  {clsAssignedTeachers.length > 0
+                                  {isAllClasses
+                                    ? lang === 'bn'
+                                      ? 'সকল শ্রেণী (৬ষ্ঠ–১০ম)'
+                                      : 'All Classes (6–10)'
+                                    : clsAssignedTeachers.length > 0
                                     ? clsAssignedTeachers.join(', ')
                                     : lang === 'bn'
                                     ? 'নির্ধারিত নয়'
@@ -2036,12 +2117,19 @@ const Login: React.FC = () => {
                             <div className="overflow-x-auto">
                               {clsStudents.length === 0 ? (
                                 <p className="text-xs text-slate-400 text-center py-6">
-                                  {lang === 'bn' ? `Class ${selectedExplorerClass}-এ এখনো কোনো শিক্ষার্থী যুক্ত হয়নি।` : `No students enrolled in Class ${selectedExplorerClass} yet.`}
+                                  {expQ
+                                    ? lang === 'bn'
+                                      ? `"${explorerSearchQuery}" নামে কোনো শিক্ষার্থী পাওয়া যায়নি।`
+                                      : `No student matched "${explorerSearchQuery}".`
+                                    : lang === 'bn'
+                                    ? `Class ${selectedExplorerClass}-এ এখনো কোনো শিক্ষার্থী যুক্ত হয়নি।`
+                                    : `No students enrolled in Class ${selectedExplorerClass} yet.`}
                                 </p>
                               ) : (
                                 <table className="w-full text-left text-xs">
                                   <thead className="border-b border-slate-200 dark:border-slate-800 text-[10px] font-bold uppercase text-slate-400">
                                     <tr>
+                                      {isAllClasses && <th className="py-2 pr-3">Class</th>}
                                       <th className="py-2 pr-3">Roll</th>
                                       <th className="py-2 px-3">Name</th>
                                       <th className="py-2 px-3">Section</th>
@@ -2052,11 +2140,16 @@ const Login: React.FC = () => {
                                   </thead>
                                   <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
                                     {clsStudents.map((st) => {
-                                      const stDue = clsFees
-                                        .filter((f) => f.roll.trim() === st.roll.trim() && f.status !== 'waived')
+                                      const stDue = feeRecords
+                                        .filter((f) => f.classId === st.classId && f.roll.trim() === st.roll.trim() && f.status !== 'waived')
                                         .reduce((sum, f) => sum + Math.max(0, f.amount - f.paidAmount), 0);
                                       return (
                                         <tr key={st.id}>
+                                          {isAllClasses && (
+                                            <td className="py-2.5 pr-3 font-extrabold text-emerald-700 dark:text-emerald-400">
+                                              Class {st.classId}
+                                            </td>
+                                          )}
                                           <td className="py-2.5 pr-3 font-black tabular-nums">#{st.roll}</td>
                                           <td className="py-2.5 px-3 font-bold">{st.name}</td>
                                           <td className="py-2.5 px-3">{st.section}</td>
@@ -2198,13 +2291,13 @@ const Login: React.FC = () => {
                                 <div className="p-3.5 rounded-xl bg-emerald-50 dark:bg-emerald-950/40 border border-emerald-200 dark:border-emerald-800 text-xs flex flex-wrap items-center justify-between gap-2">
                                   <span className="font-extrabold text-emerald-900 dark:text-emerald-200">
                                     {lang === 'bn'
-                                      ? `Class ${selectedExplorerClass} রুটিন: ${clsRoutine.days.length} কর্মদিবস`
-                                      : `Class ${selectedExplorerClass} Routine: ${clsRoutine.days.length} active school days`}
+                                      ? `Class ${selectedExplorerClass} রুটিন: ${Array.isArray(clsRoutine.schedule) ? clsRoutine.schedule.length : 0} কর্মদিবস`
+                                      : `Class ${selectedExplorerClass} Routine: ${Array.isArray(clsRoutine.schedule) ? clsRoutine.schedule.length : 0} active school days`}
                                   </span>
                                   <button
                                     type="button"
                                     onClick={() => {
-                                      setRoutineClassId(selectedExplorerClass);
+                                      setRoutineClassId(selectedExplorerClass === 'all' ? '6' : selectedExplorerClass);
                                       setManagementTab('class-routine');
                                     }}
                                     className="px-3 py-1 rounded-lg bg-emerald-700 text-white font-bold"
@@ -2222,7 +2315,7 @@ const Login: React.FC = () => {
                                   <div key={hw.id} className="p-3.5 rounded-xl bg-slate-50 dark:bg-slate-800 flex items-center justify-between gap-2 text-xs">
                                     <div>
                                       <p className="font-extrabold">{hw.subject}: {hw.title}</p>
-                                      <p className="text-slate-500">By {hw.teacherName} · Due {hw.dueDate}</p>
+                                      <p className="text-slate-500">By {hw.assignedBy || 'Teacher'} · Due {hw.dueDate}</p>
                                     </div>
                                   </div>
                                 ))
@@ -2565,7 +2658,7 @@ const Login: React.FC = () => {
                           onChange={(e) => setRoutineDayIdx(Number(e.target.value))}
                           className="px-3 py-2 rounded-xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 text-xs font-bold"
                         >
-                          {activeAdminRoutine.schedule.map((d, idx) => (
+                          {(Array.isArray(activeAdminRoutine.schedule) ? activeAdminRoutine.schedule : []).map((d, idx) => (
                             <option key={idx} value={idx}>{t(d.day)}</option>
                           ))}
                         </select>
@@ -2587,12 +2680,13 @@ const Login: React.FC = () => {
                       onSubmit={(e) => {
                         e.preventDefault();
                         if (!periodDraft.subjectEn.trim() && !periodDraft.subjectBn.trim()) return;
-                        const nextSchedule = activeAdminRoutine.schedule.map((d, idx) =>
+                        const scheduleList = Array.isArray(activeAdminRoutine.schedule) ? activeAdminRoutine.schedule : [];
+                        const nextSchedule = scheduleList.map((d, idx) =>
                           idx === routineDayIdx
                             ? {
                                 ...d,
                                 periods: [
-                                  ...d.periods,
+                                  ...(Array.isArray(d.periods) ? d.periods : []),
                                   {
                                     time: periodDraft.time.trim() || '01:45 PM',
                                     subject: {
@@ -2624,7 +2718,7 @@ const Login: React.FC = () => {
                     </form>
 
                     <div className="grid sm:grid-cols-2 lg:grid-cols-4 gap-3">
-                      {(activeAdminRoutine.schedule[routineDayIdx]?.periods || []).map((pr, pIdx) => (
+                      {(Array.isArray(activeAdminRoutine.schedule?.[routineDayIdx]?.periods) ? activeAdminRoutine.schedule[routineDayIdx].periods : []).map((pr, pIdx) => (
                         <div key={pIdx} className="p-3.5 rounded-xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 flex items-center justify-between gap-2 text-xs">
                           <div className="min-w-0">
                             <p className="font-bold text-emerald-700 dark:text-emerald-400 tabular-nums">{pr.time}</p>
@@ -2634,8 +2728,9 @@ const Login: React.FC = () => {
                           <button
                             type="button"
                             onClick={() => {
-                              const nextSchedule = activeAdminRoutine.schedule.map((d, idx) =>
-                                idx === routineDayIdx ? { ...d, periods: d.periods.filter((_, i) => i !== pIdx) } : d
+                              const scheduleList = Array.isArray(activeAdminRoutine.schedule) ? activeAdminRoutine.schedule : [];
+                              const nextSchedule = scheduleList.map((d, idx) =>
+                                idx === routineDayIdx ? { ...d, periods: (Array.isArray(d.periods) ? d.periods : []).filter((_, i) => i !== pIdx) } : d
                               );
                               saveClassRoutine({ ...activeAdminRoutine, schedule: nextSchedule });
                               notifyAdmin(lang === 'bn' ? 'পিরিয়ড মুছে ফেলা হয়েছে।' : 'Period removed from schedule.');
@@ -2985,7 +3080,7 @@ const Login: React.FC = () => {
                     {onlineExams.map((ex) => (
                       <div key={ex.id} className="p-4 rounded-2xl bg-slate-50 dark:bg-slate-800 flex justify-between items-center">
                         <div>
-                          <span className="text-[10px] font-bold text-emerald-700 dark:text-emerald-400">Class {ex.classId} • {ex.subject} • {ex.questions.length} MCQ</span>
+                          <span className="text-[10px] font-bold text-emerald-700 dark:text-emerald-400">Class {ex.classId} • {ex.subject} • {Array.isArray(ex.questions) ? ex.questions.length : 0} MCQ</span>
                           <p className="font-bold text-sm">{t(ex.title)}</p>
                         </div>
                         <button onClick={() => deleteOnlineExam(ex.id)} className="p-2 text-red-500"><Trash2 className="w-4 h-4" /></button>
@@ -3524,18 +3619,351 @@ const Login: React.FC = () => {
                   </div>
                 )}
 
+                {managementTab === 'students' && (() => {
+                  const q = adminStudentSearch.trim().toLowerCase();
+                  const filteredAdminStudents = students
+                    .filter((st) => adminStudentClassFilter === 'all' || st.classId === adminStudentClassFilter)
+                    .filter((st) => {
+                      if (!q) return true;
+                      return (
+                        (st.name || '').toLowerCase().includes(q) ||
+                        (st.roll || '').toLowerCase().includes(q) ||
+                        (st.registrationNo || '').toLowerCase().includes(q) ||
+                        (st.guardianMobile || '').toLowerCase().includes(q) ||
+                        (st.guardianName || '').toLowerCase().includes(q) ||
+                        `class ${st.classId || ''}`.includes(q)
+                      );
+                    })
+                    .sort((a, b) =>
+                      a.classId === b.classId
+                        ? (a.roll || '').localeCompare(b.roll || '', undefined, { numeric: true })
+                        : (a.classId || '').localeCompare(b.classId || '', undefined, { numeric: true })
+                    );
+
+                  const handleSaveAdminStudent = (e: React.FormEvent) => {
+                    e.preventDefault();
+                    const cleanRoll = adminStudentForm.roll.trim() || '01';
+                    const cleanName = adminStudentForm.name.trim();
+                    if (!cleanName) return;
+                    const sessionStr = editingAdminStudent?.session || '2026';
+                    if (editingAdminStudent) {
+                      updateStudent({
+                        ...editingAdminStudent,
+                        roll: cleanRoll,
+                        name: cleanName,
+                        classId: adminStudentForm.classId,
+                        section: adminStudentForm.section.trim() || 'A',
+                        guardianName: adminStudentForm.guardianName.trim() || undefined,
+                        guardianMobile: adminStudentForm.guardianMobile.trim() || '01700000000',
+                        photo: adminStudentForm.photo || editingAdminStudent.photo,
+                        registrationNo: normalizeStudentRegistrationNo(
+                          editingAdminStudent.registrationNo,
+                          adminStudentForm.classId,
+                          cleanRoll,
+                          sessionStr
+                        ),
+                      });
+                      notifyAdmin(lang === 'bn' ? 'শিক্ষার্থীর তথ্য আপডেট হয়েছে!' : 'Student record updated!');
+                    } else {
+                      const newId = `st-${adminStudentForm.classId}-${cleanRoll}-${Date.now().toString(36)}`;
+                      addStudent({
+                        id: newId,
+                        roll: cleanRoll,
+                        name: cleanName,
+                        classId: adminStudentForm.classId,
+                        section: adminStudentForm.section.trim() || 'A',
+                        guardianName: adminStudentForm.guardianName.trim() || undefined,
+                        guardianMobile: adminStudentForm.guardianMobile.trim() || '01700000000',
+                        photo: adminStudentForm.photo || undefined,
+                        session: sessionStr,
+                        registrationDate: todayStr,
+                        registrationNo: buildStudentRegistrationNo(adminStudentForm.classId, cleanRoll, sessionStr),
+                        cardIssueDate: todayStr,
+                        cardValidUpto: `${sessionStr}-12-31`,
+                      });
+                      notifyAdmin(lang === 'bn' ? 'নতুন শিক্ষার্থী যুক্ত হয়েছে!' : 'New student added!');
+                    }
+                    setEditingAdminStudent(null);
+                    setAdminStudentForm({
+                      roll: '',
+                      name: '',
+                      classId: '10',
+                      section: 'Science',
+                      guardianName: '',
+                      guardianMobile: '',
+                      photo: '',
+                    });
+                  };
+
+                  return (
+                    <div className="space-y-5">
+                      <form
+                        onSubmit={handleSaveAdminStudent}
+                        className="p-4 sm:p-5 rounded-2xl bg-emerald-50/70 dark:bg-emerald-950/30 border border-emerald-200 dark:border-emerald-900 space-y-3"
+                      >
+                        <div className="flex items-center justify-between">
+                          <h4 className="font-black text-sm text-emerald-900 dark:text-emerald-200">
+                            {editingAdminStudent
+                              ? lang === 'bn'
+                                ? 'শিক্ষার্থীর তথ্য সম্পাদনা করুন'
+                                : 'Edit Student Record'
+                              : lang === 'bn'
+                              ? 'নতুন শিক্ষার্থী যুক্ত করুন (৬ষ্ঠ–১০ম)'
+                              : 'Add New Student (Class 6–10)'}
+                          </h4>
+                          {editingAdminStudent && (
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setEditingAdminStudent(null);
+                                setAdminStudentForm({
+                                  roll: '',
+                                  name: '',
+                                  classId: '10',
+                                  section: 'Science',
+                                  guardianName: '',
+                                  guardianMobile: '',
+                                  photo: '',
+                                });
+                              }}
+                              className="text-xs font-bold text-slate-500 hover:text-red-600"
+                            >
+                              {lang === 'bn' ? 'বাতিল' : 'Cancel'}
+                            </button>
+                          )}
+                        </div>
+                        <div className="grid sm:grid-cols-3 lg:grid-cols-6 gap-2.5 text-xs">
+                          <select
+                            value={adminStudentForm.classId}
+                            onChange={(e) => {
+                              const cid = e.target.value as '6' | '7' | '8' | '9' | '10';
+                              setAdminStudentForm((p) => ({
+                                ...p,
+                                classId: cid,
+                                section: cid === '9' || cid === '10' ? 'Science' : 'A',
+                              }));
+                            }}
+                            className="px-3 py-2 rounded-xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 font-bold"
+                          >
+                            {['6', '7', '8', '9', '10'].map((c) => (
+                              <option key={c} value={c}>Class {c}</option>
+                            ))}
+                          </select>
+                          <input
+                            required
+                            placeholder={lang === 'bn' ? 'রোল নং (যেমন 01)' : 'Roll (e.g. 01)'}
+                            value={adminStudentForm.roll}
+                            onChange={(e) => setAdminStudentForm((p) => ({ ...p, roll: e.target.value }))}
+                            className="px-3 py-2 rounded-xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 font-bold"
+                          />
+                          <input
+                            required
+                            placeholder={lang === 'bn' ? 'শিক্ষার্থীর নাম' : 'Student Full Name'}
+                            value={adminStudentForm.name}
+                            onChange={(e) => setAdminStudentForm((p) => ({ ...p, name: e.target.value }))}
+                            className="px-3 py-2 rounded-xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 font-bold sm:col-span-2"
+                          />
+                          {adminStudentForm.classId === '9' || adminStudentForm.classId === '10' ? (
+                            <select
+                              value={adminStudentForm.section}
+                              onChange={(e) => setAdminStudentForm((p) => ({ ...p, section: e.target.value }))}
+                              className="px-3 py-2 rounded-xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 font-bold"
+                            >
+                              <option value="Science">Science</option>
+                              <option value="Humanities">Humanities</option>
+                              <option value="Business Studies">Business Studies</option>
+                              <option value="A">Section A</option>
+                            </select>
+                          ) : (
+                            <input
+                              required
+                              placeholder="Section (A / B)"
+                              value={adminStudentForm.section}
+                              onChange={(e) => setAdminStudentForm((p) => ({ ...p, section: e.target.value }))}
+                              className="px-3 py-2 rounded-xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 font-bold"
+                            />
+                          )}
+                          <input
+                            placeholder={lang === 'bn' ? 'অভিভাবকের মোবাইল' : 'Guardian Mobile'}
+                            value={adminStudentForm.guardianMobile}
+                            onChange={(e) => setAdminStudentForm((p) => ({ ...p, guardianMobile: e.target.value }))}
+                            className="px-3 py-2 rounded-xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 font-bold"
+                          />
+                        </div>
+                        <div className="flex flex-wrap items-center gap-2.5 text-xs">
+                          <input
+                            placeholder={lang === 'bn' ? 'অভিভাবকের নাম (ঐচ্ছিক)' : 'Guardian Name (optional)'}
+                            value={adminStudentForm.guardianName}
+                            onChange={(e) => setAdminStudentForm((p) => ({ ...p, guardianName: e.target.value }))}
+                            className="px-3 py-2 rounded-xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 font-bold flex-1 min-w-[200px]"
+                          />
+                          <button
+                            type="submit"
+                            className="px-4 py-2 rounded-xl bg-emerald-700 hover:bg-emerald-800 text-white font-black inline-flex items-center gap-1.5"
+                          >
+                            <PlusCircle className="w-4 h-4" />
+                            {editingAdminStudent
+                              ? lang === 'bn'
+                                ? 'আপডেট করুন'
+                                : 'Save Changes'
+                              : lang === 'bn'
+                              ? 'শিক্ষার্থী যুক্ত করুন'
+                              : 'Add Student'}
+                          </button>
+                        </div>
+                      </form>
+
+                      <div className="flex flex-wrap items-center justify-between gap-3 bg-slate-50 dark:bg-slate-800/70 p-4 rounded-2xl border border-slate-200 dark:border-slate-700">
+                        <div className="flex flex-wrap items-center gap-2.5 flex-1">
+                          <select
+                            value={adminStudentClassFilter}
+                            onChange={(e) => setAdminStudentClassFilter(e.target.value)}
+                            className="px-3.5 py-2 rounded-xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 text-xs font-bold"
+                          >
+                            <option value="all">{lang === 'bn' ? `সকল শ্রেণী (${students.length})` : `All Classes (${students.length})`}</option>
+                            {['6', '7', '8', '9', '10'].map((c) => (
+                              <option key={c} value={c}>
+                                Class {c} ({students.filter((s) => s.classId === c).length})
+                              </option>
+                            ))}
+                          </select>
+                          <div className="relative flex-1 min-w-[220px] max-w-md">
+                            <Search className="w-4 h-4 text-slate-400 absolute left-3.5 top-1/2 -translate-y-1/2" />
+                            <input
+                              value={adminStudentSearch}
+                              onChange={(e) => setAdminStudentSearch(e.target.value)}
+                              placeholder={lang === 'bn' ? 'নাম, রোল, রেজিঃ নং বা মোবাইল দিয়ে খুঁজুন...' : 'Search by name, roll, reg no or mobile...'}
+                              className="w-full pl-9 pr-3 py-2 rounded-xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 text-xs font-bold outline-none focus:ring-2 focus:ring-emerald-600"
+                            />
+                          </div>
+                        </div>
+                        <button
+                          type="button"
+                          onClick={() =>
+                            exportCsv(
+                              `students_${todayStr}`,
+                              ['ID', 'Class', 'Roll', 'Name', 'Section', 'RegNo', 'Guardian', 'Mobile'],
+                              filteredAdminStudents.map((s) => [
+                                s.id,
+                                s.classId,
+                                s.roll,
+                                s.name,
+                                s.section,
+                                normalizeStudentRegistrationNo(s.registrationNo, s.classId, s.roll, s.session || '2026'),
+                                s.guardianName || '',
+                                s.guardianMobile,
+                              ])
+                            )
+                          }
+                          className="px-3.5 py-2 rounded-xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 text-xs font-bold inline-flex items-center gap-1.5 hover:bg-emerald-50"
+                        >
+                          <Download className="w-3.5 h-3.5" />
+                          {lang === 'bn' ? 'CSV ডাউনলোড' : 'Export CSV'}
+                        </button>
+                      </div>
+
+                      {filteredAdminStudents.length === 0 ? (
+                        <div className="p-8 rounded-2xl bg-slate-50 dark:bg-slate-800/50 text-center text-xs font-bold text-slate-500">
+                          {lang === 'bn'
+                            ? 'কোনো শিক্ষার্থী পাওয়া যায়নি। সার্চ ফিল্টার পরিবর্তন করে দেখুন।'
+                            : 'No matching students found. Try adjusting the search or class filter.'}
+                        </div>
+                      ) : (
+                        <div className="overflow-x-auto rounded-2xl border border-slate-200 dark:border-slate-800">
+                          <table className="w-full text-left text-xs">
+                            <thead className="bg-slate-100 dark:bg-slate-800 uppercase font-bold text-slate-500">
+                              <tr>
+                                <th className="px-4 py-3">Class</th>
+                                <th className="px-4 py-3">Roll</th>
+                                <th className="px-4 py-3">Student Name</th>
+                                <th className="px-4 py-3">Group / Sec</th>
+                                <th className="px-4 py-3">Reg No</th>
+                                <th className="px-4 py-3">Mobile</th>
+                                <th className="px-4 py-3 text-right">Actions</th>
+                              </tr>
+                            </thead>
+                            <tbody className="divide-y divide-slate-100 dark:divide-slate-800 bg-white dark:bg-slate-900">
+                              {filteredAdminStudents.map((st) => (
+                                <tr key={st.id} className="hover:bg-slate-50/70 dark:hover:bg-slate-800/50">
+                                  <td className="px-4 py-3 font-extrabold text-emerald-700 dark:text-emerald-400 whitespace-nowrap">Class {st.classId}</td>
+                                  <td className="px-4 py-3 font-black tabular-nums">#{st.roll}</td>
+                                  <td className="px-4 py-3 font-bold text-slate-900 dark:text-white">{st.name}</td>
+                                  <td className="px-4 py-3">{st.section}</td>
+                                  <td className="px-4 py-3 font-mono text-[11px] text-slate-500">
+                                    {normalizeStudentRegistrationNo(st.registrationNo, st.classId, st.roll, st.session || '2026') || '—'}
+                                  </td>
+                                  <td className="px-4 py-3 tabular-nums text-slate-600 dark:text-slate-300">{st.guardianMobile}</td>
+                                  <td className="px-4 py-3 text-right whitespace-nowrap">
+                                    <div className="inline-flex items-center gap-1">
+                                      <button
+                                        type="button"
+                                        onClick={() => {
+                                          setAdminCardMode('admit');
+                                          setAdminCardStudent(st);
+                                        }}
+                                        className="px-2 py-1 rounded-lg bg-emerald-50 dark:bg-emerald-950/60 text-emerald-800 dark:text-emerald-300 font-bold"
+                                      >
+                                        Admit
+                                      </button>
+                                      <button
+                                        type="button"
+                                        onClick={() => {
+                                          setAdminCardMode('id');
+                                          setAdminCardStudent(st);
+                                        }}
+                                        className="px-2 py-1 rounded-lg bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-200 font-bold"
+                                      >
+                                        ID
+                                      </button>
+                                      <button
+                                        type="button"
+                                        onClick={() => {
+                                          setEditingAdminStudent(st);
+                                          setAdminStudentForm({
+                                            roll: st.roll,
+                                            name: st.name,
+                                            classId: (['6', '7', '8', '9', '10'].includes(st.classId) ? st.classId : '10') as '6' | '7' | '8' | '9' | '10',
+                                            section: st.section,
+                                            guardianName: st.guardianName || '',
+                                            guardianMobile: st.guardianMobile,
+                                            photo: st.photo || '',
+                                          });
+                                        }}
+                                        className="p-1.5 text-blue-600 hover:bg-blue-50 rounded-lg"
+                                      >
+                                        <Pencil className="w-3.5 h-3.5" />
+                                      </button>
+                                      <button
+                                        type="button"
+                                        onClick={() => deleteStudent(st.id)}
+                                        className="p-1.5 text-red-600 hover:bg-red-50 rounded-lg"
+                                      >
+                                        <Trash2 className="w-3.5 h-3.5" />
+                                      </button>
+                                    </div>
+                                  </td>
+                                </tr>
+                              ))}
+                            </tbody>
+                          </table>
+                        </div>
+                      )}
+                    </div>
+                  );
+                })()}
+
                 {managementTab === 'cards' && (() => {
                   const getStudentDue = (st: SchoolStudent) =>
                     feeRecords
-                      .filter((f) => f.classId === st.classId && f.roll.trim() === st.roll.trim())
+                      .filter((f) => f.classId === st.classId && (f.roll || '').trim() === (st.roll || '').trim())
                       .reduce((sum, f) => (f.status === 'waived' ? sum : sum + Math.max(0, f.amount - f.paidAmount)), 0);
 
                   const filteredCardStudents = students.filter(
                     (st) =>
                       (cardClassFilter === 'all' || st.classId === cardClassFilter) &&
                       (!cardSearch.trim() ||
-                        st.name.toLowerCase().includes(cardSearch.trim().toLowerCase()) ||
-                        st.roll.toLowerCase().includes(cardSearch.trim().toLowerCase()))
+                        (st.name || '').toLowerCase().includes(cardSearch.trim().toLowerCase()) ||
+                        (st.roll || '').toLowerCase().includes(cardSearch.trim().toLowerCase()))
                   );
 
                   const handleApproveAllPaid = () => {
@@ -4196,7 +4624,7 @@ const Login: React.FC = () => {
                   isAdminLoginRoute
                     ? 'mdjahidulislam1025@gmail.com'
                     : activeTab === 'student'
-                    ? 'RBMB-REG-2026-0901'
+                    ? '20260901'
                     : activeTab === 'teacher'
                     ? 'RBMB-TCH-2026-001 or 01711...'
                     : '01712-667788 or name@email.com'

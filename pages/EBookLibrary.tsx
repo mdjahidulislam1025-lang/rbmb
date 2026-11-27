@@ -112,7 +112,7 @@ const EBookLibrary: React.FC = () => {
 
   const handleDownloadStudySheet = (book: EBook) => {
     const content = [
-      `RANIR BAZAR SECONDARY HIGH SCHOOL - DIGITAL LIBRARY`,
+      `RANIR BAZAR MAIDYAMIK BIDYALAY - DIGITAL LIBRARY`,
       `====================================================`,
       `Title (EN): ${book.title.en}`,
       `Title (BN): ${book.title.bn}`,
@@ -342,7 +342,7 @@ const EBookLibrary: React.FC = () => {
                     <div className="w-full h-full bg-gradient-to-br from-emerald-700 via-green-800 to-teal-900 p-5 flex flex-col justify-between text-white">
                       <div className="flex items-center justify-between">
                         <span className="text-[10px] font-black uppercase bg-white/20 px-2.5 py-1 rounded-lg">
-                          {t(CATEGORY_LABELS[cat])}
+                          {t(CATEGORY_LABELS[cat] || CATEGORY_LABELS.Textbook)}
                         </span>
                         <BookOpen className="w-5 h-5 text-yellow-300" />
                       </div>
@@ -395,7 +395,7 @@ const EBookLibrary: React.FC = () => {
                         {t(book.className)}
                       </span>
                       <span className="text-[10px] font-bold text-slate-500 dark:text-slate-400">
-                        {t(CATEGORY_LABELS[cat])}
+                        {t(CATEGORY_LABELS[cat] || CATEGORY_LABELS.Textbook)}
                       </span>
                     </div>
                     <h3 className="font-black text-slate-900 dark:text-white text-sm leading-snug line-clamp-2">
@@ -448,7 +448,7 @@ const EBookLibrary: React.FC = () => {
             <div className="bg-green-700 p-6 text-white flex justify-between items-start gap-4">
               <div>
                 <span className="text-[11px] font-black uppercase bg-white/20 px-2.5 py-1 rounded-lg">
-                  {t(readerBook.className)} • {readerBook.subject} • {t(CATEGORY_LABELS[readerBook.category || 'Textbook'])}
+                  {t(readerBook.className)} • {readerBook.subject} • {t(CATEGORY_LABELS[readerBook.category || 'Textbook'] || CATEGORY_LABELS.Textbook)}
                 </span>
                 <h2 className="text-xl md:text-2xl font-black mt-2">{t(readerBook.title)}</h2>
               </div>
@@ -466,7 +466,7 @@ const EBookLibrary: React.FC = () => {
                     ? t(readerBook.description)
                     : lang === 'bn'
                     ? 'রাণীর বাজার মাধ্যমিক বিদ্যালয়ের ২০২৬ শিক্ষাবর্ষের অনুমোদিত ডিজিটাল পাঠ্য সহায়িকা।'
-                    : 'Official 2026 academic curriculum digital material from রাণীর বাজার মাধ্যমিক বিদ্যালয়.'}
+                    : 'Official 2026 academic curriculum digital material from RANIR BAZAR MAIDYAMIK BIDYALAY.'}
                 </p>
               </div>
               <div className="flex flex-wrap gap-3">
